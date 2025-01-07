@@ -1,0 +1,8 @@
+polars
+rich
+scipy
+pandas
+requests
+xlsx2csv
+isort
+black
