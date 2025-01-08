@@ -23,7 +23,12 @@ if __name__ == "__main__":
             nc = j["num_clients"]
 
         df = pl.read_csv(p)
-        loss = df.filter(df["metric"].str.contains("personal_avg_test_loss"))
+
+        if datum["strategy"] != "Centralized":
+            loss = df.filter(df["metric"].str.contains("personal_avg_test_loss"))
+        else:
+            loss = df.filter(df["metric"].str.contains("global_avg_test_loss"))
+
         datum[
             "loss"
         ] = f"{round(loss['avg_min'].to_list()[0], d)}±{round(loss['std_min'].to_list()[0], d)}"
