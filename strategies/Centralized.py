@@ -1,6 +1,4 @@
-import sys
-
-from .base import Client, Server
+from .base import Server
 
 
 class Centralized(Server):
