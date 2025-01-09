@@ -58,6 +58,7 @@ class CryptoDataDownloadDay(BaseDataset):
     def read(self, path):
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
+            df = self.reduce_polars_df(df=df, info=True)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
@@ -126,6 +127,7 @@ class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
             df = df.rename({col: col.capitalize() for col in df.columns})
+            df = self.reduce_polars_df(df=df, info=True)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")

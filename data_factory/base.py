@@ -116,15 +116,18 @@ class BaseDataset:
         if not end:
             end = df[column_date].max()
         return df.join(
-            other=pl.datetime_range(
-                start=start,
-                end=end,
-                interval=granularity,
-                closed="both",
-                eager=True,
-            )
-            .alias(self.column_date)
-            .to_frame(),
+            other=self.reduce_polars_df(
+                df=pl.datetime_range(
+                    start=start,
+                    end=end,
+                    interval=granularity,
+                    closed="both",
+                    eager=True,
+                )
+                .alias(self.column_date)
+                .to_frame(),
+                info=False,
+            ),
             on=column_date,
             how="full",
             coalesce=True,
@@ -380,9 +383,89 @@ class BaseDataset:
             (pl.col(self.column_date) >= start) & (pl.col(self.column_date) < end)
         )
 
+    @staticmethod
+    def _memory_unit_conversion(before, after):
+        units = ["bytes", "KB", "MB", "GB", "TB", "PB"]
+        unit_index = 0
+
+        while before >= 1024 and unit_index < len(units) - 1:
+            before /= 1024
+            after /= 1024
+            unit_index += 1
+
+        return before, after, units[unit_index]
+
+    def _print_info(self, before, after, data_type):
+        reduction = 100.0 * (before - after) / before
+        reduction_str = f"{reduction:.2f}% reduction"
+        before, after, unit = self._memory_unit_conversion(before, after)
+
+        print(
+            f"Reduced {data_type} memory usage from {before:.4f} {unit} to {after:.4f} {unit} ({reduction_str})"
+        )
+
+    def _cast_to_optimal_type(self, c_min, c_max, current_type):
+        self.numeric_int_types = [np.int8, np.int16, np.int32, np.int64]
+        self.numeric_float_types = [np.float16, np.float32, np.float64]
+        """Find the smallest numeric type that fits the given range."""
+        dtype_list = (
+            self.numeric_int_types
+            if current_type == "int"
+            else self.numeric_float_types
+        )
+        for dtype in dtype_list:
+            if np.can_cast(c_min, dtype) and np.can_cast(c_max, dtype):
+                return dtype
+        return None
+
+    def reduce_polars_df(self, df, info=False):
+        before = df.estimated_size()
+
+        np_to_pl_type_mapping = {
+            np.int8: pl.Int8,
+            np.int16: pl.Int16,
+            np.int32: pl.Int32,
+            np.int64: pl.Int64,
+            np.uint8: pl.UInt8,
+            np.uint16: pl.UInt16,
+            np.uint32: pl.UInt32,
+            np.uint64: pl.UInt64,
+            np.float16: pl.Float32,
+            np.float32: pl.Float32,
+            np.float64: pl.Float64,
+        }
+
+        for col in df.columns:
+            col_type = df[col].dtype
+
+            if col_type == pl.Utf8:
+                df = df.with_columns(df[col].cast(pl.Categorical))
+            elif col_type == pl.Datetime:
+                # Check if all timestamps are at midnight (no time component)
+                if (
+                    df[col].dt.hour().sum() == 0
+                    and df[col].dt.minute().sum() == 0
+                    and df[col].dt.second().sum() == 0
+                ):
+                    df = df.with_columns(df[col].cast(pl.Date))
+            elif col_type in np_to_pl_type_mapping.values():
+                c_min, c_max = df[col].min(), df[col].max()
+                optimal_type = self._cast_to_optimal_type(
+                    c_min, c_max, "float" if "float" in str(col_type) else "int"
+                )
+                if optimal_type:
+                    polars_type = np_to_pl_type_mapping.get(optimal_type)
+                    if polars_type:
+                        df = df.with_columns(df[col].cast(polars_type))
+
+        if info:
+            self._print_info(before, df.estimated_size(), "Polars DataFrame")
+        return df
+
     def read(self, path):
         try:
             df = pl.read_csv(path, try_parse_dates=True)
+            df = self.reduce_polars_df(df=df, info=True)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
