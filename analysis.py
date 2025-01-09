@@ -11,7 +11,9 @@ if __name__ == "__main__":
     for run in script_df["--name="].to_list():
         p = os.path.join("runs", run, "results.csv")
         if not os.path.exists(p):
-            script_value = script_df.filter(pl.col("--name=") == run)["script"].to_list()[0]
+            script_value = script_df.filter(pl.col("--name=") == run)[
+                "script"
+            ].to_list()[0]
             print(script_value)
             continue
         datum = {}

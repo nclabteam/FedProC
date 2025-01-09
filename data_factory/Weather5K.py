@@ -13,3 +13,6 @@ class Weather5K(BaseDataset):
         self.column_train = ["TMP", "DEW", "WND_ANGLE", "WND_RATE", "SLP"]
         self.granularity = 1
         self.granularity_unit = "hour"
+
+    def download(self):
+        raise NotImplementedError

@@ -13,3 +13,6 @@ class MekongSalinity(BaseDataset):
         self.column_train = ["average"]
         self.granularity = 1
         self.granularity_unit = "day"
+
+    def download(self):
+        raise NotImplementedError
