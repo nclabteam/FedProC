@@ -41,7 +41,8 @@ class CryptoDataDownloadDay(BaseDataset):
             print(f"Failed to retrieve data: {response.status_code}")
             exit()
 
-        return data["result"]["spot"]
+        # only get tickets have USDT
+        return [symbol for symbol in data["result"]["spot"] if "USDT" == symbol[-4:]]
 
     def download(self):
         # Create directories
@@ -55,17 +56,11 @@ class CryptoDataDownloadDay(BaseDataset):
             day_save_path = os.path.join(self.path_raw, f"Binance_{symbol}_d.csv")
             self.download_file(url=day_url, save_path=day_save_path)
 
-    def get_file_paths(self):
-        self.file_pahts_list = [
-            os.path.join(self.path_raw, path)
-            for path in os.listdir(self.path_raw)
-            if "USDT" in path
-        ]
-
     def read(self, path):
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
             df = self.reduce_polars_df(df=df, info=True)
+            df = df.filter(df["Date"].dt.year() < 2025)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
@@ -131,13 +126,6 @@ class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
                     self.download_file(url=minute_url, save_path=minute_save_path)
 
     def read(self, path):
-        try:
-            df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
-            df = df.rename({col: col.capitalize() for col in df.columns})
-            df = self.reduce_polars_df(df=df, info=True)
-            return df
-        except pl.exceptions.NoDataError:
-            print(f"Empty file: {path}")
-            return None
-        except pl.exceptions.ComputeError:
-            print(f"Date have more than one format: {path}")
+        df = super().read(path)
+        df = df.rename({col: col.capitalize() for col in df.columns})
+        return df
