@@ -59,14 +59,17 @@ class CryptoDataDownloadDay(BaseDataset):
     def read(self, path):
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
-            df = self.reduce_polars_df(df=df, info=True)
-            df = df.filter(df["Date"].dt.year() < 2025)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
             return None
         except pl.exceptions.ComputeError:
             print(f"Date have more than one format: {path}")
+
+    def prepossess(self, df):
+        df = super().prepossess(df)
+        df = df.filter(df["Date"].dt.year() < 2025)
+        return df
 
 
 class CryptoDataDownloadHour(CryptoDataDownloadDay, BaseDataset):
@@ -125,7 +128,7 @@ class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
                 if response.status_code == 200:
                     self.download_file(url=minute_url, save_path=minute_save_path)
 
-    def read(self, path):
-        df = super().read(path)
+    def prepossess(self, df):
         df = df.rename({col: col.capitalize() for col in df.columns})
+        df = super().prepossess(df)
         return df

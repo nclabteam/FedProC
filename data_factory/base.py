@@ -465,11 +465,13 @@ class BaseDataset:
     def read(self, path):
         try:
             df = pl.read_csv(path, try_parse_dates=True)
-            df = self.reduce_polars_df(df=df, info=True)
             return df
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
             return None
+
+    def prepossess(self, df):
+        return self.reduce_polars_df(df=df, info=True)
 
     def get_file_paths(self):
         self.file_pahts_list = [
@@ -483,6 +485,7 @@ class BaseDataset:
 
             # read file
             df = self.read(path)
+            df = self.prepossess(df)
             if df is None:
                 continue
 
