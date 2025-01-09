@@ -1,3 +1,5 @@
+import copy
+
 from .base import Client, Server
 
 optional = {
@@ -17,7 +19,7 @@ class FedProx_Client(Client):
     def train_one_epoch(
         self, model, dataloader, optimizer, criterion, scheduler, device
     ):
-        global_params = list(model.parameters())
+        global_params = copy.deepcopy(list(model.parameters()))
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
