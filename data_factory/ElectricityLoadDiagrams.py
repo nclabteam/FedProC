@@ -12,9 +12,8 @@ from .base import BaseDataset
 class ElectricityLoadDiagrams(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.path_raw = os.path.join(
-            "datasets", "ElectricityLoadDiagrams", "raw", "LD2011_2014.txt"
-        )
+        self.path_raw = os.path.join("datasets", "ElectricityLoadDiagrams", "raw")
+        self.path_temp = os.path.join("datasets", "ElectricityLoadDiagrams", "temp")
         self.save_path = os.path.join("datasets", "ElectricityLoadDiagrams")
         self.column_date = "Date"
         self.column_target = ["Value"]
@@ -24,21 +23,18 @@ class ElectricityLoadDiagrams(BaseDataset):
         self.url = "https://archive.ics.uci.edu/static/public/321/electricityloaddiagrams20112014.zip"
 
     def download(self):
-        dpath = os.path.join(self.save_path, "raw")
-        if not os.path.exists(dpath):
-            os.makedirs(dpath)
+        os.makedirs(self.path_temp, exist_ok=True)
+
         response = requests.get(self.url)
         response.raise_for_status()
         with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(dpath)
-        os.system(f'rm -r {os.path.join(dpath, "__MACOSX")}')
+            zip_ref.extractall(self.path_temp)
 
     def prepossess(self):
-        temp_path = os.path.join(self.save_path, "temp")
-        if os.path.exists(temp_path):
-            return
-        os.makedirs(temp_path)
-        df = pd.read_csv(self.path_raw, sep=";", decimal=",")
+        os.makedirs(self.path_raw, exist_ok=True)
+        df = pd.read_csv(
+            os.path.join(self.path_temp, "LD2011_2014.txt"), sep=";", decimal=","
+        )
         df = df.rename(columns={df.columns[0]: self.column_date})
         df = pl.DataFrame(df).with_columns(
             pl.col(self.column_date).str.to_datetime("%Y-%m-%d %H:%M:%S")
@@ -49,6 +45,5 @@ class ElectricityLoadDiagrams(BaseDataset):
                 continue
             sdf = df.select([self.column_date, col])
             sdf = sdf.rename({col: "Value"})
-            sdf.write_csv(os.path.join(temp_path, f"{cnt}.csv"))
+            sdf.write_csv(os.path.join(self.path_raw, f"{cnt}.csv"))
             cnt += 1
-        self.path_raw = temp_path
