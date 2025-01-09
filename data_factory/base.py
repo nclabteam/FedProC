@@ -587,9 +587,6 @@ class BaseDataset:
             print(f"Time: {time.time() - s}")
             print("=" * 50)
 
-    def prepossess(self):
-        pass
-
     def download(self):
         pass
 
@@ -605,7 +602,6 @@ class BaseDataset:
     def execute(self):
         if not os.path.exists(self.path_raw):
             self.download()
-        self.prepossess()
         self.dir()
         self.fix_params()
         if self.check():

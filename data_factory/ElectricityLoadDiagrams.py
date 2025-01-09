@@ -30,7 +30,6 @@ class ElectricityLoadDiagrams(BaseDataset):
         with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
             zip_ref.extractall(self.path_temp)
 
-    def prepossess(self):
         os.makedirs(self.path_raw, exist_ok=True)
         df = pd.read_csv(
             os.path.join(self.path_temp, "LD2011_2014.txt"), sep=";", decimal=","
