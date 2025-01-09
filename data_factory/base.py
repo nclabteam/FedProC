@@ -471,13 +471,18 @@ class BaseDataset:
             print(f"Empty file: {path}")
             return None
 
+    def get_file_paths(self):
+        self.file_pahts_list = [
+            os.path.join(self.path_raw, path) for path in os.listdir(self.path_raw)
+        ]
+
     def generate(self):
-        for path in os.listdir(self.path_raw):
+        for path in self.file_pahts_list:
             s = time.time()
             print(f"{path = }")
 
             # read file
-            df = self.read(os.path.join(self.path_raw, path))
+            df = self.read(path)
             if df is None:
                 continue
 
@@ -605,5 +610,6 @@ class BaseDataset:
         self.fix_params()
         if self.check():
             return
+        self.get_file_paths()
         self.generate()
         self.save_info()
