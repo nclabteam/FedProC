@@ -24,13 +24,14 @@ class ElectricityLoadDiagrams(BaseDataset):
         self.url = "https://archive.ics.uci.edu/static/public/321/electricityloaddiagrams20112014.zip"
 
     def download(self):
-        if not os.path.exists(self.path_raw):
-            os.makedirs(self.path_raw)
+        dpath = os.path.join(self.save_path, "raw")
+        if not os.path.exists(dpath):
+            os.makedirs(dpath)
         response = requests.get(self.url)
         response.raise_for_status()
         with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(self.path_raw)
-        os.system(f'rm -r {os.path.join(self.path_raw, "__MACOSX")}')
+            zip_ref.extractall(dpath)
+        os.system(f'rm -r {os.path.join(dpath, "__MACOSX")}')
 
     def prepossess(self):
         temp_path = os.path.join(self.save_path, "temp")
