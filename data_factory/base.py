@@ -471,7 +471,9 @@ class BaseDataset:
             return None
 
     def prepossess(self, df):
-        return self.reduce_polars_df(df=df, info=True)
+        df = self.reduce_polars_df(df=df, info=True)
+        df = df.shrink_to_fit().unique().drop_nulls()
+        return df
 
     def get_file_paths(self):
         self.file_pahts_list = [
@@ -485,12 +487,12 @@ class BaseDataset:
 
             # read file
             df = self.read(path)
-            df = self.prepossess(df)
-            if df is None:
-                continue
 
-            # clean data
-            df = df.shrink_to_fit().unique().drop_nulls().sort(self.column_date)
+            # prepossess data
+            df = self.prepossess(df)
+
+            # sort by date
+            df = df.sort(self.column_date)
 
             # get raw statistic count null
             df = self.fill_date(
