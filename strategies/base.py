@@ -269,13 +269,27 @@ class Server(SharedMethods):
     def send_to_clients(self):
         b = 0
         to_be_sent = self.variables_to_be_sent()
-        for client in self.clients:
+        for idx, client in enumerate(self.clients):
             s = time.time()
-            for value in to_be_sent.values():
+            c = {}
+            for key, value in to_be_sent.items():
+                if isinstance(value, list):
+                    value = value[idx]
                 b += self.get_size(value)
-            client.initialize_local(to_be_sent["model"])
+                c[key] = value
+            client.receive_from_server(c)
             client.metrics["send_time"].append(2 * (time.time() - s))
         self.metrics["send_mb"].append(b)
+
+    def receive_from_clients(self):
+        self.client_data = []
+
+        for client in self.selected_clients:
+            try:
+                self.client_data.append(client.send_to_server())
+
+            except Exception as e:
+                print(f"Failed to receive data from client {client.id}: {e}")
 
     def set_clients(self):
         module_name = self.__module__
@@ -416,23 +430,9 @@ class Server(SharedMethods):
         for client in self.clients:
             client.fix_results(self.default_value)
 
-    def receive_from_clients(self):
-        self.client_data = defaultdict(list)
-
-        for client in self.selected_clients:
-            try:
-                received_data = client.send_to_server()
-
-                for key, value in received_data.items():
-                    self.client_data[key].append(value)
-
-            except Exception as e:
-                print(f"Failed to receive data from client {client.id}: {e}")
-
     def calculate_aggregation_weights(self):
-        self.weights = torch.tensor(self.client_data["train_samples"]).to(
-            self.device
-        ) / sum(self.client_data["train_samples"])
+        ts = [client["train_samples"] for client in self.client_data]
+        self.weights = torch.tensor(ts).to(self.device) / sum(ts)
 
     def reset_model(self, model):
         result = copy.deepcopy(model)
@@ -442,9 +442,9 @@ class Server(SharedMethods):
 
     def aggregate_models(self):
         self.model = self.reset_model(self.model)
-        for client, weight in zip(self.client_data["model"], self.weights):
+        for client, weight in zip(self.client_data, self.weights):
             for global_param, local_param in zip(
-                self.model.parameters(), client.parameters()
+                self.model.parameters(), client["model"].parameters()
             ):
                 global_param.data.add_(local_param.data, alpha=weight)
 
@@ -610,8 +610,7 @@ class Client(SharedMethods):
         self.get_scaler()
 
     def variables_to_be_sent(self):
-        model = self.model if not self.return_diff else self.diff
-        return {"model": model, "train_samples": self.train_samples}
+        return {"model": self.model, "train_samples": self.train_samples}
 
     def send_to_server(self):
         to_be_sent = self.variables_to_be_sent()
@@ -652,8 +651,6 @@ class Client(SharedMethods):
     def train(self):
         train_loader = self.load_train_data()
         start_time = time.time()
-        if self.return_diff:
-            self.snapshot = copy.deepcopy(self.model)
         for _ in range(self.epochs):
             self.train_one_epoch(
                 model=self.model,
@@ -663,15 +660,6 @@ class Client(SharedMethods):
                 scheduler=self.scheduler,
                 device=self.device,
             )
-        if self.return_diff:
-            diff = {
-                key: param_old - param_new
-                for (key, param_old), param_new in zip(
-                    self.snapshot.named_parameters(), self.model.parameters()
-                )
-            }
-            self.diff = copy.deepcopy(self.model)
-            self.diff.load_state_dict(diff)
         self.metrics["train_time"].append(time.time() - start_time)
 
     def get_valid_loss(self):
@@ -691,3 +679,6 @@ class Client(SharedMethods):
         losses = np.mean(losses)
         self.metrics["test_loss"].append(losses)
         return losses
+
+    def receive_from_server(self, data):
+        self.initialize_local(data["model"])

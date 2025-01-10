@@ -1,4 +1,4 @@
-from .base import Server
+from .base import Client, Server
 
 
 class Centralized(Server):
@@ -8,11 +8,13 @@ class Centralized(Server):
         self.get_optimizer()
         self.get_scheduler()
 
+        self.receive_from_clients()
+        self.fix_results()
+
     def train_clients(self):
         self.model.train()
-        for client in self.clients:
-            train_loader = client.load_train_data()
-            client.metrics["send_mb"].append(self.get_size(train_loader))
+        for client in self.client_data:
+            train_loader = client["dataloader"]
             for _ in range(self.epochs):
                 self.train_one_epoch(
                     model=self.model,
@@ -23,10 +25,12 @@ class Centralized(Server):
                     device=self.device,
                 )
 
-    def send_to_clients(self):
-        pass
-
     def receive_from_clients(self):
+        self.client_data = []
+        for client in self.clients:
+            self.client_data.append(client.send_to_server())
+
+    def send_to_clients(self):
         pass
 
     def evaluate_personalization_valset(self):
@@ -43,3 +47,8 @@ class Centralized(Server):
 
     def calculate_aggregation_weights(self):
         pass
+
+
+class Centralized_Client(Client):
+    def variables_to_be_sent(self):
+        return {"dataloader": self.load_train_data()}

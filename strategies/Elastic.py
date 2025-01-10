@@ -10,8 +10,6 @@ optional = {
     "mu": 0.95,
 }
 
-compulsory = {"return_diff": True}
-
 
 def args_update(parser):
     parser.add_argument("--tau", type=float, default=None)
@@ -22,18 +20,18 @@ def args_update(parser):
 class Elastic(Server):
     def calculate_aggregation_weights(self):
         super().calculate_aggregation_weights()
-        sensitivities = torch.stack(self.client_data["sensitivity"], dim=-1)
+        sensitivities = torch.stack(
+            [client["sensitivity"] for client in self.client_data], dim=-1
+        )
         aggregated_sensitivity = torch.sum(sensitivities * self.weights, dim=-1)
         max_sensitivity = sensitivities.max(dim=-1)[0]
         self.zeta = 1 + self.tau - aggregated_sensitivity / max_sensitivity
 
     def aggregate_models(self):
         self.model = self.reset_model(self.model)
-        for client, weight, coef in zip(
-            self.client_data["model"], self.weights, self.zeta
-        ):
+        for client, weight, coef in zip(self.client_data, self.weights, self.zeta):
             for global_param, local_param in zip(
-                self.model.parameters(), client.parameters()
+                self.model.parameters(), client["model"].parameters()
             ):
                 aggregated = local_param.data * weight
                 global_param.data -= coef * aggregated
@@ -47,11 +45,22 @@ class Elastic_Client(Client):
         )
 
     def variables_to_be_sent(self):
-        return {**super().variables_to_be_sent(), "sensitivity": self.sensitivity}
+        to_be_sent = super().variables_to_be_sent()
+        diff = {
+            key: param_old - param_new
+            for (key, param_old), param_new in zip(
+                self.snapshot.named_parameters(), self.model.parameters()
+            )
+        }
+        self.diff = copy.deepcopy(self.model)
+        self.diff.load_state_dict(diff)
+        to_be_sent["model"] = self.diff
+        return {**to_be_sent, "sensitivity": self.sensitivity}
 
     def calculate_sensitivity(self):
         sensitivity = self.init_sensitivity
         self.model.eval()
+        self.snapshot = copy.deepcopy(self.model)
         for x, y in self.load_train_data(sample_ratio=self.sample_ratio, shuffle=False):
             x = x.to(self.device)
             y = y.to(self.device)

@@ -160,7 +160,6 @@ class Options:
             help="optimizer name",
             choices=OPTIMIZERS,
         )
-        parser.add_argument("--return_diff", default=False, action="store_true")
         parser.add_argument(
             "--learning_rate", type=float, default=0.0001, help="Local learning rate"
         )
