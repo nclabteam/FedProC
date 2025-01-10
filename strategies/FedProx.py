@@ -3,7 +3,7 @@ import copy
 from .base import Client, Server
 
 optional = {
-    "mu": 0.1,
+    "mu": 0.01,
 }
 
 
