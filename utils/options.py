@@ -232,6 +232,8 @@ class Options:
                 self.update_arg(key, value)
             elif getattr(self.args, key) is None:
                 self.update_arg(key, value)
+            else:
+                raise ValueError(f"{key} is already set to {getattr(self.args, key)}")
 
     def update_arg(self, name, value):
         self.args.__dict__[name] = value
