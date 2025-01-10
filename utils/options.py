@@ -194,33 +194,27 @@ class Options:
         os.environ["CUDA_VISIBLE_DEVICES"] = self.args.device_id
         return self
 
-    def _fix_framework_specific_param(self):
-        optional = getattr(__import__("strategies"), "optional")
-        self.update_if_none(params=optional.get(self.args.strategy, {}))
+    def _fix_specific_param(self, category, attr_name):
+        """
+        Dynamically fix specific parameters for a given category (e.g., strategies, schedulers, optimizers, models).
 
-        compulsory = getattr(__import__("strategies"), "compulsory")
-        self.update_args(params=compulsory.get(self.args.strategy, {}))
+        Args:
+            category (str): The category to process (e.g., "strategies", "schedulers", "optimizers", "models").
+            attr_name (str): The attribute name in self.args corresponding to the category (e.g., "strategy").
+        """
+        # Import the module dynamically
+        module = __import__(category)
 
-    def _fix_learning_rate_scheduler_specific_param(self):
-        optional = getattr(__import__("schedulers"), "optional")
-        self.update_if_none(params=optional.get(self.args.scheduler, {}))
+        # Access and update optional parameters
+        optional = getattr(module, "optional")
+        param_key = getattr(
+            self.args, attr_name
+        )  # e.g., self.args.strategy for "strategies"
+        self.update_if_none(params=optional.get(param_key, {}))
 
-        compulsory = getattr(__import__("schedulers"), "compulsory")
-        self.update_args(params=compulsory.get(self.args.scheduler, {}))
-
-    def _fix_optimizer_specific_param(self):
-        optional = getattr(__import__("optimizers"), "optional")
-        self.update_if_none(params=optional.get(self.args.optimizer, {}))
-
-        compulsory = getattr(__import__("optimizers"), "compulsory")
-        self.update_args(params=compulsory.get(self.args.optimizer, {}))
-
-    def _fix_model_specific_param(self):
-        optional = getattr(__import__("models"), "optional")
-        self.update_if_none(params=optional.get(self.args.model, {}))
-
-        compulsory = getattr(__import__("models"), "compulsory")
-        self.update_args(params=compulsory.get(self.args.model, {}))
+        # Access and update compulsory parameters
+        compulsory = getattr(module, "compulsory")
+        self.update_args(params=compulsory.get(param_key, {}))
 
     def update_args(self, params: dict):
         for key, value in params.items():
@@ -255,21 +249,13 @@ class Options:
             print("cuda is not available. Using cpu instead.")
             self.update_arg("device", "cpu")
 
-    def _fix_model(self):
-        optional = {
-            "LSTM": {"hidden_size": 64, "num_layers": 3, "dropout": 0},
-        }
-        self.update_if_none(params=optional.get(self.args.model, {}))
-
     def fix_args(self):
         self._fix_save_path()
         self._fix_device()
-        self._fix_framework_specific_param()
-        self._fix_learning_rate_scheduler_specific_param()
-        self._fix_optimizer_specific_param()
-        self._fix_model_specific_param()
-        self._fix_model()
-
+        self._fix_specific_param("strategies", "strategy")
+        self._fix_specific_param("schedulers", "scheduler")
+        self._fix_specific_param("optimizers", "optimizer")
+        self._fix_specific_param("models", "model")
         return self
 
     def save(self):
