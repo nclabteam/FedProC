@@ -63,8 +63,8 @@ class xPatch(nn.Module):
             )
         elif configs.ma_type == "DEMA":
             self.decomp = SeriesDecompDEMA(
-                alpha=alpha,
-                beta=beta,
+                alpha=configs.alpha,
+                beta=configs.beta,
                 learnable=configs.learnable,
                 device=configs.device,
             )
