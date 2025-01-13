@@ -7,9 +7,9 @@ class SeriesDecompMA(nn.Module):
     Series decomposition block
     """
 
-    def __init__(self, kernel_size):
+    def __init__(self, kernel_size, stride=1):
         super().__init__()
-        self.ma = MovingAverage(kernel_size, stride=1)
+        self.ma = MovingAverage(kernel_size, stride=stride)
 
     def forward(self, x):
         moving_average = self.ma(x)
