@@ -38,23 +38,6 @@ for filename in os.listdir(current_dir):
 globals().update(models)
 
 
-# Function to apply args_update to a parser
-def apply_args_update(parser):
-    import argparse
-
-    existing_args = {action.dest for action in parser._actions}
-    for class_name, update_func in args_update_functions.items():
-        # Create a temporary parser to capture the arguments
-        temp_parser = argparse.ArgumentParser(add_help=False)
-        update_func(temp_parser)
-
-        # Add only the new arguments to the main parser
-        for action in temp_parser._actions:
-            if action.dest not in existing_args:
-                parser._add_action(action)
-                existing_args.add(action.dest)
-
-
 # Optionally, define __all__ to control what gets imported with "from strategies import *"
 __all__ = list(models.keys())
 MODELS = list(models.keys())

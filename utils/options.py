@@ -184,14 +184,29 @@ class Options:
             help="learning rate adjustment",
         )
 
-        getattr(__import__("strategies"), "apply_args_update")(parser)
-        getattr(__import__("schedulers"), "apply_args_update")(parser)
-        getattr(__import__("optimizers"), "apply_args_update")(parser)
-        getattr(__import__("models"), "apply_args_update")(parser)
+        for dir in ["strategies", "schedulers", "optimizers", "models"]:
+            self.apply_args_update(
+                parser=parser,
+                args_update_functions=getattr(__import__(dir), "args_update_functions"),
+            )
 
         self.args = parser.parse_args()
         os.environ["CUDA_VISIBLE_DEVICES"] = self.args.device_id
         return self
+
+    # Function to apply args_update to a parser
+    def apply_args_update(self, parser, args_update_functions):
+        existing_args = {action.dest for action in parser._actions}
+        for class_name, update_func in args_update_functions.items():
+            # Create a temporary parser to capture the arguments
+            temp_parser = argparse.ArgumentParser(add_help=False)
+            update_func(temp_parser)
+
+            # Add only the new arguments to the main parser
+            for action in temp_parser._actions:
+                if action.dest not in existing_args:
+                    parser._add_action(action)
+                    existing_args.add(action.dest)
 
     def _fix_specific_param(self, category, attr_name):
         """
@@ -225,8 +240,6 @@ class Options:
                 self.update_arg(key, value)
             elif getattr(self.args, key) is None:
                 self.update_arg(key, value)
-            else:
-                raise ValueError(f"{key} is already set to {getattr(self.args, key)}")
 
     def update_arg(self, name, value):
         self.args.__dict__[name] = value
