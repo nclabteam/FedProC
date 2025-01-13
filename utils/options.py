@@ -29,6 +29,7 @@ class CustomHelpFormatter(argparse.HelpFormatter):
 class Options:
     def __init__(self, root):
         self.root = root
+        self.dup = {}
 
     def parse_options(self):
         parser = argparse.ArgumentParser(formatter_class=CustomHelpFormatter)
@@ -207,6 +208,8 @@ class Options:
                 if action.dest not in existing_args:
                     parser._add_action(action)
                     existing_args.add(action.dest)
+                else:
+                    self.dup[action.dest] = 0
 
     def _fix_specific_param(self, category, attr_name):
         """
@@ -236,10 +239,14 @@ class Options:
 
     def update_if_none(self, params: dict):
         for key, value in params.items():
-            if key not in self.args:
+            if key not in self.args or getattr(self.args, key) is None:
                 self.update_arg(key, value)
-            elif getattr(self.args, key) is None:
-                self.update_arg(key, value)
+                if key in self.dup.keys():
+                    self.dup[key] += 1
+            else:
+                if key in self.dup.keys():
+                    if self.dup[key] == 1:
+                        raise ValueError(f"Duplicate argument {key} found")
 
     def update_arg(self, name, value):
         self.args.__dict__[name] = value
