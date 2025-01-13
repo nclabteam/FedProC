@@ -1,15 +1,17 @@
 import torch
 import torch.nn as nn
 
-from layers import SeriesDecomposition
+from layers import SeriesDecompMA
 
 optional = {
     "moving_avg": 25,
+    "stride": 1,
 }
 
 
 def args_update(parser):
     parser.add_argument("--moving_avg", type=int, default=None)
+    parser.add_argument("--stride", type=int, default=None)
 
 
 class DLinear(nn.Module):
@@ -21,7 +23,9 @@ class DLinear(nn.Module):
         super().__init__()
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
-        self.decompsition = SeriesDecomposition(configs.moving_avg)
+        self.decompsition = SeriesDecompMA(
+            kernel_size=configs.moving_avg, stride=configs.stride
+        )
 
         self.Linear_Seasonal = nn.Linear(self.seq_len, self.pred_len)
         self.Linear_Trend = nn.Linear(self.seq_len, self.pred_len)

@@ -5,11 +5,13 @@ from .NLinear import NLinear
 
 optional = {
     "moving_avg": 25,
+    "stride": 1,
 }
 
 
 def args_update(parser):
     parser.add_argument("--moving_avg", type=int, default=None)
+    parser.add_argument("--stride", type=int, default=None)
 
 
 class DNGLinear(nn.Module):

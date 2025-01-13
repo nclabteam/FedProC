@@ -2,6 +2,21 @@ import torch
 import torch.nn as nn
 
 
+class SeriesDecompMA(nn.Module):
+    """
+    Series decomposition block
+    """
+
+    def __init__(self, kernel_size):
+        super().__init__()
+        self.ma = MovingAverage(kernel_size, stride=1)
+
+    def forward(self, x):
+        moving_average = self.ma(x)
+        res = x - moving_average
+        return res, moving_average
+
+
 class MovingAverage(nn.Module):
     """
     Moving average block to highlight the trend of time series
@@ -20,18 +35,3 @@ class MovingAverage(nn.Module):
         x = self.avg(x.permute(0, 2, 1))
         x = x.permute(0, 2, 1)
         return x
-
-
-class SeriesDecomposition(nn.Module):
-    """
-    Series decomposition block
-    """
-
-    def __init__(self, kernel_size):
-        super(SeriesDecomposition, self).__init__()
-        self.MovingAverage = MovingAverage(kernel_size, stride=1)
-
-    def forward(self, x):
-        moving_mean = self.MovingAverage(x)
-        res = x - moving_mean
-        return res, moving_mean

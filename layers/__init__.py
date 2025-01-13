@@ -1,2 +1,4 @@
 from .RevIN import RevIN
-from .SeriesDecomposition import SeriesDecomposition
+from .SeriesDecompDEMA import SeriesDecompDEMA
+from .SeriesDecompEMA import SeriesDecompEMA
+from .SeriesDecompMA import SeriesDecompMA
