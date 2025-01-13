@@ -1,5 +1,3 @@
-import torch.nn as nn
-
 from layers import RevIN
 
 from .base import Client, Server
@@ -11,7 +9,7 @@ compulsory = {
 
 class FedRevIN(Server):
     """
-    FedBN
+    FedBN of time series. Exclude RevIN layer in aggregation
     """
 
     pass
@@ -22,6 +20,8 @@ class FedRevIN_Client(Client):
         for new_param, (name, old_param) in zip(
             model.parameters(), self.model.named_parameters()
         ):
-            if name == "rev":
+            # Check if the layer is an instance of RevIN
+            layer = getattr(self.model, name.split(".")[0], None)
+            if isinstance(layer, RevIN):
                 continue
             old_param.data = new_param.data.clone()
