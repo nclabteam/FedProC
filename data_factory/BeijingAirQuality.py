@@ -8,7 +8,7 @@ import requests
 from .base import BaseDataset
 
 
-class BejingAirQuality(BaseDataset):
+class BeijingAirQuality(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "BejingAirQuality", "raw")
