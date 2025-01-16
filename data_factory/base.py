@@ -255,13 +255,13 @@ class BaseDataset:
             .unnest("value")
         )
 
-        # statistics = pl.concat(
-        #     [
-        #         statistics,
-        #         self.calculate_shifting_values(df=df),
-        #         self.get_transition_value(df=df),
-        #     ]
-        # )
+        statistics = pl.concat(
+            [
+                statistics,
+                # self.calculate_shifting_values(df=df),
+                self.get_transition_value(df=df),
+            ]
+        )
 
         statistics = statistics.transpose(include_header=True).pipe(
             lambda df_t: (
@@ -277,12 +277,14 @@ class BaseDataset:
                 ).slice(1)
             )
         )
+
         statistics = {
             item["col"]: {
                 key: float(value) for key, value in item.items() if key != "col"
             }
             for item in statistics.to_dicts()
         }
+
         return statistics
 
     def split(self, df):
