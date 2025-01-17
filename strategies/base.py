@@ -1,13 +1,10 @@
 import copy
 import json
 import logging
-import math
 import os
-import random
 import sys
 import time
 from argparse import Namespace
-from collections import defaultdict
 
 import numpy as np
 import polars as pl
@@ -301,7 +298,7 @@ class Server(SharedMethods):
         except:
             client_object = Client
         self.clients = [
-            client_object(self.configs, id, self.model, self.times)
+            client_object(configs=self.configs, id=id, times=self.times)
             for id in range(self.num_clients)
         ]
 
@@ -584,11 +581,17 @@ class Server(SharedMethods):
 
 
 class Client(SharedMethods):
-    def __init__(self, configs: dict, id: int, model: nn.Module, times: int):
+    def __init__(self, configs: dict, id: int, times: int):
         super().__init__()
         self.set_configs(configs=configs, id=id, times=times)
         self.mkdir()
-        self.model = copy.deepcopy(model)
+        self.get_model()
+        self.get_loss()
+        self.get_optimizer()
+        self.get_scheduler()
+        self.name = f"CLIENT_{str(self.id).zfill(3)}"
+        self.make_logger(name=self.name, path=self.log_path)
+
         self.metrics = {
             "train_time": [],
             "send_time": [],
@@ -598,16 +601,12 @@ class Client(SharedMethods):
             "send_mb": [],
         }
 
-        self.get_loss()
-        self.get_optimizer()
-        self.get_scheduler()
-        self.name = f"CLIENT_{str(self.id).zfill(3)}"
-        self.make_logger(name=self.name, path=self.log_path)
+        self.stats = json.load(open(self.path_info))["clients"][id]["stats"]["train"]
+        self.get_scaler()
+
         self.train_file = os.path.join(self.dataset_path, "train/", str(self.id))
         self.valid_file = os.path.join(self.dataset_path, "valid/", str(self.id))
         self.test_file = os.path.join(self.dataset_path, "test/", str(self.id))
-        self.stats = json.load(open(self.path_info))["clients"][id]["stats"]["train"]
-        self.get_scaler()
 
     def variables_to_be_sent(self):
         return {"model": self.model, "train_samples": self.train_samples}
