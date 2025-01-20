@@ -47,7 +47,7 @@ class Options:
         parser.add_argument(
             "--save_local_model",
             action="store_true",
-            default=None,
+            default=False,
             help="save local model for each client (personalized federated learning)",
         )
         parser.add_argument(
@@ -133,7 +133,7 @@ class Options:
             help="number of global rounds in federated learning",
         )
         parser.add_argument(
-            "--patience", type=int, default=None, help="Patience for early stopping"
+            "--patience", type=int, default=False, help="Patience for early stopping"
         )
         parser.add_argument(
             "-jr",
@@ -268,6 +268,10 @@ class Options:
             print("cuda is not available. Using cpu instead.")
             self.update_arg("device", "cpu")
 
+    @staticmethod
+    def _clean_none_args(args):
+        return {k: v for k, v in args.items() if v is not None}
+
     def fix_args(self):
         self._fix_save_path()
         self._fix_device()
@@ -275,6 +279,7 @@ class Options:
         self._fix_specific_param("schedulers", "scheduler")
         self._fix_specific_param("optimizers", "optimizer")
         self._fix_specific_param("models", "model")
+        self.args.__dict__ = self._clean_none_args(args=self.args.__dict__)
         return self
 
     def save(self):

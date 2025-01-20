@@ -334,7 +334,7 @@ class Server(SharedMethods):
             if self.save_local_model
             else self.metrics["global_avg_val_loss"]
         )
-        if self.patience is None or len(metric) < self.patience:
+        if not self.patience or len(metric) < self.patience:
             return False
 
         min_val = min(metric[-self.patience :])
