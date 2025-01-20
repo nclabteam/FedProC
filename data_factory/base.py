@@ -7,6 +7,7 @@ from decimal import Decimal
 import numpy as np
 import polars as pl
 import requests
+from statsmodels.tsa.seasonal import STL
 
 
 class BaseDataset:
@@ -29,6 +30,20 @@ class BaseDataset:
         self.column_train = None
         self.granularity = None
         self.granularity_unit = None
+
+        self.unit_dict = {
+            "nanosecond": "ns",
+            "microsecond": "us",
+            "millisecond": "ms",
+            "second": "s",
+            "minute": "m",
+            "hour": "h",
+            "day": "d",
+            "week": "w",
+            "month": "mo",
+            "quarter": "q",
+            "year": "y",
+        }
 
     def dir(self):
         if not os.path.exists(self.path_raw):
@@ -84,13 +99,6 @@ class BaseDataset:
         return False
 
     def fix_params(self):
-        self.unit_dict = {
-            "day": "d",
-            "hour": "h",
-            "minute": "m",
-            "second": "s",
-            "nanosecond": "ns",
-        }
         self.granularity_unit = self.unit_dict.get(
             self.granularity_unit, self.granularity_unit
         )
@@ -229,6 +237,70 @@ class BaseDataset:
 
         return pl.DataFrame(delta_data)
 
+    @staticmethod
+    def get_seasonal_period(granularity: int, granularity_unit: str) -> int:
+        """
+        Determines the seasonal period for STL decomposition based on time granularity.
+
+        Parameters:
+            granularity (int): The time step interval (e.g., 1 for hourly, daily, etc.).
+            granularity_unit (str): The unit of time granularity ("minute", "hour", "day", etc.).
+
+        Returns:
+            int: Suggested seasonal period.
+        """
+        if granularity_unit == "m":
+            return max(60 // granularity, 1)  # e.g., 1-minutely → 60, 5-minutely → 12
+        elif granularity_unit == "h":
+            return max(24 // granularity, 1)  # e.g., 1-hourly → 24, 6-hourly → 4
+        elif granularity_unit == "d":
+            return max(7 // granularity, 1)  # e.g., 1-daily → 7, 2-daily → 3
+        elif granularity_unit == "w":
+            return max(52 // granularity, 1)  # e.g., 1-weekly → 52, 4-weekly → 13
+        elif granularity_unit == "mo":
+            return max(12 // granularity, 1)  # e.g., 1-monthly → 12, 3-monthly → 4
+        else:
+            raise ValueError(f"Unsupported granularity unit: {granularity_unit}")
+
+    def compute_trend_seasonal_strength_auto(
+        self, df: pl.DataFrame, granularity: int, granularity_unit: str
+    ):
+        """
+        Computes trend and seasonal strength for all numerical columns using auto-selected seasonal period.
+
+        Parameters:
+            df (pl.DataFrame): Time series dataset.
+            granularity (int): Time step size (e.g., 1 for hourly, 1 for daily).
+            granularity_unit (str): Unit of time granularity ("minute", "hour", "day", etc.).
+
+        Returns:
+            pl.DataFrame: A DataFrame with trend & seasonal strengths for each column.
+        """
+        seasonal = self.get_seasonal_period(granularity, granularity_unit)
+        trend_results = {"variable": f"trend_strength"}
+        seasonal_results = {"variable": f"seasonal_strength"}
+
+        for col in df.columns:
+            ts_values = df[col].to_numpy()
+            stl = STL(ts_values, period=seasonal, robust=True)
+            result = stl.fit()
+
+            trend = result.trend
+            seasonal = result.seasonal
+            residual = result.resid
+
+            var_x = np.var(ts_values)
+            var_residual = np.var(residual)
+            var_seasonal = np.var(seasonal)
+
+            trend_strength = 1 - (var_residual / var_x)
+            seasonal_strength = 1 - (var_residual / var_seasonal)
+
+            trend_results[col] = trend_strength
+            seasonal_results[col] = seasonal_strength
+
+        return pl.DataFrame([trend_results, seasonal_results])
+
     def get_statistic(self, df: pl.DataFrame):
         statistics = (
             df.select(
@@ -260,6 +332,11 @@ class BaseDataset:
                 statistics,
                 # self.calculate_shifting_values(df=df),
                 self.get_transition_value(df=df),
+                self.compute_trend_seasonal_strength_auto(
+                    df=df,
+                    granularity=self.granularity,
+                    granularity_unit=self.granularity_unit,
+                ),
             ]
         )
 
