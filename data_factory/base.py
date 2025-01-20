@@ -289,12 +289,12 @@ class BaseDataset:
             seasonal = result.seasonal
             residual = result.resid
 
-            var_x = np.var(ts_values)
             var_residual = np.var(residual)
-            var_seasonal = np.var(seasonal)
+            var_diff_seasonal = np.var(ts_values - seasonal)
+            var_diff_trend = np.var(ts_values - trend)
 
-            trend_strength = 1 - (var_residual / var_x)
-            seasonal_strength = 1 - (var_residual / var_seasonal)
+            trend_strength = max(0, 1 - (var_residual / var_diff_seasonal))
+            seasonal_strength = max(0, 1 - (var_residual / var_diff_trend))
 
             trend_results[col] = trend_strength
             seasonal_results[col] = seasonal_strength
@@ -558,6 +558,8 @@ class BaseDataset:
         self.file_pahts_list = [
             os.path.join(self.path_raw, path) for path in os.listdir(self.path_raw)
         ]
+        # sort the file paths
+        self.file_pahts_list.sort()
 
     def generate(self):
         for path in self.file_pahts_list:
