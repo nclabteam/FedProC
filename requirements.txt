@@ -6,3 +6,4 @@ requests
 xlsx2csv
 isort
 black
+statsmodels
