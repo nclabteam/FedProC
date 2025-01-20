@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import re
 import time
 from decimal import Decimal
 
@@ -558,8 +559,13 @@ class BaseDataset:
         self.file_pahts_list = [
             os.path.join(self.path_raw, path) for path in os.listdir(self.path_raw)
         ]
-        # sort the file paths
-        self.file_pahts_list.sort()
+
+        # human sort the file paths
+        self.file_pahts_list.sort(
+            key=lambda text: [
+                int(c) if c.isdigit() else c for c in re.split(r"(\d+)", text)
+            ]
+        )
 
     def generate(self):
         for path in self.file_pahts_list:
