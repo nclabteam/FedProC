@@ -277,13 +277,13 @@ class BaseDataset:
         Returns:
             pl.DataFrame: A DataFrame with trend & seasonal strengths for each column.
         """
-        seasonal = self.get_seasonal_period(granularity, granularity_unit)
+        period = self.get_seasonal_period(granularity, granularity_unit)
         trend_results = {"variable": f"trend_strength"}
         seasonal_results = {"variable": f"seasonal_strength"}
 
         for col in df.columns:
             ts_values = df[col].to_numpy()
-            stl = STL(ts_values, period=seasonal, robust=True)
+            stl = STL(ts_values, period=period, robust=True)
             result = stl.fit()
 
             trend = result.trend
