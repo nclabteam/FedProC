@@ -1,7 +1,6 @@
 from .AutoAttention import AutoAttention
 from .DualAttention import DualAttention
 from .MultiHeadAttention import MultiHeadAttention
-from .PositionalEncoding import DataEmbedding
 from .RevIN import RevIN
 from .ScaledDotProductAttention import ScaledDotProductAttention
 from .SeriesDecompDEMA import SeriesDecompDEMA
