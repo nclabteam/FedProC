@@ -219,7 +219,8 @@ class BaseDataset:
             coalesce=True,
         )
 
-    def get_transition_value(self, df: pl.DataFrame):
+    @staticmethod
+    def get_transition_value(df: pl.DataFrame):
         def first_zero_ac(X: np.ndarray):
             # Compute the autocorrelation of the time series X
             n = len(X)
