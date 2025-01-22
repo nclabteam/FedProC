@@ -50,7 +50,7 @@ class BaseDataset:
         return unit_dict.get(granularity_unit, granularity_unit)
 
     @staticmethod
-    def time_features(dates: pl.Series, freq="H") -> pl.DataFrame:
+    def extract_time_features(dates: pl.Series, freq) -> pl.DataFrame:
         """Extracts time-based features from a datetime series and returns a Polars DataFrame."""
 
         features = {
@@ -220,16 +220,28 @@ class BaseDataset:
         )
 
     def get_transition_value(self, df: pl.DataFrame):
+        def first_zero_ac(X: np.ndarray):
+            # Compute the autocorrelation of the time series X
+            n = len(X)
+            X_centered = X - np.mean(X)
+            acf = np.correlate(X_centered, X_centered, mode="full")[n - 1 :]
+
+            # Find the first zero crossing of the autocorrelation function
+            for tau in range(1, len(acf)):
+                if acf[tau] < 0:
+                    return tau
+            return len(acf)  # If no zero crossing, return the length of acf
+
         # Loop through each column in the DataFrame to compute the transition value
         transition_data = {"variable": "transition"}
 
         for column in df.columns:
             # Step 1: Calculate the first zero crossing of the autocorrelation function
             X = df[column].to_numpy()
-            tau = self.first_zero_ac(X)
+            tau = first_zero_ac(X)
 
             # Step 2: Downsample the time series with stride tau
-            Y = self.downsample(X, tau)
+            Y = X[::tau]
 
             # Step 3: Sort the downsampled array and create the index I
             I = np.argsort(Y)
@@ -255,23 +267,8 @@ class BaseDataset:
 
         return pl.DataFrame(transition_data)
 
-    def first_zero_ac(self, X: np.ndarray):
-        # Compute the autocorrelation of the time series X
-        n = len(X)
-        X_centered = X - np.mean(X)
-        acf = np.correlate(X_centered, X_centered, mode="full")[n - 1 :]
-
-        # Find the first zero crossing of the autocorrelation function
-        for tau in range(1, len(acf)):
-            if acf[tau] < 0:
-                return tau
-        return len(acf)  # If no zero crossing, return the length of acf
-
-    def downsample(self, X: np.ndarray, tau: int):
-        # Downsample the time series X by stride tau
-        return X[::tau]
-
-    def calculate_shifting_values(self, df: pl.DataFrame, m: int = 10):
+    @staticmethod
+    def calculate_shifting_values(df: pl.DataFrame, m: int = 10):
         # Initialize a dictionary to store shifting values for each column
         delta_data = {"variable": f"shifting({m=})"}
 
@@ -316,32 +313,8 @@ class BaseDataset:
         return pl.DataFrame(delta_data)
 
     @staticmethod
-    def get_seasonal_period(granularity: int, granularity_unit: str) -> int:
-        """
-        Determines the seasonal period for STL decomposition based on time granularity.
-
-        Parameters:
-            granularity (int): The time step interval (e.g., 1 for hourly, daily, etc.).
-            granularity_unit (str): The unit of time granularity ("minute", "hour", "day", etc.).
-
-        Returns:
-            int: Suggested seasonal period.
-        """
-        if granularity_unit == "m":
-            return max(60 // granularity, 1)  # e.g., 1-minutely → 60, 5-minutely → 12
-        elif granularity_unit == "h":
-            return max(24 // granularity, 1)  # e.g., 1-hourly → 24, 6-hourly → 4
-        elif granularity_unit == "d":
-            return max(7 // granularity, 1)  # e.g., 1-daily → 7, 2-daily → 3
-        elif granularity_unit == "w":
-            return max(52 // granularity, 1)  # e.g., 1-weekly → 52, 4-weekly → 13
-        elif granularity_unit == "mo":
-            return max(12 // granularity, 1)  # e.g., 1-monthly → 12, 3-monthly → 4
-        else:
-            raise ValueError(f"Unsupported granularity unit: {granularity_unit}")
-
     def compute_trend_seasonal_strength_auto(
-        self, df: pl.DataFrame, granularity: int, granularity_unit: str
+        df: pl.DataFrame, granularity: int, granularity_unit: str
     ):
         """
         Computes trend and seasonal strength for all numerical columns using auto-selected seasonal period.
@@ -354,13 +327,19 @@ class BaseDataset:
         Returns:
             pl.DataFrame: A DataFrame with trend & seasonal strengths for each column.
         """
-        period = self.get_seasonal_period(granularity, granularity_unit)
+        seasonal_period = {
+            "m": max(60 // granularity, 1),
+            "h": max(24 // granularity, 1),
+            "d": max(7 // granularity, 1),
+            "w": max(52 // granularity, 1),
+            "mo": max(12 // granularity, 1),
+        }
         trend_results = {"variable": f"trend_strength"}
         seasonal_results = {"variable": f"seasonal_strength"}
 
         for col in df.columns:
             ts_values = df[col].to_numpy()
-            stl = STL(ts_values, period=period, robust=True)
+            stl = STL(ts_values, period=seasonal_period[granularity_unit], robust=True)
             result = stl.fit()
 
             trend = result.trend
@@ -442,7 +421,7 @@ class BaseDataset:
 
         return statistics
 
-    def split(self, df, x_used_cols, y_used_cols):
+    def split_x_y(self, df, x_used_cols, y_used_cols):
         ori_cols = df.columns
         df = self.sliding_window(df)
         idx = len(ori_cols) * self.seq_len
@@ -529,10 +508,9 @@ class BaseDataset:
             ],
         ]
 
-    def subdf_from_indices(self, df, start, end):
-        return df.filter(
-            (pl.col(self.column_date) >= start) & (pl.col(self.column_date) < end)
-        )
+    @staticmethod
+    def subdf_from_indices(df, date_column, start, end):
+        return df.filter((pl.col(date_column) >= start) & (pl.col(date_column) < end))
 
     @staticmethod
     def _memory_unit_conversion(before, after):
@@ -640,7 +618,7 @@ class BaseDataset:
 
     def generate(self):
         for path in self.file_pahts_list:
-            s = time.time()
+            start_time = time.time()
             print(f"{path = }")
 
             # read file
@@ -658,196 +636,91 @@ class BaseDataset:
                 column_date=self.column_date,
                 granularity=str(self.granularity) + self.granularity_unit,
             )
-            raw_stat = self.get_statistic(df.select(self.column_used))
-            self.total_null = sum(raw_stat[column]["n_null"] for column in raw_stat)
+            raw_stats = self.get_statistic(df.select(self.column_used))
+            self.total_null = sum(raw_stats[column]["n_null"] for column in raw_stats)
 
             # compute correct split indices
-            fix_indices = self.correct_indices(
+            split_indices = self.correct_indices(
                 df.select([self.column_date] + self.column_used)
             )
-            if not fix_indices:
+            if not split_indices:
                 continue
 
-            # train
-            train_df = self.subdf_from_indices(
-                df=df, start=fix_indices[0][0], end=fix_indices[0][1]
-            )
-            train_time_df = self.time_features(
-                dates=train_df[self.column_date], freq=self.granularity_unit
-            )
-            # Find rows where any column in train_df has null values
-            null_mask = train_df.with_columns(
-                pl.concat_list(pl.all().is_null()).alias("null_mask")
-            )["null_mask"].list.any()
-            # Set all values in train_time_df to null for those rows
-            train_time_df = train_time_df.with_columns(
-                [
-                    pl.when(null_mask)
-                    .then(None)
-                    .otherwise(train_time_df[col])
-                    .alias(col)
-                    for col in train_time_df.columns
-                ]
-            )
-            train_df = train_df.select(self.column_used)
-            train_stat = self.get_statistic(train_df)
-            train_x, train_y = self.split(
-                df=train_df,
-                x_used_cols=self.column_used,
-                y_used_cols=self.column_target,
-            )
-            train_x_mark, train_y_mark = self.split(
-                df=train_time_df,
-                x_used_cols=train_time_df.columns,
-                y_used_cols=train_time_df.columns,
-            )
-
-            # valid
-            valid_df = self.subdf_from_indices(
-                df=df, start=fix_indices[1][0], end=fix_indices[1][1]
-            )
-            valid_time_df = self.time_features(
-                dates=valid_df[self.column_date], freq=self.granularity_unit
-            )
-            null_mask = valid_df.with_columns(
-                pl.concat_list(pl.all().is_null()).alias("null_mask")
-            )["null_mask"].list.any()
-            valid_time_df = valid_time_df.with_columns(
-                [
-                    pl.when(null_mask)
-                    .then(None)
-                    .otherwise(valid_time_df[col])
-                    .alias(col)
-                    for col in valid_time_df.columns
-                ]
-            )
-            valid_df = valid_df.select(self.column_used)
-            if valid_df.shape[0] < self.lag_window and self.split_ratio_fix[1] != 0:
-                continue
-            valid_stat = self.get_statistic(valid_df)
-            valid_x, valid_y = self.split(
-                df=valid_df,
-                x_used_cols=self.column_used,
-                y_used_cols=self.column_target,
-            )
-            if valid_x.shape[0] == 0:
-                continue
-            valid_x_mark, valid_y_mark = self.split(
-                df=valid_time_df,
-                x_used_cols=valid_time_df.columns,
-                y_used_cols=valid_time_df.columns,
-            )
-
-            # test
-            test_df = self.subdf_from_indices(
-                df=df, start=fix_indices[2][0], end=fix_indices[2][1]
-            )
-            test_time_df = self.time_features(
-                dates=test_df[self.column_date], freq=self.granularity_unit
-            )
-            null_mask = test_df.with_columns(
-                pl.concat_list(pl.all().is_null()).alias("null_mask")
-            )["null_mask"].list.any()
-            test_time_df = test_time_df.with_columns(
-                [
-                    pl.when(null_mask)
-                    .then(None)
-                    .otherwise(test_time_df[col])
-                    .alias(col)
-                    for col in test_time_df.columns
-                ]
-            )
-            test_df = test_df.select(self.column_used)
-            if test_df.shape[0] < self.lag_window:
-                continue
-            test_stat = self.get_statistic(test_df)
-            test_x, test_y = self.split(
-                df=test_df, x_used_cols=self.column_used, y_used_cols=self.column_target
-            )
-            if test_x.shape[0] == 0:
-                continue
-            test_x_mark, test_y_mark = self.split(
-                df=test_time_df,
-                x_used_cols=test_time_df.columns,
-                y_used_cols=test_time_df.columns,
-            )
-
-            # update info
-            client = self.num_prev_clients + len(self.clients)
-            self.clients.append(
-                {
-                    "client": client,
-                    "path": {
-                        "raw": os.path.join(self.path_raw, path),
-                        "train_x": os.path.join(self.path_train, f"{client}_x.npy"),
-                        "train_x_mark": os.path.join(
-                            self.path_train, f"{client}_x_mark.npy"
-                        ),
-                        "train_y": os.path.join(self.path_train, f"{client}_y.npy"),
-                        "train_y_mark": os.path.join(
-                            self.path_train, f"{client}_y_mark.npy"
-                        ),
-                        "valid_x": os.path.join(self.path_valid, f"{client}_x.npy"),
-                        "valid_x_mark": os.path.join(
-                            self.path_valid, f"{client}_x_mark.npy"
-                        ),
-                        "valid_y": os.path.join(self.path_valid, f"{client}_y.npy"),
-                        "valid_y_mark": os.path.join(
-                            self.path_valid, f"{client}_y_mark.npy"
-                        ),
-                        "test_x": os.path.join(self.path_test, f"{client}_x.npy"),
-                        "test_x_mark": os.path.join(
-                            self.path_test, f"{client}_x_mark.npy"
-                        ),
-                        "test_y": os.path.join(self.path_test, f"{client}_y.npy"),
-                        "test_y_mark": os.path.join(
-                            self.path_test, f"{client}_y_mark.npy"
-                        ),
-                    },
-                    "stats": {
-                        "raw": raw_stat,
-                        "train": train_stat,
-                        "valid": valid_stat,
-                        "test": test_stat,
-                    },
-                    "date": {
-                        "train": (
-                            fix_indices[0][0].isoformat(),
-                            fix_indices[0][1].isoformat(),
-                        ),
-                        "valid": (
-                            fix_indices[1][0].isoformat(),
-                            fix_indices[1][1].isoformat(),
-                        ),
-                        "test": (
-                            fix_indices[2][0].isoformat(),
-                            fix_indices[2][1].isoformat(),
-                        ),
-                    },
-                    "samples": {
-                        "train": (str(train_x.shape), str(train_y.shape)),
-                        "valid": (str(valid_x.shape), str(valid_y.shape)),
-                        "test": (str(test_x.shape), str(test_y.shape)),
-                    },
+            client_id = self.num_prev_clients + len(self.clients)
+            client_info = {
+                "client": client_id,
+                "stats": {"raw": raw_stats},
+                "paths": {
+                    "train": {},
+                    "valid": {},
+                    "test": {},
+                },
+                "date": {},
+                "samples": {},
+            }
+            for split_name, (start, end) in zip(
+                ["train", "valid", "test"], split_indices
+            ):
+                split_df = self.subdf_from_indices(
+                    df=df, date_column=self.column_date, start=start, end=end
+                )
+                client_info["date"][split_name] = {
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
                 }
-            )
 
-            # save
-            np.save(os.path.join(self.path_train, f"{client}_x"), train_x)
-            np.save(os.path.join(self.path_train, f"{client}_x_mark"), train_x_mark)
-            np.save(os.path.join(self.path_train, f"{client}_y"), train_y)
-            np.save(os.path.join(self.path_train, f"{client}_y_mark"), train_y_mark)
-            np.save(os.path.join(self.path_valid, f"{client}_x"), valid_x)
-            np.save(os.path.join(self.path_valid, f"{client}_x_mark"), valid_x_mark)
-            np.save(os.path.join(self.path_valid, f"{client}_y"), valid_y)
-            np.save(os.path.join(self.path_valid, f"{client}_y_mark"), valid_y_mark)
-            np.save(os.path.join(self.path_test, f"{client}_x"), test_x)
-            np.save(os.path.join(self.path_test, f"{client}_x_mark"), test_x_mark)
-            np.save(os.path.join(self.path_test, f"{client}_y"), test_y)
-            np.save(os.path.join(self.path_test, f"{client}_y_mark"), test_y_mark)
+                # Extract time features
+                # split_time_df = self.extract_time_features(dates=split_df[self.column_date], freq=self.granularity_unit)
+                # null_mask = split_df.with_columns(
+                #     pl.concat_list(pl.all().is_null()).alias("null_mask")
+                # )["null_mask"].list.any()
+                # split_time_df = split_time_df.with_columns(
+                #     [
+                #         pl.when(null_mask)
+                #         .then(None)
+                #         .otherwise(split_time_df[col])
+                #         .alias(col)
+                #         for col in split_time_df.columns
+                #     ]
+                # )
+
+                # Get statistic
+                split_df = split_df.select(self.column_used)
+                split_stats = self.get_statistic(split_df)
+                client_info["stats"][split_name] = split_stats
+
+                # Split data
+                split_x, split_y = self.split_x_y(
+                    df=split_df,
+                    x_used_cols=self.column_used,
+                    y_used_cols=self.column_target,
+                )
+                client_info["samples"][split_name] = {
+                    "x": str(split_x.shape),
+                    "y": str(split_y.shape),
+                }
+                # split_x_mark, split_y_mark = self.split_x_y(
+                #     df=split_time_df,
+                #     x_used_cols=split_time_df.columns,
+                #     y_used_cols=split_time_df.columns,
+                # )
+
+                # Save split data
+                for key, value in {
+                    "x": split_x,
+                    # "x_mark": split_x_mark,
+                    # "y_mark": split_y_mark,
+                    "y": split_y,
+                }.items():
+                    file_path = os.path.join(
+                        getattr(self, f"path_{split_name}"), f"{client_id}_{key}.npy"
+                    )
+                    np.save(file_path, value)
+                    client_info["paths"][split_name][key] = file_path
+
+            self.clients.append(client_info)
             print(json.dumps(self.clients[-1], indent=4))
-            print(f"Time: {time.time() - s}")
-            print("=" * 50)
+            print(f"Time elapsed: {time.time() - start_time:.2f} seconds\n{'='*50}")
 
     def download(self):
         pass
