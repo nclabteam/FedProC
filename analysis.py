@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
         datum[
             "loss"
-        ] = f"{round(loss['avg_min'].to_list()[0], d):.4f}±{round(loss['std_min'].to_list()[0]*100_000, d):.4f}(x10e-5)"
+        ] = f"{round(loss['avg_min'].to_list()[0], d):.4f}±{round(loss['std_min'].to_list()[0]*10_000, d):.4f}(x10e-4)"
         send_to_clients_mb = max(
             df.filter(df["metric"].str.contains("send_mb"))["avg_min"].to_list()[0], 0
         )
