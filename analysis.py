@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
         datum[
             "loss"
-        ] = f"{round(loss['avg_min'].to_list()[0], d)}±{round(loss['std_min'].to_list()[0], d)}"
+        ] = f"{round(loss['avg_min'].to_list()[0], d):.4f}±{round(loss['std_min'].to_list()[0]*100_000, d):.4f}(x10e-5)"
         send_to_clients_mb = max(
             df.filter(df["metric"].str.contains("send_mb"))["avg_min"].to_list()[0], 0
         )
@@ -47,6 +47,15 @@ if __name__ == "__main__":
 
         data.append(datum)
 
-    data = pl.from_dicts(data).sort(by=["dataset", "input_len", "output_len", "loss"])
+    data = pl.from_dicts(data).sort(
+        by=["dataset", "input_len", "output_len", "strategy"]
+    )
+
+    # Pivot the data to have strategy columns with their corresponding loss values
+    data = data.pivot(
+        index=["dataset", "input_len", "output_len"], on="strategy", values="loss"
+    )
+
+    # Save the transformed data
     data.write_csv("results.csv")
     print(data)
