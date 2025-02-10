@@ -328,20 +328,42 @@ class ModelSummarizer:
 
             m_key = "%s-%i" % (class_name, module_idx + 1)
             summary_dict[m_key] = OrderedDict()
-            summary_dict[m_key]["input_shape"] = list(input[0].size())
+
+            # Handle input shape properly
+            if isinstance(input, tuple) and isinstance(input[0], torch.Tensor):
+                summary_dict[m_key]["input_shape"] = list(input[0].size())
+            elif isinstance(input, tuple) and isinstance(input[0], (tuple, list)):
+                summary_dict[m_key]["input_shape"] = [
+                    list(inp.size()) if isinstance(inp, torch.Tensor) else "Non-tensor"
+                    for inp in input[0]
+                ]
+            else:
+                summary_dict[m_key]["input_shape"] = "Unknown input shape"
+
             summary_dict[m_key]["input_shape"][0] = batch_size
-            if isinstance(output, (list, tuple)):
+
+            # Handle output shape properly
+            if isinstance(output, (tuple, list)):
                 summary_dict[m_key]["output_shape"] = []
                 for o in output:
                     if isinstance(o, torch.Tensor):
                         shape = [-1] + list(o.size())[1:]
                         summary_dict[m_key]["output_shape"].append(shape)
+                    elif isinstance(o, (tuple, list)):
+                        sub_shapes = [
+                            list(sub_o.size())
+                            if isinstance(sub_o, torch.Tensor)
+                            else "Non-tensor output"
+                            for sub_o in o
+                        ]
+                        summary_dict[m_key]["output_shape"].append(sub_shapes)
                     else:
                         summary_dict[m_key]["output_shape"].append("Non-tensor output")
             else:
                 summary_dict[m_key]["output_shape"] = list(output.size())
                 summary_dict[m_key]["output_shape"][0] = batch_size
 
+            # Count parameters
             params = 0
             if hasattr(module, "weight") and hasattr(module.weight, "size"):
                 params += torch.prod(torch.LongTensor(list(module.weight.size())))
