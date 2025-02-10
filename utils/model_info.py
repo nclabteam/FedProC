@@ -197,10 +197,25 @@ class ModelSummarizer:
         Returns:
             str: Summary string with parameters information.
         """
-        total_output = sum(
-            np.prod(summary_dict[layer]["output_shape"]) for layer in summary_dict
-        )
-        # assume 4 bytes/number (float on cuda).
+
+        def calculate_total_output(summary_dict):
+            total = 0
+            for layer in summary_dict:
+                output_shape = summary_dict[layer]["output_shape"]
+                if isinstance(output_shape, list):  # Handle list of shapes
+                    total += sum(
+                        np.prod(shape)
+                        for shape in output_shape
+                        if isinstance(shape, (list, tuple))
+                    )
+                elif isinstance(output_shape, (list, tuple)):  # Single shape
+                    total += np.prod(output_shape)
+            return total
+
+        # Calculate total output size
+        total_output = calculate_total_output(summary_dict)
+
+        # Assume 4 bytes/number (float32 on CUDA)
         total_input_size = abs(
             np.prod(sum(self.input_size, ())) * self.batch_size * 4.0 / (1024**2.0)
         )
@@ -210,19 +225,23 @@ class ModelSummarizer:
         total_params_size = abs(total_params * 4.0 / (1024**2.0))
         total_size = total_params_size + total_output_size + total_input_size
 
-        summary_str = f"Total params: {total_params:,}\n"
-        summary_str += f"Trainable params: {trainable_params:,}\n"
-        summary_str += f"Non-trainable params: {total_params - trainable_params:,}\n"
-        summary_str += f"Total MACs: {total_macs:,}\n"
-        summary_str += f"Total FLOPs: {total_flops:,}\n"
-        summary_str += (
-            "-" * (len(str(table).splitlines()[0]) - 3) + "\n"
-        )  # Dynamic line
-        summary_str += f"Input size (MB): {total_input_size}\n"
-        summary_str += f"Forward/backward pass size (MB): {total_output_size}\n"
-        summary_str += f"Params size (MB): {total_params_size}\n"
-        summary_str += f"Estimated Total Size (MB): {total_size}\n"
-        summary_str += "-" * (len(str(table).splitlines()[0]) - 3)  # Dynamic line
+        # Create dynamic separator line
+        separator_line = "-" * (len(str(table).splitlines()[0]) - 3)
+
+        # Build summary string
+        summary_str = (
+            f"Total params: {total_params:,}\n"
+            f"Trainable params: {trainable_params:,}\n"
+            f"Non-trainable params: {total_params - trainable_params:,}\n"
+            f"Total MACs: {total_macs:,}\n"
+            f"Total FLOPs: {total_flops:,}\n"
+            f"{separator_line}\n"
+            f"Input size (MB): {total_input_size:.2f}\n"
+            f"Forward/backward pass size (MB): {total_output_size:.2f}\n"
+            f"Params size (MB): {total_params_size:.2f}\n"
+            f"Estimated Total Size (MB): {total_size:.2f}\n"
+            f"{separator_line}"
+        )
 
         return summary_str
 
@@ -312,9 +331,13 @@ class ModelSummarizer:
             summary_dict[m_key]["input_shape"] = list(input[0].size())
             summary_dict[m_key]["input_shape"][0] = batch_size
             if isinstance(output, (list, tuple)):
-                summary_dict[m_key]["output_shape"] = [
-                    [-1] + list(o.size())[1:] for o in output
-                ]
+                summary_dict[m_key]["output_shape"] = []
+                for o in output:
+                    if isinstance(o, torch.Tensor):
+                        shape = [-1] + list(o.size())[1:]
+                        summary_dict[m_key]["output_shape"].append(shape)
+                    else:
+                        summary_dict[m_key]["output_shape"].append("Non-tensor output")
             else:
                 summary_dict[m_key]["output_shape"] = list(output.size())
                 summary_dict[m_key]["output_shape"][0] = batch_size
