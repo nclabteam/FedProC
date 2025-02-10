@@ -247,7 +247,7 @@ class Server(SharedMethods):
         self.make_logger(name=self.name, path=self.log_path)
         self.get_model()
         self.set_clients()
-        self.get_model_info()
+        # self.get_model_info()
 
     def select_clients(self):
         if self.random_join_ratio:
