@@ -1,8 +1,10 @@
 import copy
+import io
 import json
 import os
 import re
 import time
+import zipfile
 from decimal import Decimal
 
 import numpy as np
@@ -726,7 +728,15 @@ class BaseDataset:
     def download(self):
         pass
 
-    def download_file(sefl, url, save_path):
+    @staticmethod
+    def download_and_extract(url, save_path):
+        response = requests.get(url)
+        response.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
+            zip_ref.extractall(save_path)
+
+    @staticmethod
+    def download_file(url, save_path):
         response = requests.get(url, stream=True)
         if response.status_code == 200:
             with open(save_path, "wb") as f:

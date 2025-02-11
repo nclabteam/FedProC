@@ -1,10 +1,7 @@
-import io
 import os
-import zipfile
 
 import pandas as pd
 import polars as pl
-import requests
 
 from .base import BaseDataset
 
@@ -24,13 +21,10 @@ class ElectricityLoadDiagrams(BaseDataset):
 
     def download(self):
         os.makedirs(self.path_temp, exist_ok=True)
-
-        response = requests.get(self.url)
-        response.raise_for_status()
-        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(self.path_temp)
-
         os.makedirs(self.path_raw, exist_ok=True)
+
+        self.download_and_extract(url=self.url, save_path=self.path_temp)
+
         df = pd.read_csv(
             os.path.join(self.path_temp, "LD2011_2014.txt"), sep=";", decimal=","
         )
