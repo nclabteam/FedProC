@@ -6,11 +6,12 @@ from layers import RevIN
 
 class RLinear(nn.Module):
     """
+    Paper: https://arxiv.org/abs/2305.10721
     Source: https://github.com/plumprc/RTSF/blob/main/models/RLinear.py
     """
 
     def __init__(self, configs):
-        super(RLinear, self).__init__()
+        super().__init__()
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.in_channels = configs.input_channels

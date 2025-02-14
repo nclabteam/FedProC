@@ -16,11 +16,11 @@ def args_update(parser):
 
 class SegRNN(nn.Module):
     """
-    Paper link: https://arxiv.org/abs/2308.11200.pdf
+    Paper: https://arxiv.org/abs/2308.11200
     """
 
     def __init__(self, configs):
-        super(SegRNN, self).__init__()
+        super().__init__()
 
         # get parameters
         self.seq_len = configs.input_len

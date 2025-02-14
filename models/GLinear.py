@@ -2,6 +2,11 @@ import torch.nn as nn
 
 
 class GLinear(nn.Module):
+    """
+    Paper: https://arxiv.org/abs/2501.01087
+    Source: https://github.com/t-rizvi/GLinear/blob/main/models/WIthout_Normalization/DNGLinear.py
+    """
+
     def __init__(self, configs):
         super().__init__()
 

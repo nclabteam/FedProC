@@ -18,6 +18,11 @@ def args_update(parser):
 
 
 class Elastic(Server):
+    """
+    Paper: https://openaccess.thecvf.com/content/CVPR2023/html/Chen_Elastic_Aggregation_for_Federated_Optimization_CVPR_2023_paper.html
+    Source: https://github.com/KarhouTam/FL-bench/blob/master/src/server/elastic.py
+    """
+
     def calculate_aggregation_weights(self):
         super().calculate_aggregation_weights()
         sensitivities = torch.stack(
@@ -38,6 +43,10 @@ class Elastic(Server):
 
 
 class Elastic_Client(Client):
+    """
+    Source: https://github.com/KarhouTam/FL-bench/blob/master/src/client/elastic.py
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.init_sensitivity = torch.zeros(
