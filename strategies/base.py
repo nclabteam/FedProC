@@ -112,8 +112,9 @@ class SharedMethods:
                 os.makedirs(dir)
 
     def load_data(self, path):
-        x = np.load(path + "_x.npy")
-        y = np.load(path + "_y.npy")
+        data = np.load(path)
+        x = data["x"]
+        y = data["y"]
         x = self.scaler.transform(x)
         y = self.scaler.transform(y)
         x = torch.tensor(x, dtype=torch.float32)
@@ -604,9 +605,9 @@ class Client(SharedMethods):
         self.stats = json.load(open(self.path_info))["clients"][id]["stats"]["train"]
         self.get_scaler()
 
-        self.train_file = os.path.join(self.dataset_path, "train/", str(self.id))
-        self.valid_file = os.path.join(self.dataset_path, "valid/", str(self.id))
-        self.test_file = os.path.join(self.dataset_path, "test/", str(self.id))
+        self.train_file = os.path.join(self.dataset_path, "train", f"{self.id}.npz")
+        self.valid_file = os.path.join(self.dataset_path, "valid", f"{self.id}.npz")
+        self.test_file = os.path.join(self.dataset_path, "test", f"{self.id}.npz")
 
     def variables_to_be_sent(self):
         return {"model": self.model, "train_samples": self.train_samples}

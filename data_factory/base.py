@@ -709,17 +709,17 @@ class BaseDataset:
                 # )
 
                 # Save split data
-                for key, value in {
-                    "x": split_x,
-                    # "x_mark": split_x_mark,
-                    # "y_mark": split_y_mark,
-                    "y": split_y,
-                }.items():
-                    file_path = os.path.join(
-                        getattr(self, f"path_{split_name}"), f"{client_id}_{key}.npy"
-                    )
-                    np.save(file_path, value)
-                    client_info["paths"][split_name][key] = file_path
+                file_path = os.path.join(
+                    getattr(self, f"path_{split_name}"), f"{client_id}.npz"
+                )
+                np.savez_compressed(
+                    file=file_path,
+                    # x_mark=split_x_mark,
+                    # y_mark=split_y_mark,
+                    x=split_x,
+                    y=split_y,
+                )
+                client_info["paths"][split_name] = file_path
 
             self.clients.append(client_info)
             print(json.dumps(self.clients[-1], indent=4))
