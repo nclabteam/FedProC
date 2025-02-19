@@ -486,7 +486,8 @@ class Server(SharedMethods):
                     model=torch.load(
                         os.path.join(
                             self.model_path, self.name.lower().strip() + "_last.pt"
-                        )
+                        ),
+                        weights_only=False,
                     ),
                     dataloader=merged_testset,
                 ),
@@ -497,7 +498,8 @@ class Server(SharedMethods):
                     model=torch.load(
                         os.path.join(
                             self.model_path, self.name.lower().strip() + "_best.pt"
-                        )
+                        ),
+                        weights_only=False,
                     ),
                     dataloader=merged_testset,
                 ),
@@ -519,7 +521,8 @@ class Server(SharedMethods):
                                         os.path.join(
                                             client.model_path,
                                             client.name.lower().strip() + "_last.pt",
-                                        )
+                                        ),
+                                        weights_only=False,
                                     ),
                                     dataloader=client.load_test_data(),
                                     scaler=scaler,
@@ -536,7 +539,8 @@ class Server(SharedMethods):
                                         os.path.join(
                                             client.model_path,
                                             client.name.lower().strip() + "_best.pt",
-                                        )
+                                        ),
+                                        weights_only=False,
                                     ),
                                     dataloader=client.load_test_data(),
                                     scaler=scaler,
