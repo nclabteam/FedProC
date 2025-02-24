@@ -15,18 +15,13 @@ from torch.utils.data import DataLoader
 
 class SharedMethods:
     def __init__(self):
-        self.default_value = -1.0
+        self.default_value = 9_999_999
 
     def save_results(self):
         pl_df = pl.DataFrame(self.metrics)
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
         pl_df.write_csv(path)
         self.logger.info(f"Results saved to {path}")
-
-    def save_model(self):
-        path = os.path.join(self.model_path, self.name.lower().strip() + ".pt")
-        torch.save(self.model, path)
-        self.logger.info(f"Model saved to {path}")
 
     def fix_results(self, default=-1.0):
         max_length = max(len(lst) for lst in self.metrics.values())
@@ -157,14 +152,26 @@ class SharedMethods:
             losses.append(loss.item())
         return losses
 
-    def save_model(self, postfix=""):
+    def save_model(self, postfix="", extention="pt", verbose=True):
         path = os.path.join(
-            self.model_path, "_".join([self.name.lower().strip(), postfix]) + ".pt"
+            self.model_path,
+            f"{'_'.join([self.name.lower().strip(), postfix])}.{extention}",
         )
-        torch.save(self.model, path)
-        self.logger.info(f"Model saved to {path}")
+        torch.save(obj=self.model, f=path)
 
-    def get_total_model_size(self, model):
+        # Display a message if verbose is set to True
+        if verbose:
+            self.logger.info(f"Model saved to {path}")
+
+    @staticmethod
+    def reset_model(model):
+        result = copy.deepcopy(model)
+        for param in result.parameters():
+            param.data.zero_()
+        return result
+
+    @staticmethod
+    def get_total_model_size(model):
         total_size = 0
 
         # Include parameters (weights)
@@ -177,10 +184,12 @@ class SharedMethods:
 
         return total_size
 
-    def get_tensor_size(self, tensor):
+    @staticmethod
+    def get_tensor_size(tensor):
         return tensor.element_size() * tensor.nelement()
 
-    def get_dataset_size(self, dataset):
+    @staticmethod
+    def get_dataset_size(dataset):
         # Calculate total dataset size by summing over all data
         total_size = 0
         for data in dataset:
@@ -208,9 +217,8 @@ class SharedMethods:
             ),
         ).execute()
 
-    def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
-    ):
+    @staticmethod
+    def train_one_epoch(model, dataloader, optimizer, criterion, scheduler, device):
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
@@ -309,7 +317,7 @@ class Server(SharedMethods):
             client.save_results()
 
     def save_lastest_models(self):
-        super().save_model(postfix="last")
+        self.save_model(postfix="last")
         if not self.save_local_model:
             return
         for client in self.clients:
@@ -323,7 +331,7 @@ class Server(SharedMethods):
         )
         if metric[-1] != min(metric):
             return
-        super().save_model(postfix="best")
+        self.save_model(postfix="best")
         if not self.save_local_model:
             return
         for client in self.clients:
@@ -406,12 +414,11 @@ class Server(SharedMethods):
         )
 
     def evaluate(self):
-        # print('Evaluating')
+        self.logger.info("")
+        self.logger.info(
+            f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
+        )
         if self.current_iter % self.eval_gap == 0:
-            self.logger.info("")
-            self.logger.info(
-                f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
-            )
             self.evaluate_generalization_trainset()
             self.evaluate_personalization_trainset()
             self.evaluate_generalization_valset()
@@ -424,19 +431,13 @@ class Server(SharedMethods):
             client.train()
 
     def fix_results(self):
-        super().fix_results()
+        super().fix_results(default=self.default_value)
         for client in self.clients:
-            client.fix_results(self.default_value)
+            client.fix_results(default=self.default_value)
 
     def calculate_aggregation_weights(self):
         ts = [client["train_samples"] for client in self.client_data]
         self.weights = torch.tensor(ts).to(self.device) / sum(ts)
-
-    def reset_model(self, model):
-        result = copy.deepcopy(model)
-        for param in result.parameters():
-            param.data.zero_()
-        return result
 
     def aggregate_models(self):
         self.model = self.reset_model(self.model)
