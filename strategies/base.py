@@ -244,8 +244,8 @@ class Server(SharedMethods):
 
         self.metrics = {
             "time_per_iter": [],
-            "global_avg_val_loss": [],
-            "personal_avg_val_loss": [],
+            "global_avg_valid_loss": [],
+            "personal_avg_valid_loss": [],
             "global_avg_train_loss": [],
             "personal_avg_train_loss": [],
             "global_avg_test_loss": [],
@@ -325,9 +325,9 @@ class Server(SharedMethods):
 
     def save_best_model(self):
         metric = (
-            self.metrics["personal_avg_val_loss"]
+            self.metrics["personal_avg_valid_loss"]
             if self.save_local_model
-            else self.metrics["global_avg_val_loss"]
+            else self.metrics["global_avg_valid_loss"]
         )
         if metric[-1] != min(metric):
             return
@@ -339,9 +339,9 @@ class Server(SharedMethods):
 
     def early_stopping(self):
         metric = (
-            self.metrics["personal_avg_val_loss"]
+            self.metrics["personal_avg_valid_loss"]
             if self.save_local_model
-            else self.metrics["global_avg_val_loss"]
+            else self.metrics["global_avg_valid_loss"]
         )
         if not self.patience or len(metric) < self.patience:
             return False
@@ -356,61 +356,45 @@ class Server(SharedMethods):
 
         return True
 
-    def evaluate_generalization_trainset(self):
+    def evaluate_generalization_loss(self, dataset_type):
+        """
+        Generalized function to evaluate loss for a given dataset type and loss method.
+
+        Parameters:
+        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        """
         losses = [
             np.mean(
-                self.calculate_loss(self.model, client.load_train_data(), client.loss)
+                self.calculate_loss(
+                    self.model,
+                    getattr(client, f"load_{dataset_type}_data")(),
+                    client.loss,
+                )
             )
             for client in self.clients
         ]
-        self.metrics["global_avg_train_loss"].append(np.mean(losses))
+
+        metric_name = f"global_avg_{dataset_type}_loss"
+        self.metrics[metric_name].append(np.mean(losses))
         self.logger.info(
-            f"Generalization Training Loss: {self.metrics['global_avg_train_loss'][-1]:.4f}"
+            f"Generalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
 
-    def evaluate_generalization_valset(self):
+    def evaluate_personalization_loss(self, dataset_type):
+        """
+        Generalized function to evaluate personalization loss for a given dataset type.
+
+        Parameters:
+        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        """
         losses = [
-            np.mean(
-                self.calculate_loss(self.model, client.load_valid_data(), client.loss)
-            )
-            for client in self.clients
+            getattr(client, f"get_{dataset_type}_loss")() for client in self.clients
         ]
-        self.metrics["global_avg_val_loss"].append(np.mean(losses))
-        self.logger.info(
-            f"Generalization Validation Loss: {self.metrics['global_avg_val_loss'][-1]:.4f}"
-        )
 
-    def evaluate_personalization_trainset(self):
-        losses = [client.get_train_loss() for client in self.clients]
-        self.metrics["personal_avg_train_loss"].append(np.mean(losses))
+        metric_name = f"personal_avg_{dataset_type}_loss"
+        self.metrics[metric_name].append(np.mean(losses))
         self.logger.info(
-            f"Personalization Training Loss: {self.metrics['personal_avg_train_loss'][-1]:.4f}"
-        )
-
-    def evaluate_personalization_valset(self):
-        losses = [client.get_valid_loss() for client in self.clients]
-        self.metrics["personal_avg_val_loss"].append(np.mean(losses))
-        self.logger.info(
-            f"Personalization Validation Loss: {self.metrics['personal_avg_val_loss'][-1]:.4f}"
-        )
-
-    def evaluate_personalization_testset(self):
-        losses = [client.get_test_loss() for client in self.clients]
-        self.metrics["personal_avg_test_loss"].append(np.mean(losses))
-        self.logger.info(
-            f"Personalization Test Loss: {self.metrics['personal_avg_test_loss'][-1]:.4f}"
-        )
-
-    def evaluate_generalization_testset(self):
-        losses = [
-            np.mean(
-                self.calculate_loss(self.model, client.load_test_data(), client.loss)
-            )
-            for client in self.clients
-        ]
-        self.metrics["global_avg_test_loss"].append(np.mean(losses))
-        self.logger.info(
-            f"Generalization Test Loss: {self.metrics['global_avg_test_loss'][-1]:.4f}"
+            f"Personalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
 
     def evaluate(self):
@@ -419,12 +403,11 @@ class Server(SharedMethods):
             f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
         )
         if self.current_iter % self.eval_gap == 0:
-            self.evaluate_generalization_trainset()
-            self.evaluate_personalization_trainset()
-            self.evaluate_generalization_valset()
-            self.evaluate_personalization_valset()
-            self.evaluate_generalization_testset()
-            self.evaluate_personalization_testset()
+            for dataset_type in ["train", "valid", "test"]:
+                # Generalization loss evaluation
+                self.evaluate_generalization_loss(dataset_type)
+                # Personalization loss evaluation
+                self.evaluate_personalization_loss(dataset_type)
 
     def train_clients(self):
         for client in self.selected_clients:
