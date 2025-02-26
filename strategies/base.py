@@ -8,6 +8,7 @@ from argparse import Namespace
 
 import numpy as np
 import polars as pl
+import ray
 import torch
 from torch.utils.data import ConcatDataset, DataLoader, Subset, TensorDataset
 
@@ -227,9 +228,7 @@ class SharedMethods:
     @staticmethod
     def update_optimizer_params(old, new):
         """Update the parameters and hyperparameters of old_optimizer with those from new_optimizer."""
-        for old_group, new_group in zip(
-            old.param_groups, new.param_groups
-        ):
+        for old_group, new_group in zip(old.param_groups, new.param_groups):
             # Update all hyperparameters dynamically
             for key in new_group.keys():
                 if key != "params":  # Skip updating "params" directly
@@ -249,6 +248,16 @@ class Server(SharedMethods):
         self.num_join_clients = int(self.num_clients * self.join_ratio)
         self.current_num_join_clients = self.num_join_clients
 
+        self.num_gpus = len(self.device_id.split(","))
+        configs.parallel = True if self.num_gpus > 1 else False
+        self.parallel = configs.parallel
+        ray.init(
+            num_gpus=self.num_gpus,
+            ignore_reinit_error=True,
+            logging_level=logging.ERROR,
+            log_to_driver=False,
+        )
+
         self.name = "  SERVER  "
 
         self.metrics = {
@@ -264,7 +273,7 @@ class Server(SharedMethods):
 
         self.make_logger(name=self.name, path=self.log_path)
         self.initialize_model()
-        self.set_clients()
+        self.initialize_clients()
         self.get_model_info()
 
     def select_clients(self):
@@ -298,15 +307,13 @@ class Server(SharedMethods):
 
     def receive_from_clients(self):
         self.client_data = []
-
         for client in self.selected_clients:
             try:
                 self.client_data.append(client.send_to_server())
-
             except Exception as e:
                 print(f"Failed to receive data from client {client.id}: {e}")
 
-    def set_clients(self):
+    def initialize_clients(self):
         module_name = self.__module__
         class_name = self.__class__.__name__ + "_Client"
         try:
@@ -372,17 +379,37 @@ class Server(SharedMethods):
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        losses = [
-            np.mean(
-                self.calculate_loss(
-                    model=self.model,
-                    dataloader=getattr(client, f"load_{dataset_type}_data")(),
-                    criterion=client.loss,
-                    device=client.device,
+        if self.parallel:
+
+            @ray.remote(num_gpus=1)
+            def compute_client_loss(client, model):
+                return np.mean(
+                    self.calculate_loss(
+                        model=model,
+                        dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                        criterion=client.loss,
+                        device=client.device,
+                    )
                 )
+
+            losses = ray.get(
+                [
+                    compute_client_loss.remote(client, self.model)
+                    for client in self.clients
+                ]
             )
-            for client in self.clients
-        ]
+        else:
+            losses = [
+                np.mean(
+                    self.calculate_loss(
+                        model=self.model,
+                        dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                        criterion=client.loss,
+                        device=client.device,
+                    )
+                )
+                for client in self.clients
+            ]
 
         metric_name = f"global_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(np.mean(losses))
@@ -397,9 +424,22 @@ class Server(SharedMethods):
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        losses = [
-            getattr(client, f"get_{dataset_type}_loss")() for client in self.clients
-        ]
+        if self.parallel:
+
+            @ray.remote(num_gpus=1)
+            def compute_client_loss(client, dataset_type):
+                return getattr(client, f"get_{dataset_type}_loss")()
+
+            losses = ray.get(
+                [
+                    compute_client_loss.remote(client, dataset_type)
+                    for client in self.clients
+                ]
+            )
+        else:
+            losses = [
+                getattr(client, f"get_{dataset_type}_loss")() for client in self.clients
+            ]
 
         metric_name = f"personal_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(np.mean(losses))
@@ -420,8 +460,23 @@ class Server(SharedMethods):
                 self.evaluate_personalization_loss(dataset_type)
 
     def train_clients(self):
-        for client in self.selected_clients:
-            client.train()
+        if self.parallel:
+            results = ray.get(
+                [
+                    ray.remote(num_gpus=1)(lambda obj: obj.train()).remote(cl)
+                    for cl in self.selected_clients
+                ]
+            )
+            for result in results:
+                client = self.clients[result["id"]]
+                client.update_model_params(old=client.model, new=result["model"])
+                client.update_optimizer_params(
+                    old=client.optimizer, new=result["optimizer"]
+                )
+                client.metrics["train_time"].append(result["train_time"])
+
+        else:
+            [client.train() for client in self.selected_clients]
 
     def fix_results(self):
         super().fix_results(default=self.default_value)
@@ -671,7 +726,15 @@ class Client(SharedMethods):
                 scheduler=self.scheduler,
                 device=self.device,
             )
-        self.metrics["train_time"].append(time.time() - start_time)
+        train_time = time.time() - start_time
+        if self.parallel:
+            return {
+                "id": self.id,
+                "model": self.model,
+                "optimizer": self.optimizer,
+                "train_time": train_time,
+            }
+        self.metrics["train_time"].append(train_time)
 
     def get_valid_loss(self):
         losses = self.calculate_loss(
