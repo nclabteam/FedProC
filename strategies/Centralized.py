@@ -33,13 +33,7 @@ class Centralized(Server):
     def send_to_clients(self):
         pass
 
-    def evaluate_personalization_valset(self):
-        pass
-
-    def evaluate_personalization_trainset(self):
-        pass
-
-    def evaluate_personalization_testset(self):
+    def evaluate_personalization_loss(self):
         pass
 
     def aggregate_models(self):

@@ -18,13 +18,7 @@ class LocalOnly(Server):
     def send_to_clients(self):
         pass
 
-    def evaluate_generalization_valset(self):
-        pass
-
-    def evaluate_generalization_trainset(self):
-        pass
-
-    def evaluate_generalization_testset(self):
+    def evaluate_generalization_loss(self):
         pass
 
 

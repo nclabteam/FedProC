@@ -457,7 +457,8 @@ class Server(SharedMethods):
                 # Generalization loss evaluation
                 self.evaluate_generalization_loss(dataset_type)
                 # Personalization loss evaluation
-                if self.save_local_model: continue
+                if not self.save_local_model:
+                    continue
                 self.evaluate_personalization_loss(dataset_type)
 
     def train_clients(self):
