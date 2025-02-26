@@ -457,6 +457,7 @@ class Server(SharedMethods):
                 # Generalization loss evaluation
                 self.evaluate_generalization_loss(dataset_type)
                 # Personalization loss evaluation
+                if self.save_local_model: continue
                 self.evaluate_personalization_loss(dataset_type)
 
     def train_clients(self):
@@ -474,6 +475,7 @@ class Server(SharedMethods):
                     old=client.optimizer, new=result["optimizer"]
                 )
                 client.metrics["train_time"].append(result["train_time"])
+                client.train_samples = result["train_samples"]
 
         else:
             [client.train() for client in self.selected_clients]
@@ -733,6 +735,7 @@ class Client(SharedMethods):
                 "model": self.model,
                 "optimizer": self.optimizer,
                 "train_time": train_time,
+                "train_samples": self.train_samples,
             }
         self.metrics["train_time"].append(train_time)
 
