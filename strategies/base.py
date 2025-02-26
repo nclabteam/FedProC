@@ -9,8 +9,7 @@ from argparse import Namespace
 import numpy as np
 import polars as pl
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader, Subset, TensorDataset
 
 
 class SharedMethods:
@@ -127,15 +126,15 @@ class SharedMethods:
         y = scaler.transform(y)
         x = torch.tensor(x, dtype=torch.float32)
         y = torch.tensor(y, dtype=torch.float32)
-        dataset = torch.utils.data.TensorDataset(x, y)
+        dataset = TensorDataset(x, y)
 
         # Apply subsampling if necessary
         if sample_ratio < 1.0:
             subset_size = int(len(dataset) * sample_ratio)
             indices = torch.randperm(len(dataset))[:subset_size]
-            dataset = torch.utils.data.Subset(dataset, indices)
+            dataset = Subset(dataset, indices)
 
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
@@ -174,42 +173,28 @@ class SharedMethods:
         return result
 
     @staticmethod
-    def get_total_model_size(model):
-        total_size = 0
-
-        # Include parameters (weights)
-        for param in model.parameters():
-            total_size += param.element_size() * param.nelement()
-
-        # Include buffers (e.g., batch norm statistics)
-        for buffer in model.buffers():
-            total_size += buffer.element_size() * buffer.nelement()
-
-        return total_size
-
-    @staticmethod
-    def get_tensor_size(tensor):
-        return tensor.element_size() * tensor.nelement()
-
-    @staticmethod
-    def get_dataset_size(dataset):
-        # Calculate total dataset size by summing over all data
-        total_size = 0
-        for data in dataset:
-            for item in data:
-                if isinstance(item, torch.Tensor):
-                    total_size += item.element_size() * item.nelement()
-        return total_size
-
-    def get_size(self, obj):
+    def get_size(obj):
         if isinstance(obj, torch.Tensor):
-            return self.get_tensor_size(obj) / pow(1024, 2)  # Size in MB
-        if isinstance(obj, nn.Module):
-            return self.get_total_model_size(obj) / pow(1024, 2)  # Size in MB
+            return obj.element_size() * obj.nelement() / (1024**2)  # Size in MB
+        if isinstance(obj, torch.nn.Module):
+            total_size = sum(
+                param.element_size() * param.nelement() for param in obj.parameters()
+            )
+            total_size += sum(
+                buffer.element_size() * buffer.nelement() for buffer in obj.buffers()
+            )  # Include buffers
+            return total_size / (1024**2)  # Size in MB
         if isinstance(obj, DataLoader):
-            # Estimate DataLoader size by considering the dataset size and batch size
-            return self.get_dataset_size(obj.dataset) / pow(1024, 2)  # Size in MB
-        return sys.getsizeof(obj) / pow(1024, 2)  # Size in MB
+            total_size = sum(
+                sum(
+                    item.element_size() * item.nelement()
+                    for item in data
+                    if isinstance(item, torch.Tensor)
+                )
+                for data in obj.dataset
+            )
+            return total_size / (1024**2)  # Size in MB
+        return sys.getsizeof(obj) / (1024**2)  # Size in MB
 
     def summarize_model(self, dataloader):
         getattr(__import__("utils"), "ModelSummarizer")(
@@ -464,9 +449,7 @@ class Server(SharedMethods):
 
     def evaluate_all_metrics(self):
         merged_testset = DataLoader(
-            torch.utils.data.ConcatDataset(
-                [client.load_test_data().dataset for client in self.clients]
-            ),
+            ConcatDataset([client.load_test_data().dataset for client in self.clients]),
             batch_size=self.batch_size,
             shuffle=False,
         )
