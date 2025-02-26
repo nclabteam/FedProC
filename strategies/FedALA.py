@@ -39,9 +39,9 @@ class FedALA_Client(Client):
         self.weights = None  # Learnable local aggregation weights
         self.start_phase = True
 
-    def initialize_local(self, model):
+    def update_model_params(self, model):
         model = self.adaptive_local_aggregation(model, self.model)
-        super().initialize_local(model)
+        super().update_model_params(model)
 
     def adaptive_local_aggregation(
         self, global_model: nn.Module, local_model: nn.Module

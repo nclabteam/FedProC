@@ -72,20 +72,20 @@ class SharedMethods:
             setattr(self, key, value)
         self.configs = configs
 
-    def get_loss(self):
+    def initialize_loss(self):
         self.loss = getattr(__import__("losses"), self.loss)()
 
-    def get_model(self):
+    def initialize_model(self):
         self.model = getattr(__import__("models"), self.model)(self.configs).to(
             self.device
         )
 
-    def get_optimizer(self):
+    def initialize_optimizer(self):
         self.optimizer = getattr(__import__("optimizers"), self.optimizer)(
             params=self.model.parameters(), configs=self.configs
         )
 
-    def get_scheduler(self):
+    def initialize_scheduler(self):
         self.scheduler = getattr(__import__("schedulers"), self.scheduler)(
             optimizer=self.optimizer, configs=self.configs
         )
@@ -230,6 +230,10 @@ class SharedMethods:
             optimizer.step()
         scheduler.step()
 
+    def update_model_params(self, model):
+        for new_param, old_param in zip(model.parameters(), self.model.parameters()):
+            old_param.data = new_param.data.clone()
+
 
 class Server(SharedMethods):
     def __init__(self, configs, times):
@@ -254,7 +258,7 @@ class Server(SharedMethods):
         }
 
         self.make_logger(name=self.name, path=self.log_path)
-        self.get_model()
+        self.initialize_model()
         self.set_clients()
         self.get_model_info()
 
@@ -574,10 +578,14 @@ class Client(SharedMethods):
         super().__init__()
         self.set_configs(configs=configs, id=id, times=times)
         self.mkdir()
-        self.get_model()
-        self.get_loss()
-        self.get_optimizer()
-        self.get_scheduler()
+        self.initialize_model()
+        self.initialize_loss()
+        self.initialize_optimizer()
+        self.initialize_scheduler()
+        self.initialize_data_paths()
+        self.initialize_stats()
+        self.initialize_scaler()
+
         self.name = f"CLIENT_{str(self.id).zfill(3)}"
         self.make_logger(name=self.name, path=self.log_path)
 
@@ -590,12 +598,18 @@ class Client(SharedMethods):
             "send_mb": [],
         }
 
-        self.stats = json.load(open(self.path_info))["clients"][id]["stats"]["train"]
-        self.get_scaler()
-
+    def initialize_data_paths(self):
         self.train_file = os.path.join(self.dataset_path, "train", f"{self.id}.npz")
         self.valid_file = os.path.join(self.dataset_path, "valid", f"{self.id}.npz")
         self.test_file = os.path.join(self.dataset_path, "test", f"{self.id}.npz")
+
+    def initialize_scaler(self):
+        self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
+
+    def initialize_stats(self):
+        self.stats = json.load(fp=open(self.path_info))["clients"][self.id]["stats"][
+            "train"
+        ]
 
     def variables_to_be_sent(self):
         return {"model": self.model, "train_samples": self.train_samples}
@@ -607,9 +621,6 @@ class Client(SharedMethods):
             b += self.get_size(value)
         self.metrics["send_mb"].append(b)
         return to_be_sent
-
-    def get_scaler(self):
-        self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
 
     def load_train_data(self, sample_ratio=1.0, shuffle=False):
         trainloader = self.load_data_with_ratio(
@@ -631,10 +642,6 @@ class Client(SharedMethods):
         )
         self.valid_samples = len(validloader.dataset)
         return validloader
-
-    def initialize_local(self, model):
-        for new_param, old_param in zip(model.parameters(), self.model.parameters()):
-            old_param.data = new_param.data.clone()
 
     def train(self):
         train_loader = self.load_train_data()
@@ -669,4 +676,4 @@ class Client(SharedMethods):
         return losses
 
     def receive_from_server(self, data):
-        self.initialize_local(data["model"])
+        self.update_model_params(data["model"])

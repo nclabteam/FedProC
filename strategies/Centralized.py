@@ -4,9 +4,9 @@ from .base import Client, Server
 class Centralized(Server):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.get_loss()
-        self.get_optimizer()
-        self.get_scheduler()
+        self.initialize_loss()
+        self.initialize_optimizer()
+        self.initialize_scheduler()
 
         self.receive_from_clients()
         self.fix_results()

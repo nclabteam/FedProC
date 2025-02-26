@@ -16,7 +16,7 @@ class FedRevIN(Server):
 
 
 class FedRevIN_Client(Client):
-    def initialize_local(self, model):
+    def update_model_params(self, model):
         for new_param, (name, old_param) in zip(
             model.parameters(), self.model.named_parameters()
         ):
