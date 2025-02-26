@@ -7,7 +7,12 @@ xlsx2csv
 isort
 black
 statsmodels
+numpy<=1.26.3
+ray
 
-# SWIFT
-PyWavelets==1.4.1
-pytorch_wavelets==1.3.0
+# PeMSSF (dataset)
+holidays 
+
+# SWIFT (model)
+PyWavelets<=1.8.0
+pytorch_wavelets<=1.3.0
