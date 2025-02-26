@@ -16,12 +16,12 @@ class FedRevIN(Server):
 
 
 class FedRevIN_Client(Client):
-    def update_model_params(self, old_model, new_model):
+    def update_model_params(self, old, new):
         for new_param, (name, old_param) in zip(
-            new_model.parameters(), old_model.named_parameters()
+            new.parameters(), old.named_parameters()
         ):
             # Check if the layer is an instance of RevIN
-            layer = getattr(old_model, name.split(".")[0], None)
+            layer = getattr(old, name.split(".")[0], None)
             if isinstance(layer, RevIN):
                 continue
             old_param.data = new_param.data.clone()
