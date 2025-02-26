@@ -15,7 +15,7 @@ from torch.utils.data import ConcatDataset, DataLoader, Subset, TensorDataset
 
 class SharedMethods:
     def __init__(self):
-        self.default_value = 9_999_999
+        self.default_value = 9_999_999.0
 
     def save_results(self):
         pl_df = pl.DataFrame(self.metrics)
