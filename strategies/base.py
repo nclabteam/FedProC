@@ -106,17 +106,8 @@ class SharedMethods:
             if not os.path.exists(dir):
                 os.makedirs(dir)
 
-    def load_data(self, path):
-        data = np.load(path)
-        x = data["x"]
-        y = data["y"]
-        x = self.scaler.transform(x)
-        y = self.scaler.transform(y)
-        x = torch.tensor(x, dtype=torch.float32)
-        y = torch.tensor(y, dtype=torch.float32)
-        return torch.utils.data.TensorDataset(x, y)
-
-    def load_data_with_ratio(self, file, sample_ratio=1.0, shuffle=False):
+    @staticmethod
+    def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
         """
         General method to load and subsample data.
 
@@ -124,10 +115,19 @@ class SharedMethods:
             file (str): Path to the data file.
             sample_ratio (float): Ratio of data to load (between 0 and 1).
             shuffle (bool): Whether to shuffle the data (True for training, False otherwise).
+            batch_size (int): Batch size for the DataLoader.
+            scaler
         """
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
 
-        dataset = self.load_data(file)
+        data = np.load(file)
+        x = data["x"]
+        y = data["y"]
+        x = scaler.transform(x)
+        y = scaler.transform(y)
+        x = torch.tensor(x, dtype=torch.float32)
+        y = torch.tensor(y, dtype=torch.float32)
+        dataset = torch.utils.data.TensorDataset(x, y)
 
         # Apply subsampling if necessary
         if sample_ratio < 1.0:
@@ -136,18 +136,21 @@ class SharedMethods:
             dataset = torch.utils.data.Subset(dataset, indices)
 
         dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.batch_size, shuffle=shuffle
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
         )
 
         return dataloader
 
-    def calculate_loss(self, model, dataloader, criterion):
+    @staticmethod
+    def calculate_loss(model, dataloader, criterion, device="cpu"):
         losses = []
         model.eval()
         for batch_x, batch_y in dataloader:
-            batch_x = batch_x.float().to(self.device)
-            batch_y = batch_y.float().to(self.device)
-            outputs = self.model(batch_x)
+            batch_x = batch_x.float().to(device)
+            batch_y = batch_y.float().to(device)
+            outputs = model(batch_x)
             loss = criterion(outputs, batch_y)
             losses.append(loss.item())
         return losses
@@ -370,9 +373,10 @@ class Server(SharedMethods):
         losses = [
             np.mean(
                 self.calculate_loss(
-                    self.model,
-                    getattr(client, f"load_{dataset_type}_data")(),
-                    client.loss,
+                    model=self.model,
+                    dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                    criterion=client.loss,
+                    device=client.device,
                 )
             )
             for client in self.clients
@@ -623,22 +627,34 @@ class Client(SharedMethods):
         return to_be_sent
 
     def load_train_data(self, sample_ratio=1.0, shuffle=False):
-        trainloader = self.load_data_with_ratio(
-            file=self.train_file, sample_ratio=sample_ratio, shuffle=shuffle
+        trainloader = self.load_data(
+            file=self.train_file,
+            sample_ratio=sample_ratio,
+            shuffle=shuffle,
+            scaler=self.scaler,
+            batch_size=self.batch_size,
         )
         self.train_samples = len(trainloader.dataset)
         return trainloader
 
     def load_test_data(self, sample_ratio=1.0, shuffle=False):
-        testloader = self.load_data_with_ratio(
-            file=self.test_file, sample_ratio=sample_ratio, shuffle=shuffle
+        testloader = self.load_data(
+            file=self.test_file,
+            sample_ratio=sample_ratio,
+            shuffle=shuffle,
+            scaler=self.scaler,
+            batch_size=self.batch_size,
         )
         self.test_samples = len(testloader.dataset)
         return testloader
 
     def load_valid_data(self, sample_ratio=1.0, shuffle=False):
-        validloader = self.load_data_with_ratio(
-            file=self.valid_file, sample_ratio=sample_ratio, shuffle=shuffle
+        validloader = self.load_data(
+            file=self.valid_file,
+            sample_ratio=sample_ratio,
+            shuffle=shuffle,
+            scaler=self.scaler,
+            batch_size=self.batch_size,
         )
         self.valid_samples = len(validloader.dataset)
         return validloader
@@ -658,19 +674,34 @@ class Client(SharedMethods):
         self.metrics["train_time"].append(time.time() - start_time)
 
     def get_valid_loss(self):
-        losses = self.calculate_loss(self.model, self.load_valid_data(), self.loss)
+        losses = self.calculate_loss(
+            model=self.model,
+            dataloader=self.load_valid_data(),
+            criterion=self.loss,
+            device=self.device,
+        )
         losses = np.mean(losses)
         self.metrics["val_loss"].append(losses)
         return losses
 
     def get_train_loss(self):
-        losses = self.calculate_loss(self.model, self.load_train_data(), self.loss)
+        losses = self.calculate_loss(
+            model=self.model,
+            dataloader=self.load_train_data(),
+            criterion=self.loss,
+            device=self.device,
+        )
         losses = np.mean(losses)
         self.metrics["train_loss"].append(losses)
         return losses
 
     def get_test_loss(self):
-        losses = self.calculate_loss(self.model, self.load_test_data(), self.loss)
+        losses = self.calculate_loss(
+            model=self.model,
+            dataloader=self.load_test_data(),
+            criterion=self.loss,
+            device=self.device,
+        )
         losses = np.mean(losses)
         self.metrics["test_loss"].append(losses)
         return losses
