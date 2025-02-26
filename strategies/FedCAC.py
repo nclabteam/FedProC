@@ -166,7 +166,7 @@ class FedCAC_Client(Client):
                 index += 1
 
         else:
-            self.update_model_params(data["model"])
+            super().receive_from_server(data=data)
 
     def variables_to_be_sent(self):
         return {

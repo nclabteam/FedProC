@@ -41,7 +41,7 @@ class FedALA_Client(Client):
 
     def update_model_params(self, model):
         model = self.adaptive_local_aggregation(model, self.model)
-        super().update_model_params(model)
+        super().update_model_params(old_model=self.model, new_model=model)
 
     def adaptive_local_aggregation(
         self, global_model: nn.Module, local_model: nn.Module

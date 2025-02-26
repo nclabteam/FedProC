@@ -218,9 +218,26 @@ class SharedMethods:
             optimizer.step()
         scheduler.step()
 
-    def update_model_params(self, model):
-        for new_param, old_param in zip(model.parameters(), self.model.parameters()):
-            old_param.data = new_param.data.clone()
+    @staticmethod
+    def update_model_params(old_model, new_model):
+        """Update the parameters of old_model with those from new_model."""
+        for old_param, new_param in zip(old_model.parameters(), new_model.parameters()):
+            old_param.data.copy_(new_param.data)
+
+    @staticmethod
+    def update_optimizer_params(old_optimizer, new_optimizer):
+        """Update the parameters and hyperparameters of old_optimizer with those from new_optimizer."""
+        for old_group, new_group in zip(
+            old_optimizer.param_groups, new_optimizer.param_groups
+        ):
+            # Update all hyperparameters dynamically
+            for key in new_group.keys():
+                if key != "params":  # Skip updating "params" directly
+                    old_group[key] = new_group[key]
+
+            # Update the model parameters inside param_groups
+            for old_param, new_param in zip(old_group["params"], new_group["params"]):
+                old_param.data.copy_(new_param.data)
 
 
 class Server(SharedMethods):
@@ -690,4 +707,4 @@ class Client(SharedMethods):
         return losses
 
     def receive_from_server(self, data):
-        self.update_model_params(data["model"])
+        self.update_model_params(old_model=self.model, new_model=data["model"])
