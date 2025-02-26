@@ -18,7 +18,7 @@ class LocalOnly(Server):
     def send_to_clients(self):
         pass
 
-    def evaluate_generalization_loss(self):
+    def evaluate_generalization_loss(self, *args, **kwargs):
         pass
 
 
