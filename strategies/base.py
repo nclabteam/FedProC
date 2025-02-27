@@ -663,11 +663,11 @@ class Server(SharedMethods):
             self.current_iter = i
             self.select_clients()
             self.send_to_clients()
-            self.evaluate()
             self.train_clients()
             self.receive_from_clients()
             self.calculate_aggregation_weights()
             self.aggregate_models()
+            self.evaluate()
             self.save_best_model()
             self.metrics["time_per_iter"].append(time.time() - s_t)
             self.logger.info(f'Time cost: {self.metrics["time_per_iter"][-1]:.4f}s')
