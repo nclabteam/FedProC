@@ -39,6 +39,7 @@ class Options:
             "--times", type=int, default=1, help="number of times to run the experiment"
         )
         parser.add_argument("--prev", type=int, default=0, help="revious Running times")
+        parser.add_argument("--num_workers", type=int, default=4)
         parser.add_argument(
             "--device", type=str, default="cuda", choices=["cpu", "cuda"], help="device"
         )
@@ -129,7 +130,7 @@ class Options:
         parser.add_argument(
             "--iterations",
             type=int,
-            default=2,
+            default=10,
             help="number of global rounds in federated learning",
         )
         parser.add_argument(
@@ -167,7 +168,7 @@ class Options:
         parser.add_argument(
             "--epochs",
             type=int,
-            default=6,
+            default=1,
             help="Multiple update steps in one iteration",
         )
         parser.add_argument(

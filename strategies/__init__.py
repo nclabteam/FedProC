@@ -41,4 +41,3 @@ globals().update(strategies)
 # Optionally, define __all__ to control what gets imported with "from strategies import *"
 __all__ = list(strategies.keys())
 STRATEGIES = list(strategies.keys())
-print(f"{STRATEGIES = }")

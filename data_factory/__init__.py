@@ -31,4 +31,3 @@ for filename in os.listdir(current_dir):
                 DATASETS.append(name)
 
 __all__ = DATASETS
-print(f"{DATASETS = }")

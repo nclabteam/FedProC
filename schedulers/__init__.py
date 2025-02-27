@@ -41,4 +41,3 @@ globals().update(schedulers)
 # Optionally, define __all__ to control what gets imported with "from strategies import *"
 __all__ = list(schedulers.keys())
 SCHEDULERS = list(schedulers.keys())
-print(f"{SCHEDULERS = }")

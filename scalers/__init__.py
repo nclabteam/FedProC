@@ -31,4 +31,3 @@ for filename in os.listdir(current_dir):
                 SCALERS.append(name)
 
 __all__ = SCALERS
-print(f"{SCALERS = }")

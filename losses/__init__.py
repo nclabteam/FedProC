@@ -32,7 +32,6 @@ for filename in os.listdir(current_dir):
                 LOSSES.append(name)
 
 __all__ = LOSSES
-print(f"{LOSSES = }")
 
 
 def evaluation_result(y_pred, y_true):

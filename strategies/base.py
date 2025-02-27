@@ -1,10 +1,13 @@
 import copy
 import json
 import logging
+import multiprocessing
 import os
 import sys
 import time
 from argparse import Namespace
+from collections import deque
+from functools import partial
 
 import numpy as np
 import polars as pl
@@ -372,6 +375,24 @@ class Server(SharedMethods):
 
         return True
 
+    def _compute_generalization_loss(self, client, dataset_type, model):
+        """
+        Compute the loss for a single client. This will be executed in parallel.
+
+        Parameters:
+        - client: Client object
+        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        - model: model being evaluated
+        """
+        return np.mean(
+            self.calculate_loss(
+                model=model,
+                dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                criterion=client.loss,
+                device=client.device,
+            )
+        )
+
     def evaluate_generalization_loss(self, dataset_type):
         """
         Generalized function to evaluate loss for a given dataset type and loss method.
@@ -379,25 +400,19 @@ class Server(SharedMethods):
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        if self.parallel:
-
-            @ray.remote(num_gpus=1)
-            def compute_client_loss(client, model):
-                return np.mean(
-                    self.calculate_loss(
-                        model=model,
-                        dataloader=getattr(client, f"load_{dataset_type}_data")(),
-                        criterion=client.loss,
-                        device=client.device,
-                    )
+        if self.num_workers > 1:
+            # Create a pool of processes
+            with multiprocessing.Pool(processes=self.num_workers) as pool:
+                # Prepare the partial function with the necessary arguments
+                func = partial(
+                    self._compute_generalization_loss,
+                    dataset_type=dataset_type,
+                    model=self.model,
                 )
 
-            losses = ray.get(
-                [
-                    compute_client_loss.remote(client, self.model)
-                    for client in self.clients
-                ]
-            )
+                # Run the function in parallel for each client
+                losses = pool.map(func, self.clients)
+
         else:
             losses = [
                 np.mean(
@@ -417,30 +432,37 @@ class Server(SharedMethods):
             f"Generalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
 
+    def _compute_personalization_loss(self, client, dataset_type):
+        """
+        Compute the loss for a single client.
+
+        Parameters:
+        - client: Client object
+        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        """
+        return getattr(client, f"get_{dataset_type}_loss")()
+
     def evaluate_personalization_loss(self, dataset_type):
         """
-        Generalized function to evaluate personalization loss for a given dataset type.
+        Generalized function to evaluate personalization loss for a given dataset type using multiprocessing.
 
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        if self.parallel:
-
-            @ray.remote(num_gpus=1)
-            def compute_client_loss(client, dataset_type):
-                return getattr(client, f"get_{dataset_type}_loss")()
-
-            losses = ray.get(
-                [
-                    compute_client_loss.remote(client, dataset_type)
-                    for client in self.clients
-                ]
-            )
+        if self.num_workers > 1:
+            # Use multiprocessing Pool to parallelize the loss computation
+            with multiprocessing.Pool(processes=self.num_workers) as pool:
+                losses = pool.starmap(
+                    self._compute_personalization_loss,
+                    [(client, dataset_type) for client in self.clients],
+                )
         else:
+            # Non-parallel version
             losses = [
                 getattr(client, f"get_{dataset_type}_loss")() for client in self.clients
             ]
 
+        # Calculate and log the average personalization loss
         metric_name = f"personal_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(np.mean(losses))
         self.logger.info(
@@ -463,23 +485,48 @@ class Server(SharedMethods):
 
     def train_clients(self):
         if self.parallel:
-            results = ray.get(
-                [
-                    ray.remote(num_gpus=1)(lambda obj: obj.train()).remote(cl)
-                    for cl in self.selected_clients
-                ]
-            )
-            for result in results:
-                client = self.clients[result["id"]]
-                client.update_model_params(old=client.model, new=result["model"])
-                client.update_optimizer_params(
-                    old=client.optimizer, new=result["optimizer"]
-                )
-                client.metrics["train_time"].append(result["train_time"])
-                client.train_samples = result["train_samples"]
+            i = 0
+            futures = []
+            idle_workers = deque(range(self.num_workers))
+            job_map = {}
+            client_packages = {}
+
+            while i < len(self.selected_clients) or len(futures) > 0:
+                while i < len(self.selected_clients) and len(idle_workers) > 0:
+                    worker_id = idle_workers.popleft()
+                    client = self.selected_clients[i]
+
+                    # Parallelize the `train()` method using Ray
+                    future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
+                        lambda cl: cl.train()
+                    ).remote(client)
+
+                    job_map[future] = (client, worker_id)
+                    futures.append(future)
+                    i += 1
+
+                if len(futures) > 0:
+                    all_finished, futures = ray.wait(futures)
+                    for finished in all_finished:
+                        client, worker_id = job_map[finished]
+                        client_package = ray.get(finished)
+                        idle_workers.append(worker_id)
+                        client_packages[client] = client_package
+
+                        # Update client model & optimizer (since clients are normal Python objects)
+                        client.update_model_params(
+                            old=client.model, new=client_package["model"]
+                        )
+                        client.update_optimizer_params(
+                            old=client.optimizer, new=client_package["optimizer"]
+                        )
+                        client.metrics["train_time"].append(
+                            client_package["train_time"]
+                        )
+                        client.train_samples = client_package["train_samples"]
 
         else:
-            [client.train() for client in self.selected_clients]
+            [client.train() for client in self.selected_clients]  # Serial execution
 
     def fix_results(self):
         super().fix_results(default=self.default_value)

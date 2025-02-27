@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import multiprocessing
 import os
 import sys
 import time
@@ -16,6 +17,7 @@ if ROOT not in sys.path:
 ROOT = os.path.relpath(ROOT, os.getcwd())  # relative
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn")
     options = Options(root=ROOT).parse_options()
     options.fix_args()
     dataset = getattr(__import__("data_factory"), options.args.dataset)(

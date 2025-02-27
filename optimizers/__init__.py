@@ -41,4 +41,3 @@ globals().update(optimizers)
 # Optionally, define __all__ to control what gets imported with "from strategies import *"
 __all__ = list(optimizers.keys())
 OPTIMIZERS = list(optimizers.keys())
-print(f"{OPTIMIZERS = }")
