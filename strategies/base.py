@@ -400,7 +400,7 @@ class Server(SharedMethods):
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        if self.num_workers > 1:
+        if 1 < self.num_workers < self.num_clients:
             # Create a pool of processes
             with multiprocessing.Pool(processes=self.num_workers) as pool:
                 # Prepare the partial function with the necessary arguments
@@ -449,7 +449,7 @@ class Server(SharedMethods):
         Parameters:
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
-        if self.num_workers > 1:
+        if 1 < self.num_workers < self.num_clients:
             # Use multiprocessing Pool to parallelize the loss computation
             with multiprocessing.Pool(processes=self.num_workers) as pool:
                 losses = pool.starmap(
