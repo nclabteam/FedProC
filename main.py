@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import multiprocessing
 import os
+import shutil
 import sys
 import time
 from collections import defaultdict
@@ -36,6 +37,13 @@ if __name__ == "__main__":
     options.display()
     options.save()
     args = options.args
+
+    # Copy dataset info
+    shutil.copyfile(
+        os.path.join(args.dataset_path, "info.json"),
+        os.path.join(args.save_path, "info.json"),
+    )
+
     time_per_experiment = []
     stats = defaultdict(lambda: {"min": [], "max": []})
 
