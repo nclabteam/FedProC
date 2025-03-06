@@ -15,11 +15,13 @@ class BaseScaler:
     def inverse_transform(self, data):
         return data
 
-    def divide_no_nan(self, a, b):
+    @staticmethod
+    def divide_no_nan(a, b):
         """
         a/b where the resulted NaN or Inf are replaced by 0.
         """
-        result = a / b
-        result[result != result] = 0.0
-        result[result == np.inf] = 0.0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            result = a / b
+            result[np.isnan(result)] = 0.0
+            result[np.isinf(result)] = 0.0
         return result
