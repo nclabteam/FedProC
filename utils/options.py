@@ -111,6 +111,7 @@ class Options:
             choices=SCALERS,
             help="data normalization method",
         )
+        parser.add_argument("--train_ratio", type=float, default=0.8, help="batch size")
 
         # server
         parser.add_argument(

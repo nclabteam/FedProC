@@ -265,8 +265,6 @@ class Server(SharedMethods):
 
         self.metrics = {
             "time_per_iter": [],
-            "global_avg_valid_loss": [],
-            "personal_avg_valid_loss": [],
             "global_avg_train_loss": [],
             "personal_avg_train_loss": [],
             "global_avg_test_loss": [],
@@ -344,9 +342,9 @@ class Server(SharedMethods):
 
     def save_best_model(self):
         metric = (
-            self.metrics["personal_avg_valid_loss"]
+            self.metrics["personal_avg_test_loss"]
             if self.save_local_model
-            else self.metrics["global_avg_valid_loss"]
+            else self.metrics["global_avg_test_loss"]
         )
         if metric[-1] != min(metric):
             return
@@ -357,23 +355,10 @@ class Server(SharedMethods):
             client.save_model(postfix="best")
 
     def early_stopping(self):
-        metric = (
-            self.metrics["personal_avg_valid_loss"]
-            if self.save_local_model
-            else self.metrics["global_avg_valid_loss"]
-        )
-        if not self.patience or len(metric) < self.patience:
+        if not self.patience:
             return False
-
-        min_val = min(metric[-self.patience :])
-        latest_val = metric[-1]
-
-        if abs(latest_val - min_val) > 0.0001:
-            patience_val = self.patience - len(metric) + metric.index(min(metric))
-            self.logger.info(f"Patience: {patience_val:.4f}")
-            return False
-
-        return True
+        else:
+            raise NotImplementedError
 
     def _compute_generalization_loss(self, client, dataset_type, model):
         """
@@ -438,7 +423,7 @@ class Server(SharedMethods):
 
         Parameters:
         - client: Client object
-        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        - dataset_type: str, type of dataset ('train', 'test')
         """
         return getattr(client, f"get_{dataset_type}_loss")()
 
@@ -447,7 +432,7 @@ class Server(SharedMethods):
         Generalized function to evaluate personalization loss for a given dataset type using multiprocessing.
 
         Parameters:
-        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        - dataset_type: str, type of dataset ('train', 'test')
         """
         if 1 < self.num_workers < self.num_clients:
             # Use multiprocessing Pool to parallelize the loss computation
@@ -475,7 +460,7 @@ class Server(SharedMethods):
             f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
         )
         if self.current_iter % self.eval_gap == 0:
-            for dataset_type in ["train", "valid", "test"]:
+            for dataset_type in ["train", "test"]:
                 # Generalization loss evaluation
                 self.evaluate_generalization_loss(dataset_type)
                 # Personalization loss evaluation
@@ -701,7 +686,6 @@ class Client(SharedMethods):
         self.metrics = {
             "train_time": [],
             "send_time": [],
-            "val_loss": [],
             "train_loss": [],
             "test_loss": [],
             "send_mb": [],
@@ -709,7 +693,6 @@ class Client(SharedMethods):
 
     def initialize_data_paths(self):
         self.train_file = os.path.join(self.dataset_path, "train", f"{self.id}.npz")
-        self.valid_file = os.path.join(self.dataset_path, "valid", f"{self.id}.npz")
         self.test_file = os.path.join(self.dataset_path, "test", f"{self.id}.npz")
 
     def initialize_scaler(self):
@@ -753,17 +736,6 @@ class Client(SharedMethods):
         self.test_samples = len(testloader.dataset)
         return testloader
 
-    def load_valid_data(self, sample_ratio=1.0, shuffle=False):
-        validloader = self.load_data(
-            file=self.valid_file,
-            sample_ratio=sample_ratio,
-            shuffle=shuffle,
-            scaler=self.scaler,
-            batch_size=self.batch_size,
-        )
-        self.valid_samples = len(validloader.dataset)
-        return validloader
-
     def train(self):
         train_loader = self.load_train_data()
         start_time = time.time()
@@ -786,17 +758,6 @@ class Client(SharedMethods):
                 "train_samples": self.train_samples,
             }
         self.metrics["train_time"].append(train_time)
-
-    def get_valid_loss(self):
-        losses = self.calculate_loss(
-            model=self.model,
-            dataloader=self.load_valid_data(),
-            criterion=self.loss,
-            device=self.device,
-        )
-        losses = np.mean(losses)
-        self.metrics["val_loss"].append(losses)
-        return losses
 
     def get_train_loss(self):
         losses = self.calculate_loss(

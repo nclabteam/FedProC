@@ -4,7 +4,6 @@ import os
 import re
 import time
 import zipfile
-from decimal import Decimal
 
 import numpy as np
 import polars as pl
@@ -21,7 +20,7 @@ class BaseDataset:
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.offset_len = configs.offset_len
-        self.split_ratio = (0.7, 0.1, 0.2)
+        self.train_ratio = configs.train_ratio
         self.num_prev_clients = num_prev_clients
         self.clients = []
 
@@ -148,7 +147,7 @@ class BaseDataset:
         before, after, unit = self._memory_unit_conversion(before, after)
 
         print(
-            f"Reduced {data_type} memory usage from {before:.4f} {unit} to {after:.4f} {unit} ({reduction_str})"
+            f"{data_type} memory usage: {before:.4f} {unit} ⇒ {after:.4f} {unit} ({reduction_str})"
         )
 
     @staticmethod
@@ -369,9 +368,14 @@ class BaseDataset:
         name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
         self.path_save = os.path.join(self.save_path, name)
         self.path_train = os.path.join(self.path_save, "train")
-        self.path_valid = os.path.join(self.path_save, "valid")
+        # self.path_valid = os.path.join(self.path_save, "valid")
         self.path_test = os.path.join(self.path_save, "test")
-        for path in [self.path_save, self.path_train, self.path_valid, self.path_test]:
+        for path in [
+            self.path_save,
+            self.path_train,
+            #  self.path_valid,
+            self.path_test,
+        ]:
             if not os.path.exists(path):
                 os.makedirs(path)
         self.path_info = os.path.join(self.path_save, "info.json")
@@ -379,7 +383,7 @@ class BaseDataset:
     def get_config(self):
         """Constructs the configuration dictionary."""
         return {
-            "split_ratio": list(self.split_ratio),
+            "train_ratio": self.train_ratio,
             "seq_len": self.seq_len,
             "pred_len": self.pred_len,
             "offset_len": self.offset_len,
@@ -417,7 +421,6 @@ class BaseDataset:
 
     def fix_params(self):
         self.granularity_unit = self.convert_granularity_unit(self.granularity_unit)
-        self.split_ratio_fix = [Decimal(ratio) for ratio in self.split_ratio]
         self.column_used = list(set(self.column_train) | set(self.column_target))
 
     def fill_date(
@@ -550,6 +553,7 @@ class BaseDataset:
         return x, y
 
     def correct_indices(self, df):
+        dates = df[self.column_date].to_list()
         if self.total_null != 0:
             temp = self.sliding_window(
                 df=df,
@@ -560,44 +564,32 @@ class BaseDataset:
             start_day_x = temp[self.column_date].to_list()
             if len(start_day_x) < 10:
                 return []  # Skip processing if not enough data points
-            split_indices = [0] + [
-                int(len(start_day_x) * sum(self.split_ratio_fix[:i]))
-                for i in range(1, len(self.split_ratio_fix))
-            ]
+            split_indices = [0, int(len(start_day_x) * self.train_ratio)]
+
         else:
-            total_samples = len(df)
-            train_end = int(total_samples * self.split_ratio[0])
-            val_end = train_end + int(total_samples * self.split_ratio[1]) + 1
-            split_indices = [0, train_end, val_end]
-            start_day_x = df[self.column_date].to_list()
-        res = [start_day_x[idx] for idx in split_indices] + df[
-            self.column_date
-        ].to_list()[-1:]
-        return [
-            [res[0], res[1]],
-            [
-                df[self.column_date].to_list()[
-                    df.with_row_count()
-                    .filter(pl.col(self.column_date) == res[1])
-                    .select("row_nr")
-                    .to_numpy()
-                    .flatten()[0]
-                    + 1
-                ],
-                res[2],
-            ],
-            [
-                df[self.column_date].to_list()[
-                    df.with_row_count()
-                    .filter(pl.col(self.column_date) == res[2])
-                    .select("row_nr")
-                    .to_numpy()
-                    .flatten()[0]
-                    + 1
-                ],
-                res[3],
-            ],
-        ]
+            s = len(df) - (self.seq_len + self.offset_len + self.pred_len)
+            split_indices = [0, int(s * self.train_ratio)]
+            start_day_x = dates
+
+        res = [start_day_x[idx] for idx in split_indices]
+        res.append(dates[-1])
+
+        fres = [[res[0], res[1]]]
+        for i in range(1, len(res) - 1):
+            fres.append(
+                [
+                    dates[
+                        df.with_row_count()
+                        .filter(pl.col(self.column_date) == res[1])
+                        .select("row_nr")
+                        .to_numpy()
+                        .flatten()[0]
+                        + 1
+                    ],
+                    res[i + 1],
+                ]
+            )
+        return fres
 
     def reduce_polars_df(self, df, info=False):
         before = df.estimated_size()
@@ -698,15 +690,12 @@ class BaseDataset:
                 "stats": {"raw": raw_stats},
                 "paths": {
                     "train": {},
-                    "valid": {},
                     "test": {},
                 },
                 "date": {},
                 "samples": {},
             }
-            for split_name, (start, end) in zip(
-                ["train", "valid", "test"], split_indices
-            ):
+            for split_name, (start, end) in zip(["train", "test"], split_indices):
                 split_df = self.subdf_from_indices(
                     df=df, date_column=self.column_date, start=start, end=end
                 )
