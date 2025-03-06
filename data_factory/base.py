@@ -626,6 +626,8 @@ class BaseDataset:
 
             # read file
             df = self.read(path)
+            if df is None:
+                continue
 
             # prepossess data
             df = self.prepossess(df)
