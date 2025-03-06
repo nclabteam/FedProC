@@ -127,99 +127,101 @@ class BaseDataset:
 
         return pl.DataFrame(selected_features)
 
-    def dir(self):
-        if not os.path.exists(self.path_raw):
-            raise FileNotFoundError(f"Path '{self.path_raw}' not found")
+    @staticmethod
+    def subdf_from_indices(df, date_column, start, end):
+        return df.filter((pl.col(date_column) >= start) & (pl.col(date_column) < end))
 
-        name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
-        self.path_save = os.path.join(self.save_path, name)
-        self.path_train = os.path.join(self.path_save, "train")
-        self.path_valid = os.path.join(self.path_save, "valid")
-        self.path_test = os.path.join(self.path_save, "test")
-        for path in [self.path_save, self.path_train, self.path_valid, self.path_test]:
-            if not os.path.exists(path):
-                os.makedirs(path)
-        self.path_info = os.path.join(self.path_save, "info.json")
+    @staticmethod
+    def _memory_unit_conversion(before, after):
+        units = ["bytes", "KB", "MB", "GB", "TB", "PB"]
+        unit_index = 0
 
-    def get_config(self):
-        """Constructs the configuration dictionary."""
-        return {
-            "split_ratio": list(self.split_ratio),
-            "seq_len": self.seq_len,
-            "pred_len": self.pred_len,
-            "offset_len": self.offset_len,
-            "column_date": self.column_date,
-            "column_target": self.column_target,
-            "column_train": self.column_train,
-            "granularity": self.granularity,
-            "granularity_unit": self.granularity_unit,
-            "clients": self.clients,
-        }
+        while before >= 1024 and unit_index < len(units) - 1:
+            before /= 1024
+            after /= 1024
+            unit_index += 1
 
-    def save_info(self):
-        """Saves the configuration to a file."""
-        self.info = self.get_config()
-        with open(self.path_info, "w") as f:
-            json.dump(self.info, f, indent=4)
+        return before, after, units[unit_index]
 
-    def check(self):
-        """Checks if the saved configuration matches the current settings, excluding 'clients'."""
-        if os.path.exists(self.path_info):
-            with open(self.path_info, "r") as f:
-                config = json.load(f)
+    def _print_info(self, before, after, data_type):
+        reduction = 100.0 * (before - after) / before
+        reduction_str = f"{reduction:.2f}% reduction"
+        before, after, unit = self._memory_unit_conversion(before, after)
 
-            # Get configurations excluding 'clients' for comparison
-            current_config = {
-                k: v for k, v in self.get_config().items() if k != "clients"
-            }
-            saved_config = {k: v for k, v in config.items() if k != "clients"}
-
-            if current_config == saved_config:
-                # If the configurations match (excluding 'clients'), set self.info
-                self.info = config
-                return True
-        return False
-
-    def fix_params(self):
-        self.granularity_unit = self.convert_granularity_unit(self.granularity_unit)
-
-        self.split_ratio_fix = [Decimal(ratio) for ratio in self.split_ratio]
-
-        self.column_used = copy.deepcopy(self.column_train)
-        for col in self.column_target:
-            if col not in self.column_used:
-                self.column_used.append(col)
-        self.lag_window = self.seq_len + self.offset_len + self.pred_len
-
-    def fill_date(
-        self,
-        df: pl.DataFrame,
-        column_date: str,
-        start=None,
-        end=None,
-        granularity: str = "1d",
-    ) -> pl.DataFrame:
-        if not start:
-            start = df[column_date].min()
-        if not end:
-            end = df[column_date].max()
-        return df.join(
-            other=self.reduce_polars_df(
-                df=pl.datetime_range(
-                    start=start,
-                    end=end,
-                    interval=granularity,
-                    closed="both",
-                    eager=True,
-                )
-                .alias(self.column_date)
-                .to_frame(),
-                info=False,
-            ),
-            on=column_date,
-            how="full",
-            coalesce=True,
+        print(
+            f"Reduced {data_type} memory usage from {before:.4f} {unit} to {after:.4f} {unit} ({reduction_str})"
         )
+
+    @staticmethod
+    def _cast_to_optimal_type(c_min, c_max, current_type):
+        numeric_int_types = [np.int8, np.int16, np.int32, np.int64]
+        numeric_float_types = [np.float16, np.float32, np.float64]
+        """Find the smallest numeric type that fits the given range."""
+        dtype_list = numeric_int_types if current_type == "int" else numeric_float_types
+        for dtype in dtype_list:
+            if np.can_cast(c_min, dtype) and np.can_cast(c_max, dtype):
+                return dtype
+        return None
+
+    @staticmethod
+    def sliding_window(df, seq_len, offset_len, pred_len):
+        cols = df.columns
+        lag_window = seq_len + offset_len + pred_len
+        for i in range(1, lag_window):
+            for col in cols:
+                if seq_len - 1 < i and i <= (seq_len - 1 + offset_len):
+                    continue
+                name = f"{col}_ahead_{i}"
+                df = df.with_columns(pl.col(col).shift(-i).alias(name))
+        df = df.drop_nulls()
+        return df
+
+    @staticmethod
+    def download_and_extract(url, save_path):
+        response = requests.get(url)
+        response.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
+            zip_ref.extractall(save_path)
+
+    @staticmethod
+    def download_file(url, save_path):
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(save_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=1024):
+                    f.write(chunk)
+        else:
+            print(f"Failed to download {url} (Status Code: {response.status_code})")
+
+    @staticmethod
+    def split_column_into_files(
+        df, path, station_column, date_column=None, remove_station_column=True
+    ):
+        for station in df[station_column].unique().to_list():
+            sdf = df.filter(df[station_column] == station)
+            sdf = sdf.sort(date_column) if date_column else sdf
+            sdf = sdf.drop(station_column) if remove_station_column else sdf
+            sdf.write_csv(os.path.join(path, f"{station}.csv"))
+
+    @staticmethod
+    def split_columns_into_files(df, path, date_column, new_column_name="Value"):
+        cols = df.columns
+        cols.remove(date_column)
+        for idx, col in enumerate(cols):
+            if col == date_column:
+                continue
+            sdf = df.select([date_column, col])
+            sdf = sdf.rename({col: new_column_name})
+            sdf.write_csv(os.path.join(path, f"{idx}.csv"))
+
+    @staticmethod
+    def read(path):
+        try:
+            df = pl.read_csv(path, try_parse_dates=True)
+            return df
+        except pl.exceptions.NoDataError:
+            print(f"Empty file: {path}")
+            return None
 
     @staticmethod
     def get_transition_value(df: pl.DataFrame):
@@ -361,6 +363,94 @@ class BaseDataset:
 
         return pl.DataFrame([trend_results, seasonal_results])
 
+    def dir(self):
+        if not os.path.exists(self.path_raw):
+            raise FileNotFoundError(f"Path '{self.path_raw}' not found")
+
+        name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
+        self.path_save = os.path.join(self.save_path, name)
+        self.path_train = os.path.join(self.path_save, "train")
+        self.path_valid = os.path.join(self.path_save, "valid")
+        self.path_test = os.path.join(self.path_save, "test")
+        for path in [self.path_save, self.path_train, self.path_valid, self.path_test]:
+            if not os.path.exists(path):
+                os.makedirs(path)
+        self.path_info = os.path.join(self.path_save, "info.json")
+
+    def get_config(self):
+        """Constructs the configuration dictionary."""
+        return {
+            "split_ratio": list(self.split_ratio),
+            "seq_len": self.seq_len,
+            "pred_len": self.pred_len,
+            "offset_len": self.offset_len,
+            "column_date": self.column_date,
+            "column_target": self.column_target,
+            "column_train": self.column_train,
+            "granularity": self.granularity,
+            "granularity_unit": self.granularity_unit,
+            "clients": self.clients,
+        }
+
+    def save_info(self):
+        """Saves the configuration to a file."""
+        self.info = self.get_config()
+        with open(self.path_info, "w") as f:
+            json.dump(self.info, f, indent=4)
+
+    def check(self):
+        """Checks if the saved configuration matches the current settings, excluding 'clients'."""
+        if os.path.exists(self.path_info):
+            with open(self.path_info, "r") as f:
+                config = json.load(f)
+
+            # Get configurations excluding 'clients' for comparison
+            current_config = {
+                k: v for k, v in self.get_config().items() if k != "clients"
+            }
+            saved_config = {k: v for k, v in config.items() if k != "clients"}
+
+            if current_config == saved_config:
+                # If the configurations match (excluding 'clients'), set self.info
+                self.info = config
+                return True
+        return False
+
+    def fix_params(self):
+        self.granularity_unit = self.convert_granularity_unit(self.granularity_unit)
+        self.split_ratio_fix = [Decimal(ratio) for ratio in self.split_ratio]
+        self.column_used = list(set(self.column_train) | set(self.column_target))
+
+    def fill_date(
+        self,
+        df: pl.DataFrame,
+        column_date: str,
+        start=None,
+        end=None,
+        granularity: str = "1d",
+    ) -> pl.DataFrame:
+        if not start:
+            start = df[column_date].min()
+        if not end:
+            end = df[column_date].max()
+        return df.join(
+            other=self.reduce_polars_df(
+                df=pl.datetime_range(
+                    start=start,
+                    end=end,
+                    interval=granularity,
+                    closed="both",
+                    eager=True,
+                )
+                .alias(self.column_date)
+                .to_frame(),
+                info=False,
+            ),
+            on=column_date,
+            how="full",
+            coalesce=True,
+        )
+
     def get_statistic(self, df: pl.DataFrame):
         statistics = (
             df.select(
@@ -426,7 +516,12 @@ class BaseDataset:
 
     def split_x_y(self, df, x_used_cols, y_used_cols):
         ori_cols = df.columns
-        df = self.sliding_window(df)
+        df = self.sliding_window(
+            df=df,
+            seq_len=self.seq_len,
+            offset_len=self.offset_len,
+            pred_len=self.pred_len,
+        )
         idx = len(ori_cols) * self.seq_len
 
         x = df.select(pl.nth(range(0, idx)))
@@ -455,20 +550,14 @@ class BaseDataset:
 
         return x, y
 
-    def sliding_window(self, df):
-        cols = df.columns
-        for i in range(1, self.lag_window):
-            for col in cols:
-                if self.seq_len - 1 < i and i <= (self.seq_len - 1 + self.offset_len):
-                    continue
-                name = f"{col}_ahead_{i}"
-                df = df.with_columns(pl.col(col).shift(-i).alias(name))
-        df = df.drop_nulls()
-        return df
-
     def correct_indices(self, df):
         if self.total_null != 0:
-            temp = self.sliding_window(df)
+            temp = self.sliding_window(
+                df=df,
+                seq_len=self.seq_len,
+                offset_len=self.offset_len,
+                pred_len=self.pred_len,
+            )
             start_day_x = temp[self.column_date].to_list()
             if len(start_day_x) < 10:
                 return []  # Skip processing if not enough data points
@@ -510,45 +599,6 @@ class BaseDataset:
                 res[3],
             ],
         ]
-
-    @staticmethod
-    def subdf_from_indices(df, date_column, start, end):
-        return df.filter((pl.col(date_column) >= start) & (pl.col(date_column) < end))
-
-    @staticmethod
-    def _memory_unit_conversion(before, after):
-        units = ["bytes", "KB", "MB", "GB", "TB", "PB"]
-        unit_index = 0
-
-        while before >= 1024 and unit_index < len(units) - 1:
-            before /= 1024
-            after /= 1024
-            unit_index += 1
-
-        return before, after, units[unit_index]
-
-    def _print_info(self, before, after, data_type):
-        reduction = 100.0 * (before - after) / before
-        reduction_str = f"{reduction:.2f}% reduction"
-        before, after, unit = self._memory_unit_conversion(before, after)
-
-        print(
-            f"Reduced {data_type} memory usage from {before:.4f} {unit} to {after:.4f} {unit} ({reduction_str})"
-        )
-
-    def _cast_to_optimal_type(self, c_min, c_max, current_type):
-        self.numeric_int_types = [np.int8, np.int16, np.int32, np.int64]
-        self.numeric_float_types = [np.float16, np.float32, np.float64]
-        """Find the smallest numeric type that fits the given range."""
-        dtype_list = (
-            self.numeric_int_types
-            if current_type == "int"
-            else self.numeric_float_types
-        )
-        for dtype in dtype_list:
-            if np.can_cast(c_min, dtype) and np.can_cast(c_max, dtype):
-                return dtype
-        return None
 
     def reduce_polars_df(self, df, info=False):
         before = df.estimated_size()
@@ -593,14 +643,6 @@ class BaseDataset:
         if info:
             self._print_info(before, df.estimated_size(), "Polars DataFrame")
         return df
-
-    def read(self, path):
-        try:
-            df = pl.read_csv(path, try_parse_dates=True)
-            return df
-        except pl.exceptions.NoDataError:
-            print(f"Empty file: {path}")
-            return None
 
     def prepossess(self, df):
         df = self.reduce_polars_df(df=df, info=True)
@@ -729,23 +771,6 @@ class BaseDataset:
 
     def download(self):
         pass
-
-    @staticmethod
-    def download_and_extract(url, save_path):
-        response = requests.get(url)
-        response.raise_for_status()
-        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(save_path)
-
-    @staticmethod
-    def download_file(url, save_path):
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(save_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    f.write(chunk)
-        else:
-            print(f"Failed to download {url} (Status Code: {response.status_code})")
 
     def execute(self):
         if not os.path.exists(self.path_raw):

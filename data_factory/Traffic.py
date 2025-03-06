@@ -57,9 +57,9 @@ class Traffic(BaseDataset):
         df = df.with_columns(pl.Series(self.column_date, datetime_series))
 
         # Save the dataset
-        for idx, col in enumerate(df.columns):
-            if col == self.column_date:
-                continue
-            sdf = df.select([self.column_date, col])
-            sdf = sdf.rename({col: "Value"})
-            sdf.write_csv(os.path.join(self.path_raw, f"{idx}.csv"))
+        self.split_columns_into_files(
+            df=df,
+            path=self.path_raw,
+            date_column=self.column_date,
+            new_column_name="Value",
+        )

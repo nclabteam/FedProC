@@ -50,7 +50,12 @@ class COVID19Cases(BaseDataset):
         self.download_file(url=self.url, save_path=file_path)
 
         df = pl.read_excel(file_path)
-        for state in df[self.segmentation].unique().to_list():
-            sdf = df.filter(df[self.segmentation] == state)
-            sdf = sdf.drop(self.segmentation)
-            sdf.write_csv(os.path.join(self.path_raw, f"{state}.csv"))
+
+        # Save the data
+        self.split_column_into_files(
+            df=df,
+            path=self.path_raw,
+            station_column=self.segmentation,
+            date_column=self.column_date,
+            remove_station_column=True,
+        )

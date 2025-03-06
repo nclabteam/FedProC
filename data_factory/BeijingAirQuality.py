@@ -62,7 +62,8 @@ class BeijingAirQuality(BaseDataset):
             dst=self.path_raw,
         )
 
-    def read(self, path):
+    @staticmethod
+    def read(path):
         try:
             df = pl.read_csv(
                 path,

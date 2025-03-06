@@ -157,20 +157,10 @@ class PeMSSF(BaseDataset):
             df = df.filter(pl.col(self.column_date) < holiday).vstack(df_shifted)
 
         # Split into stations
-        self.split_into_files(
+        self.split_column_into_files(
             df=df,
             path=self.path_raw,
             station_column="station",
             date_column=self.column_date,
             remove_station_column=True,
         )
-
-    @staticmethod
-    def split_into_files(
-        df, path, station_column, date_column=None, remove_station_column=True
-    ):
-        for station in df[station_column].unique().to_list():
-            sdf = df.filter(df[station_column] == station)
-            sdf = sdf.sort(date_column) if date_column else sdf
-            sdf = sdf.drop(station_column) if remove_station_column else sdf
-            sdf.write_csv(os.path.join(path, f"{station}.csv"))

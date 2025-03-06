@@ -32,11 +32,11 @@ class ElectricityLoadDiagrams(BaseDataset):
         df = pl.DataFrame(df).with_columns(
             pl.col(self.column_date).str.to_datetime("%Y-%m-%d %H:%M:%S")
         )
-        cnt = 0
-        for col in df.columns:
-            if col == self.column_date:
-                continue
-            sdf = df.select([self.column_date, col])
-            sdf = sdf.rename({col: "Value"})
-            sdf.write_csv(os.path.join(self.path_raw, f"{cnt}.csv"))
-            cnt += 1
+
+        # Save the data
+        self.split_columns_into_files(
+            df=df,
+            path=self.path_raw,
+            date_column=self.column_date,
+            new_column_name="Value",
+        )

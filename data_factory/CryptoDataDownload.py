@@ -56,7 +56,8 @@ class CryptoDataDownloadDay(BaseDataset):
             day_save_path = os.path.join(self.path_raw, f"Binance_{symbol}_d.csv")
             self.download_file(url=day_url, save_path=day_save_path)
 
-    def read(self, path):
+    @staticmethod
+    def read(path):
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
             return df
