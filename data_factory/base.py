@@ -562,14 +562,16 @@ class BaseDataset:
                 pred_len=self.pred_len,
             )
             start_day_x = temp[self.column_date].to_list()
-            if len(start_day_x) < 10:
-                return []  # Skip processing if not enough data points
             split_indices = [0, int(len(start_day_x) * self.train_ratio)]
 
         else:
-            s = len(df) - (self.seq_len + self.offset_len + self.pred_len)
+            s = len(df)
             split_indices = [0, int(s * self.train_ratio)]
             start_day_x = dates
+
+        # Skip processing if not enough data points
+        if len(start_day_x) < 10:
+            return []
 
         res = [start_day_x[idx] for idx in split_indices]
         res.append(dates[-1])
