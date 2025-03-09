@@ -461,6 +461,8 @@ class Server(SharedMethods):
         )
         if self.current_iter % self.eval_gap == 0:
             for dataset_type in ["train", "test"]:
+                if dataset_type == "train" and self.skip_eval_train:
+                    continue
                 # Generalization loss evaluation
                 self.evaluate_generalization_loss(dataset_type)
                 # Personalization loss evaluation

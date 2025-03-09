@@ -154,6 +154,9 @@ class Options:
         parser.add_argument(
             "-eg", "--eval_gap", type=int, default=1, help="Rounds gap for evaluation"
         )
+        parser.add_argument(
+            "--skip_eval_train", action="store_true", default=False
+        )
 
         # client
         parser.add_argument(
