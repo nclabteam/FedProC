@@ -6,6 +6,9 @@ compulsory = {
 
 
 class LocalOnly(Server):
+    def initialize_model(self):
+        pass
+
     def receive_from_clients(self):
         pass
 
@@ -20,6 +23,10 @@ class LocalOnly(Server):
 
     def evaluate_generalization_loss(self, *args, **kwargs):
         pass
+
+    def get_model_info(self):
+        for client in self.clients:
+            client.summarize_model(dataloader=client.load_train_data())
 
 
 class LocalOnly_Client(Client):

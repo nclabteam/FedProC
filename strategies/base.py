@@ -273,8 +273,14 @@ class Server(SharedMethods):
         }
 
         self.make_logger(name=self.name, path=self.log_path)
-        self.initialize_model()
         self.initialize_clients()
+        self.configs.__dict__["input_channels"] = self.clients[0].private_data[
+            "input_channels"
+        ]
+        self.configs.__dict__["output_channels"] = self.clients[0].private_data[
+            "output_channels"
+        ]
+        self.initialize_model()
         self.get_model_info()
 
     def select_clients(self):

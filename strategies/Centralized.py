@@ -15,13 +15,6 @@ class Centralized(Server):
         self.receive_from_clients()
         self.fix_results()
 
-        self.configs.__dict__["input_channels"] = self.clients[0].private_data[
-            "input_channels"
-        ]
-        self.configs.__dict__["output_channels"] = self.clients[0].private_data[
-            "output_channels"
-        ]
-
     def train_clients(self):
         if self.parallel:  # Use parallel execution with Ray
             futures = []

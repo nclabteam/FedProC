@@ -24,11 +24,12 @@ if __name__ == "__main__":
             datum["input_len"] = j["input_len"]
             datum["output_len"] = j["output_len"]
             datum["strategy"] = j["strategy"]
+            datum["save_local_model"] = j["save_local_model"]
             nc = j["num_clients"]
 
         df = pl.read_csv(p)
-
-        if datum["strategy"] != "Centralized":
+        print(datum)
+        if datum["save_local_model"]:
             loss = df.filter(df["metric"].str.contains("personal_avg_test_loss"))
         else:
             loss = df.filter(df["metric"].str.contains("global_avg_test_loss"))
