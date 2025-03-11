@@ -138,25 +138,21 @@ class Options:
             "--patience", type=int, default=False, help="Patience for early stopping"
         )
         parser.add_argument(
-            "-jr",
             "--join_ratio",
             type=float,
             default=1.0,
             help="Ratio of clients per round",
         )
         parser.add_argument(
-            "-rjr",
             "--random_join_ratio",
             type=bool,
             default=False,
             help="Random ratio of clients per round",
         )
         parser.add_argument(
-            "-eg", "--eval_gap", type=int, default=1, help="Rounds gap for evaluation"
+            "--eval_gap", type=int, default=1, help="Rounds gap for evaluation"
         )
-        parser.add_argument(
-            "--skip_eval_train", action="store_true", default=False
-        )
+        parser.add_argument("--skip_eval_train", action="store_true", default=False)
 
         # client
         parser.add_argument(

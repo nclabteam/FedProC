@@ -15,14 +15,13 @@ class BaseDataset:
     def __init__(
         self,
         configs: dict,
-        num_prev_clients: int = 0,
     ):
+        self.configs = configs
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.offset_len = configs.offset_len
         self.train_ratio = configs.train_ratio
-        self.num_prev_clients = num_prev_clients
-        self.clients = []
+        self.info = []
 
         self.path_raw = None
         self.save_path = None
@@ -362,11 +361,13 @@ class BaseDataset:
         return pl.DataFrame([trend_results, seasonal_results])
 
     def dir(self):
+        name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
+        self.path_save = os.path.join(self.save_path, name)
+        self.path_info = os.path.join(self.path_save, "info.json")
+
         if not os.path.exists(self.path_raw):
             raise FileNotFoundError(f"Path '{self.path_raw}' not found")
 
-        name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
-        self.path_save = os.path.join(self.save_path, name)
         self.path_train = os.path.join(self.path_save, "train")
         # self.path_valid = os.path.join(self.path_save, "valid")
         self.path_test = os.path.join(self.path_save, "test")
@@ -378,7 +379,6 @@ class BaseDataset:
         ]:
             if not os.path.exists(path):
                 os.makedirs(path)
-        self.path_info = os.path.join(self.path_save, "info.json")
 
     def get_config(self):
         """Constructs the configuration dictionary."""
@@ -392,12 +392,12 @@ class BaseDataset:
             "column_train": self.column_train,
             "granularity": self.granularity,
             "granularity_unit": self.granularity_unit,
-            "clients": self.clients,
+            "input_channels": len(self.column_train),
+            "output_channels": len(self.column_target),
         }
 
     def save_info(self):
         """Saves the configuration to a file."""
-        self.info = self.get_config()
         with open(self.path_info, "w") as f:
             json.dump(self.info, f, indent=4)
 
@@ -408,13 +408,13 @@ class BaseDataset:
                 config = json.load(f)
 
             # Get configurations excluding 'clients' for comparison
-            current_config = {
-                k: v for k, v in self.get_config().items() if k != "clients"
+            current_config = self.get_config()
+            saved_config = {
+                k: v for k, v in config[0].items() if k in current_config.keys()
             }
-            saved_config = {k: v for k, v in config.items() if k != "clients"}
 
+            # Check if the current configuration matches the saved configuration
             if current_config == saved_config:
-                # If the configurations match (excluding 'clients'), set self.info
                 self.info = config
                 return True
         return False
@@ -686,7 +686,7 @@ class BaseDataset:
             if not split_indices:
                 continue
 
-            client_id = self.num_prev_clients + len(self.clients)
+            client_id = len(self.info)
             client_info = {
                 "client": client_id,
                 "stats": {"raw": raw_stats},
@@ -724,7 +724,6 @@ class BaseDataset:
                 # Get statistic
                 split_df = split_df.select(self.column_used)
                 split_stats = self.get_statistic(split_df)
-                client_info["stats"][split_name] = split_stats
 
                 # Split data
                 split_x, split_y = self.split_x_y(
@@ -754,9 +753,12 @@ class BaseDataset:
                     y=split_y,
                 )
                 client_info["paths"][split_name] = file_path
+                client_info = client_info | self.get_config()
+                client_info["stats"][split_name] = split_stats
+                client_info["size_mb"] = os.path.getsize(file_path) / 1024 / 1024
 
-            self.clients.append(client_info)
-            print(json.dumps(self.clients[-1], indent=4))
+            self.info.append(client_info)
+            print(json.dumps(self.info[-1], indent=4))
             print(f"Time elapsed: {time.time() - start_time:.2f} seconds\n{'='*50}")
 
     def download(self):
@@ -772,3 +774,27 @@ class BaseDataset:
         self.get_file_paths()
         self.generate()
         self.save_info()
+
+
+class CustomDataset(BaseDataset):
+    def execute(self):
+        self.dir()
+        self.generate()
+        self.save_info()
+
+    def dir(self):
+        name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
+        self.path_save = os.path.join(self.save_path, name)
+        self.path_info = os.path.join(self.path_save, "info.json")
+        os.makedirs(self.path_save, exist_ok=True)
+
+    def generate(self):
+        for info in self.sets:
+            for k, v in info.items():
+                if k != "dataset":
+                    setattr(self.configs, k, v)
+            dataset = info["dataset"](configs=self.configs)
+            dataset.execute()
+            self.info.extend(dataset.info)
+        for idx, info in enumerate(self.info):
+            info["client"] = idx

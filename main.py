@@ -28,10 +28,7 @@ if __name__ == "__main__":
     options.update_args(
         {
             "path_info": dataset.path_info,
-            "dataset_path": dataset.path_save,
-            "input_channels": len(dataset.column_train),
-            "output_channels": len(dataset.column_target),
-            "num_clients": len(dataset.info["clients"]),
+            "num_clients": len(dataset.info),
         }
     )
     options.display()
@@ -40,7 +37,7 @@ if __name__ == "__main__":
 
     # Copy dataset info
     shutil.copyfile(
-        os.path.join(args.dataset_path, "info.json"),
+        os.path.join(dataset.path_info),
         os.path.join(args.save_path, "info.json"),
     )
 

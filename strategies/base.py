@@ -79,7 +79,7 @@ class SharedMethods:
         self.loss = getattr(__import__("losses"), self.loss)()
 
     def initialize_model(self):
-        self.model = getattr(__import__("models"), self.model)(self.configs).to(
+        self.model = getattr(__import__("models"), self.model)(configs=self.configs).to(
             self.device
         )
 
@@ -674,12 +674,11 @@ class Client(SharedMethods):
         super().__init__()
         self.set_configs(configs=configs, id=id, times=times)
         self.mkdir()
+        self.initialize_private_info()
         self.initialize_model()
         self.initialize_loss()
         self.initialize_optimizer()
         self.initialize_scheduler()
-        self.initialize_data_paths()
-        self.initialize_stats()
         self.initialize_scaler()
 
         self.name = f"CLIENT_{str(self.id).zfill(3)}"
@@ -693,17 +692,18 @@ class Client(SharedMethods):
             "send_mb": [],
         }
 
-    def initialize_data_paths(self):
-        self.train_file = os.path.join(self.dataset_path, "train", f"{self.id}.npz")
-        self.test_file = os.path.join(self.dataset_path, "test", f"{self.id}.npz")
+    def initialize_private_info(self):
+        self.private_data = json.load(fp=open(self.path_info))[self.id]
+        if self.private_data["client"] != self.id:
+            raise ValueError("Client ID mismatch")
+        self.train_file = self.private_data["paths"]["train"]
+        self.test_file = self.private_data["paths"]["test"]
+        self.stats = self.private_data["stats"]["train"]
+        self.configs.__dict__["input_channels"] = self.private_data["input_channels"]
+        self.configs.__dict__["output_channels"] = self.private_data["output_channels"]
 
     def initialize_scaler(self):
         self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
-
-    def initialize_stats(self):
-        self.stats = json.load(fp=open(self.path_info))["clients"][self.id]["stats"][
-            "train"
-        ]
 
     def variables_to_be_sent(self):
         return {"model": self.model, "train_samples": self.train_samples}
