@@ -563,6 +563,9 @@ class Server(SharedMethods):
         return metrics
 
     def evaluate_all_metrics(self):
+        if not self.last_eval:
+            return
+
         merged_testset = DataLoader(
             ConcatDataset([client.load_test_data().dataset for client in self.clients]),
             batch_size=self.batch_size,

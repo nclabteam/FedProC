@@ -6,19 +6,19 @@ compulsory = {
 
 
 class LocalOnly(Server):
-    def initialize_model(self):
+    def initialize_model(self, *args, **kwargs):
         pass
 
-    def receive_from_clients(self):
+    def receive_from_clients(self, *args, **kwargs):
         pass
 
-    def calculate_aggregation_weights(self):
+    def calculate_aggregation_weights(self, *args, **kwargs):
         pass
 
-    def aggregate_models(self):
+    def aggregate_models(self, *args, **kwargs):
         pass
 
-    def send_to_clients(self):
+    def send_to_clients(self, *args, **kwargs):
         pass
 
     def evaluate_generalization_loss(self, *args, **kwargs):
