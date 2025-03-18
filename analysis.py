@@ -3,7 +3,7 @@ import os
 
 import polars as pl
 
-d = 4
+r = 4
 
 if __name__ == "__main__":
     script_df = pl.read_excel("scripts.xlsx")
@@ -26,6 +26,7 @@ if __name__ == "__main__":
             datum["output_len"] = j["output_len"]
             datum["strategy"] = j["strategy"]
             datum["save_local_model"] = j["save_local_model"]
+            datum["model"] = j["model"]
             models.append(j["model"])
             nc = j["num_clients"]
 
@@ -38,7 +39,7 @@ if __name__ == "__main__":
 
         datum[
             "loss"
-        ] = f"{round(loss['avg_min'].to_list()[0], d):.4f}±{round(loss['std_min'].to_list()[0]*10_000, d):.4f}"
+        ] = f"{round(loss['avg_min'].to_list()[0], r):.4f}±{round(loss['std_min'].to_list()[0]*10_000, r):.4f}"
         send_to_clients_mb = max(
             df.filter(df["metric"].str.contains("send_mb"))["avg_min"].to_list()[0], 0
         )
@@ -51,11 +52,12 @@ if __name__ == "__main__":
         data.append(datum)
 
     for model in list(set(models)):
+        print(f"{model = }")
         d = [d for d in data if d["model"] == model]
         d = pl.from_dicts(d).sort(by=["dataset", "input_len", "output_len", "strategy"])
 
         # Pivot the data to have strategy columns with their corresponding loss values
-        d = data.pivot(
+        d = d.pivot(
             index=["dataset", "input_len", "output_len"], on="strategy", values="loss"
         )
 
