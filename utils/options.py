@@ -298,6 +298,3 @@ class Options:
 
         console = Console(record=True)
         console.print(table)
-        console.save_svg(
-            os.path.join(self.args.save_path, "configs.svg"), theme=MONOKAI
-        )
