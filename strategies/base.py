@@ -274,12 +274,10 @@ class Server(SharedMethods):
 
         self.make_logger(name=self.name, path=self.log_path)
         self.initialize_clients()
-        self.configs.__dict__["input_channels"] = self.clients[0].private_data[
-            "input_channels"
-        ]
-        self.configs.__dict__["output_channels"] = self.clients[0].private_data[
-            "output_channels"
-        ]
+        self.configs.__dict__["input_channels"] = self.clients[0].input_channels
+        self.input_channels = self.clients[0].input_channels
+        self.configs.__dict__["output_channels"] = self.clients[0].output_channels
+        self.output_channels = self.clients[0].output_channels
         self.initialize_model()
         self.get_model_info()
 
@@ -709,7 +707,9 @@ class Client(SharedMethods):
         self.test_file = self.private_data["paths"]["test"]
         self.stats = self.private_data["stats"]["train"]
         self.configs.__dict__["input_channels"] = self.private_data["input_channels"]
+        self.input_channels = self.private_data["input_channels"]
         self.configs.__dict__["output_channels"] = self.private_data["output_channels"]
+        self.output_channels = self.private_data["output_channels"]
 
     def initialize_scaler(self):
         self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
