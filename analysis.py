@@ -8,6 +8,7 @@ d = 4
 if __name__ == "__main__":
     script_df = pl.read_excel("scripts.xlsx")
     data = []
+    models = []
     for run in script_df["--name="].to_list():
         p = os.path.join("runs", run, "results.csv")
         if not os.path.exists(p):
@@ -25,6 +26,7 @@ if __name__ == "__main__":
             datum["output_len"] = j["output_len"]
             datum["strategy"] = j["strategy"]
             datum["save_local_model"] = j["save_local_model"]
+            models.append(j["model"])
             nc = j["num_clients"]
 
         df = pl.read_csv(p)
@@ -48,16 +50,16 @@ if __name__ == "__main__":
 
         data.append(datum)
 
-    data = pl.from_dicts(data).sort(
-        by=["dataset", "input_len", "output_len", "strategy"]
-    )
+    for model in list(set(models)):
+        d = [d for d in data if d["model"] == model]
+        d = pl.from_dicts(d).sort(by=["dataset", "input_len", "output_len", "strategy"])
 
-    # Pivot the data to have strategy columns with their corresponding loss values
-    data = data.pivot(
-        index=["dataset", "input_len", "output_len"], on="strategy", values="loss"
-    )
+        # Pivot the data to have strategy columns with their corresponding loss values
+        d = data.pivot(
+            index=["dataset", "input_len", "output_len"], on="strategy", values="loss"
+        )
 
-    # Save the transformed data
-    data.write_csv("results.csv")
-    print(data)
-    print("loss = mean±std(x10e-4)")
+        # Save the transformed data
+        d.write_csv("results.csv")
+        print(d)
+        print("loss = mean±std(x10e-4)")
