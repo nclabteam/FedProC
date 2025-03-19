@@ -90,13 +90,6 @@ class Options:
             help="output length or forecast horizon or prediction length",
         )
         parser.add_argument(
-            "--normalization",
-            type=str,
-            default="base",
-            help="",
-            choices=["base", "standard", "minmax", "robust"],
-        )
-        parser.add_argument(
             "--dataset",
             type=str,
             default="ETDatasetHour",
@@ -164,7 +157,7 @@ class Options:
             choices=OPTIMIZERS,
         )
         parser.add_argument(
-            "--learning_rate", type=float, default=0.0001, help="Local learning rate"
+            "--learning_rate", type=float, default=0.001, help="Local learning rate"
         )
         parser.add_argument(
             "--epochs",
