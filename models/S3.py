@@ -39,7 +39,7 @@ def args_update(parser):
         "--use_conv_w_avg",
         type=bool,
         default=None,
-        choice=[True, False],
+        choices=[True, False],
         help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
     )
     parser.add_argument(
@@ -53,7 +53,7 @@ def args_update(parser):
         "--use_stitch",
         type=bool,
         default=None,
-        choice=[True, False],
+        choices=[True, False],
         help="If True, apply stitching to combine original and shuffled sequences",
     )
 
