@@ -791,9 +791,12 @@ class CustomDataset(BaseDataset):
     def generate(self):
         for info in self.sets:
             for k, v in info.items():
-                if k != "dataset":
+                if k not in ["dataset", "column_train", "column_target"]:
                     setattr(self.configs, k, v)
             dataset = info["dataset"](configs=self.configs)
+            for k, v in info.items():
+                if k in ["column_train", "column_target"]:
+                    setattr(dataset, k, v)
             dataset.execute()
             self.info.extend(dataset.info)
         for idx, info in enumerate(self.info):
