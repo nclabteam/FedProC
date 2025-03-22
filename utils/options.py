@@ -157,7 +157,7 @@ class Options:
             choices=OPTIMIZERS,
         )
         parser.add_argument(
-            "--learning_rate", type=float, default=0.001, help="Local learning rate"
+            "--learning_rate", type=float, default=0.0001, help="Local learning rate"
         )
         parser.add_argument(
             "--epochs",
