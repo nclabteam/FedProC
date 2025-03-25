@@ -651,6 +651,13 @@ class Server(SharedMethods):
             for client in self.clients:
                 client.summarize_model(dataloader=client.load_train_data())
 
+    def post_process(self):
+        self.logger.info("")
+        self.logger.info("-" * 50)
+        self.save_lastest_models()
+        self.save_results()
+        self.evaluate_all_metrics()
+
     def train(self):
         for i in range(self.iterations):
             s_t = time.time()
@@ -669,11 +676,7 @@ class Server(SharedMethods):
             if self.early_stopping():
                 self.logger.info("Early stopping activated.")
                 break
-        self.logger.info("")
-        self.logger.info("-" * 50)
-        self.save_lastest_models()
-        self.save_results()
-        self.evaluate_all_metrics()
+        self.post_process()
 
 
 class Client(SharedMethods):
