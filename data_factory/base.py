@@ -201,7 +201,13 @@ class BaseDataset:
             sdf.write_csv(os.path.join(path, f"{station}.csv"))
 
     @staticmethod
-    def split_columns_into_files(df, path, date_column, new_column_name="Value"):
+    def split_columns_into_files(
+        df,
+        path,
+        date_column,
+        new_column_name="Value",
+        keep_old_column_name_as_filename=False,
+    ):
         cols = df.columns
         cols.remove(date_column)
         for idx, col in enumerate(cols):
@@ -209,7 +215,10 @@ class BaseDataset:
                 continue
             sdf = df.select([date_column, col])
             sdf = sdf.rename({col: new_column_name})
-            sdf.write_csv(os.path.join(path, f"{idx}.csv"))
+            if keep_old_column_name_as_filename:
+                sdf.write_csv(os.path.join(path, f"{col}.csv"))
+            else:
+                sdf.write_csv(os.path.join(path, f"{idx}.csv"))
 
     @staticmethod
     def read(path):
