@@ -53,4 +53,3 @@ class PEMS08(BaseDataset):
 
             # Save the DataFrame to a CSV file
             df.write_csv(os.path.join(self.path_raw, f"{sensor_id}.csv"))
-            print(df)
