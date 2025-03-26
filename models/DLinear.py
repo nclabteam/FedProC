@@ -17,6 +17,7 @@ def args_update(parser):
 class DLinear(nn.Module):
     """
     Paper: https://arxiv.org/abs/2205.13504
+    Source: https://github.com/cure-lab/LTSF-Linear/blob/main/models/DLinear.py
     """
 
     def __init__(self, configs):
@@ -30,18 +31,10 @@ class DLinear(nn.Module):
         self.Linear_Seasonal = nn.Linear(self.seq_len, self.pred_len)
         self.Linear_Trend = nn.Linear(self.seq_len, self.pred_len)
 
-        self.Linear_Seasonal.weight = nn.Parameter(
-            (1 / self.seq_len) * torch.ones([self.pred_len, self.seq_len])
-        )
-        self.Linear_Trend.weight = nn.Parameter(
-            (1 / self.seq_len) * torch.ones([self.pred_len, self.seq_len])
-        )
-
     def forward(self, x):
         seasonal_init, trend_init = self.decompsition(x)
-        seasonal_init, trend_init = seasonal_init.permute(0, 2, 1), trend_init.permute(
-            0, 2, 1
-        )
+        seasonal_init = seasonal_init.permute(0, 2, 1)
+        trend_init = trend_init.permute(0, 2, 1)
         seasonal_output = self.Linear_Seasonal(seasonal_init)
         trend_output = self.Linear_Trend(trend_init)
         x = seasonal_output + trend_output
