@@ -359,10 +359,18 @@ class Server(SharedMethods):
             client.save_model(postfix="best")
 
     def early_stopping(self):
-        if not self.patience:
+        metric = (
+            self.metrics["personal_avg_test_loss"]
+            if self.save_local_model
+            else self.metrics["global_avg_test_loss"]
+        )
+
+        if not self.patience or len(metric) < self.patience:
             return False
-        else:
-            raise NotImplementedError
+
+        if all(metric[-1] >= m for m in metric[-self.patience : -1]):
+            self.logger.info("Early stopping activated.")
+            return True
 
     def _compute_generalization_loss(self, client, dataset_type, model):
         """
