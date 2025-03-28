@@ -13,6 +13,9 @@ ray
 # PeMSSF (dataset)
 holidays 
 
+# PeMSBAY, METRLA (dataset)
+gdown
+
 # SWIFT (model)
 PyWavelets<=1.8.0
 pytorch_wavelets<=1.3.0

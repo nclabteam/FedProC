@@ -5,6 +5,7 @@ import re
 import time
 import zipfile
 
+import gdown
 import numpy as np
 import polars as pl
 import requests
@@ -189,6 +190,12 @@ class BaseDataset:
                     f.write(chunk)
         else:
             print(f"Failed to download {url} (Status Code: {response.status_code})")
+
+    @staticmethod
+    def download_from_google_drive(file_id, save_path):
+        gdown.download(
+            f"https://drive.google.com/uc?id={file_id}", save_path, quiet=False
+        )
 
     @staticmethod
     def split_column_into_files(
