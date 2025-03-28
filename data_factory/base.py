@@ -774,7 +774,7 @@ class BaseDataset:
         pass
 
     def execute(self):
-        if not os.path.exists(self.path_raw):
+        if not os.path.exists(self.path_raw) or len(os.listdir(self.path_raw)) == 0:
             self.download()
         self.dir()
         self.fix_params()
