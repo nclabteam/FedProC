@@ -372,10 +372,10 @@ class Server(SharedMethods):
         best_so_far = min(metric)
 
         # Check if the last `self.patience` values are all >= best_so_far
-        if all(m >= best_so_far for m in metric[-self.patience:]):
+        if all(m >= best_so_far for m in metric[-self.patience :]):
             self.logger.info("Early stopping activated.")
             return True
-        
+
         return False
 
     def _compute_generalization_loss(self, client, dataset_type, model):
