@@ -368,11 +368,11 @@ class Server(SharedMethods):
         if not self.patience or len(metric) < self.patience:
             return False
 
-        # Find the lowest loss so far
+        # Find the minimum loss so far
         best_so_far = min(metric)
 
-        # Check if the last `self.patience` values are all >= best_so_far
-        if all(m >= best_so_far for m in metric[-self.patience :]):
+        # Check if the minimum value is in the last `self.patience` rounds
+        if best_so_far not in metric[-self.patience :]:
             self.logger.info("Early stopping activated.")
             return True
 
@@ -688,7 +688,6 @@ class Server(SharedMethods):
             self.logger.info(f'Time cost: {self.metrics["time_per_iter"][-1]:.4f}s')
             self.fix_results()
             if self.early_stopping():
-                self.logger.info("Early stopping activated.")
                 break
         self.post_process()
 
