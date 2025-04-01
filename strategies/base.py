@@ -368,7 +368,7 @@ class Server(SharedMethods):
         if not self.patience or len(metric) < self.patience:
             return False
 
-        if all(metric[-1] >= m for m in metric[-self.patience : -1]):
+        if metric[-1] >= min(metric[-self.patience:]):
             self.logger.info("Early stopping activated.")
             return True
 
