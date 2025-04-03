@@ -1049,3 +1049,116 @@ class CustomDataset(BaseDataset):
         for idx, info in enumerate(self.info):
             info["client"] = idx
 
+
+class CustomOnSingleDataset(CustomDataset):
+    def dir(self):
+        self.path_save = self.save_path
+        self.path_info = os.path.join(self.path_save, "info.json")
+        os.makedirs(self.path_save, exist_ok=True)
+
+    def generate(self):
+        """
+        Processes multiple times, automatically calculates slice sizes, and extracts info.
+        WARNING: Leads to incorrect .npz files due to overwriting.
+        """
+        print("--- Starting Generation Loop (Auto Slice Method) ---")
+        combined_info_list = []
+        start_index_for_next_slice = 0
+        total_clients_found = None  # Will be determined after first run
+
+        # Store original config value if it exists, to restore later
+        original_pred_len = getattr(self.configs, "output_len", None)
+
+        for i, config_info in enumerate(self.sets):
+            current_output_len = config_info["output_len"]
+            print(
+                f"\nProcessing config {i+1}/{len(self.sets)}: output_len = {current_output_len}"
+            )
+
+            # 1. Update shared configs object
+            setattr(self.configs, "output_len", current_output_len)
+
+            # 2. Create and execute dataset instance
+            print(f"  Instantiating and executing {config_info['dataset'].__name__}...")
+            dataset_instance = config_info["dataset"](configs=self.configs)
+            # Apply column overrides if any
+            for k, v in config_info.items():
+                if k in ["column_train", "column_target"]:
+                    setattr(dataset_instance, k, v)
+            dataset_instance.execute()  # This reruns processing and potentially overwrites files
+
+            if not hasattr(dataset_instance, "info") or not dataset_instance.info:
+                print(f"  Warning: dataset_instance.info is empty. Skipping slice.")
+                continue
+
+            # --- Automatic Slice Calculation ---
+            len_info = len(dataset_instance.info)  # Total clients found in this run
+            if total_clients_found is None:
+                total_clients_found = len_info  # Set the total based on the first run
+                print(f"  Determined total clients found: {total_clients_found}")
+            elif total_clients_found != len_info:
+                # This case indicates inconsistency, which is problematic for slicing
+                print(
+                    f"  Warning: Number of clients found ({len_info}) differs from first run ({total_clients_found}). Slicing might be incorrect."
+                )
+                # Optionally, update total_clients_found or raise an error depending on desired behavior
+                # total_clients_found = len_info # Update if we trust the latest run more
+
+            len_config = len(self.sets)
+            base_count = total_clients_found // len_config
+            remainder = total_clients_found % len_config
+
+            # Determine the count for *this specific* configuration index `i`
+            if i < remainder:
+                count_for_this_config = base_count + 1
+            else:
+                count_for_this_config = base_count
+            # --------------------------------
+
+            # --- Slicing Logic ---
+            end_index_for_this_slice = (
+                start_index_for_next_slice + count_for_this_config
+            )
+            print(f"  Auto-calculated count for config {i+1}: {count_for_this_config}")
+            print(
+                f"  Slicing dataset_instance.info [{start_index_for_next_slice}:{end_index_for_this_slice}]"
+            )
+
+            # Slice the info list generated *in this iteration*
+            actual_end_index = min(end_index_for_this_slice, len_info)  # Boundary check
+            actual_start_index = min(start_index_for_next_slice, actual_end_index)
+
+            if actual_start_index >= actual_end_index:
+                print(
+                    f"  Warning: Slice [{actual_start_index}:{actual_end_index}] is empty."
+                )
+                client_info_slice = []
+            else:
+                client_info_slice = dataset_instance.info[
+                    actual_start_index:actual_end_index
+                ]
+                print(f"  Sliced {len(client_info_slice)} entries.")
+
+            combined_info_list.extend(client_info_slice)
+
+            # Update start index for the *next* iteration
+            start_index_for_next_slice = end_index_for_this_slice
+            # --------------------
+
+            print(
+                f"  Finished loop for output_len={current_output_len}. Total info: {len(combined_info_list)}"
+            )
+
+        # Restore original config value
+        if original_pred_len is not None:
+            print(f"\nRestoring self.configs.output_len to {original_pred_len}")
+            setattr(self.configs, "output_len", original_pred_len)
+        elif hasattr(self.configs, "output_len"):
+            delattr(self.configs, "output_len")
+
+        # Assign final list and re-index
+        self.info = combined_info_list
+        print("\nRe-indexing final client list...")
+        for idx, client_data in enumerate(self.info):
+            client_data["client"] = idx
+        print(f"Final self.info list contains {len(self.info)} entries.")

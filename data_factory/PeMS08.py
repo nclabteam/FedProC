@@ -4,7 +4,7 @@ import os
 import numpy as np
 import polars as pl
 
-from .base import BaseDataset
+from .base import BaseDataset, CustomOnSingleDataset
 
 
 class PeMS08(BaseDataset):
@@ -53,3 +53,75 @@ class PeMS08(BaseDataset):
 
             # Save the DataFrame to a CSV file
             df.write_csv(os.path.join(self.path_raw, f"{sensor_id}.csv"))
+
+
+class PeMS08OutVar1(CustomOnSingleDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.save_path = os.path.join("datasets", "PeMS08", "3_96_96-1_96_720")
+        self.sets = [
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+        ]
+
+
+class PeMS08OutVar2(CustomOnSingleDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.save_path = os.path.join("datasets", "PeMS08", "2_96_96-2_96_720")
+        self.sets = [
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+        ]
+
+
+class PeMS08OutVar3(CustomOnSingleDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.save_path = os.path.join("datasets", "PeMS08", "1_96_96-3_96_720")
+        self.sets = [
+            {
+                "dataset": PeMS08,
+                "output_len": 96,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+            {
+                "dataset": PeMS08,
+                "output_len": 720,
+            },
+        ]
