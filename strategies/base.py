@@ -248,7 +248,7 @@ class Server(SharedMethods):
         self.set_configs(configs=configs, times=times)
         self.mkdir()
 
-        self.num_join_clients = int(self.num_clients * self.join_ratio)
+        self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
         self.num_gpus = len(self.device_id.split(","))
