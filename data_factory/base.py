@@ -13,10 +13,27 @@ from statsmodels.tsa.seasonal import STL
 
 
 class BaseDataset:
+    """
+    Base class for handling time series dataset processing.
+
+    This class provides functionalities for downloading, reading, preprocessing,
+    analyzing, splitting, and saving time series data into a format suitable
+    for sequence modeling tasks. It handles aspects like memory optimization,
+    feature extraction, statistical analysis, and data splitting based on
+    configurations.
+    """
+
     def __init__(
         self,
         configs: dict,
     ):
+        """
+        Initializes the BaseDataset instance.
+
+        Args:
+            configs (dict): Configuration dictionary containing necessary parameters
+                            like input/output lengths, paths, column names, etc.
+        """
         self.configs = configs
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
@@ -34,6 +51,16 @@ class BaseDataset:
 
     @staticmethod
     def convert_granularity_unit(granularity_unit: str) -> str:
+        """
+        Converts human-readable time granularity units to Polars/Pandas frequency strings.
+
+        Args:
+            granularity_unit (str): The full name of the time unit (e.g., "hour", "day").
+
+        Returns:
+            str: The corresponding frequency string abbreviation (e.g., "h", "d"),
+                 or the original string if no match is found.
+        """
         unit_dict = {
             "nanosecond": "ns",
             "microsecond": "us",
@@ -50,9 +77,27 @@ class BaseDataset:
         return unit_dict.get(granularity_unit, granularity_unit)
 
     @staticmethod
-    def extract_time_features(dates: pl.Series, freq) -> pl.DataFrame:
-        """Extracts time-based features from a datetime series and returns a Polars DataFrame."""
+    def extract_time_features(dates: pl.Series, freq: str) -> pl.DataFrame:
+        """
+        Extracts time-based features from a datetime series based on the frequency.
 
+        Features are normalized to the range [-0.5, 0.5]. The selection of features
+        depends on the provided frequency to avoid redundant or constant features
+        (e.g., 'second_of_minute' is irrelevant for daily data).
+
+        Args:
+            dates (pl.Series): A Polars Series containing datetime objects.
+            freq (str): The frequency string (e.g., 'h', 'd', 'm') indicating the
+                        granularity of the time series.
+
+        Returns:
+            pl.DataFrame: A Polars DataFrame with extracted time features as columns.
+
+        Raises:
+            ValueError: If the provided frequency `freq` is not supported.
+        """
+
+        # Define all possible time features and their normalization functions
         features = {
             "second_of_minute": lambda dt: dt.dt.second() / 59.0 - 0.5,
             "minute_of_hour": lambda dt: dt.dt.minute() / 59.0 - 0.5,
@@ -64,6 +109,7 @@ class BaseDataset:
             "week_of_year": lambda dt: (dt.dt.week() - 1) / 52.0 - 0.5,
         }
 
+        # Map frequencies to the relevant time features
         freq_mapping = {
             "y": [],
             "q": ["month_of_year"],
@@ -112,11 +158,13 @@ class BaseDataset:
             ],
         }
 
+        # Validate frequency
         if freq not in freq_mapping:
             raise ValueError(
                 f"Unsupported frequency {freq}. Supported: {list(freq_mapping.keys())}"
             )
 
+        # Select and compute features based on the frequency
         selected_features = {
             name: func(dates)
             for name, func in features.items()
@@ -126,14 +174,40 @@ class BaseDataset:
         return pl.DataFrame(selected_features)
 
     @staticmethod
-    def subdf_from_indices(df, date_column, start, end):
+    def subdf_from_indices(df: pl.DataFrame, date_column: str, start, end):
+        """
+        Filters a DataFrame to select rows within a specified date range.
+
+        The range is inclusive of the start date and exclusive of the end date ([start, end)).
+
+        Args:
+            df (pl.DataFrame): The input DataFrame containing a date column.
+            date_column (str): The name of the column containing date/datetime objects.
+            start (pl.datatypes.Date or datetime): The starting date/time (inclusive).
+            end (pl.datatypes.Date or datetime): The ending date/time (exclusive).
+
+        Returns:
+            pl.DataFrame: A filtered DataFrame containing rows within the specified date range.
+        """
         return df.filter((pl.col(date_column) >= start) & (pl.col(date_column) < end))
 
     @staticmethod
-    def _memory_unit_conversion(before, after):
+    def _memory_unit_conversion(before: float, after: float):
+        """
+        Converts memory sizes (in bytes) to a more readable unit (KB, MB, GB, etc.).
+
+        Args:
+            before (float): The initial memory size in bytes.
+            after (float): The final memory size in bytes.
+
+        Returns:
+            tuple[float, float, str]: A tuple containing the converted 'before' size,
+                                      converted 'after' size, and the unit string.
+        """
         units = ["bytes", "KB", "MB", "GB", "TB", "PB"]
         unit_index = 0
 
+        # Iteratively divide by 1024 to find the appropriate unit
         while before >= 1024 and unit_index < len(units) - 1:
             before /= 1024
             after /= 1024
@@ -141,7 +215,18 @@ class BaseDataset:
 
         return before, after, units[unit_index]
 
-    def _print_info(self, before, after, data_type):
+    def _print_info(self, before: float, after: float, data_type: str):
+        """
+        Prints memory usage information before and after an optimization process.
+
+        Calculates the percentage reduction and formats the output using appropriate units.
+
+        Args:
+            before (float): Memory usage before optimization (in bytes).
+            after (float): Memory usage after optimization (in bytes).
+            data_type (str): A string describing the type of data being optimized
+                             (e.g., "Polars DataFrame").
+        """
         reduction = 100.0 * (before - after) / before
         reduction_str = f"{reduction:.2f}% reduction"
         before, after, unit = self._memory_unit_conversion(before, after)
@@ -151,10 +236,25 @@ class BaseDataset:
         )
 
     @staticmethod
-    def _cast_to_optimal_type(c_min, c_max, current_type):
+    def _cast_to_optimal_type(c_min: float, c_max: float, current_type: str):
+        """
+        Finds the smallest NumPy numeric type that can represent a range [c_min, c_max].
+
+        Checks integer types if `current_type` is 'int', otherwise checks float types.
+
+        Args:
+            c_min (float): The minimum value in the column.
+            c_max (float): The maximum value in the column.
+            current_type (str): Either 'int' or 'float', indicating the original type family.
+
+        Returns:
+            np.dtype | None: The smallest NumPy dtype that fits the range, or None if no
+                             suitable type is found within the predefined lists.
+        """
         numeric_int_types = [np.int8, np.int16, np.int32, np.int64]
         numeric_float_types = [np.float16, np.float32, np.float64]
-        """Find the smallest numeric type that fits the given range."""
+
+        # Find the smallest numeric type that fits the given range.
         dtype_list = numeric_int_types if current_type == "int" else numeric_float_types
         for dtype in dtype_list:
             if np.can_cast(c_min, dtype) and np.can_cast(c_max, dtype):
@@ -162,27 +262,71 @@ class BaseDataset:
         return None
 
     @staticmethod
-    def sliding_window(df, seq_len, offset_len, pred_len):
-        cols = df.columns
+    def sliding_window(df: pl.DataFrame, seq_len: int, offset_len: int, pred_len: int):
+        """
+        Creates lagged features using a sliding window approach.
+
+        For each column in the input DataFrame, it generates new columns representing
+        past values (for input sequence) and future values (for prediction sequence),
+        skipping the offset period.
+
+        Args:
+            df (pl.DataFrame): The input time series DataFrame.
+            seq_len (int): The length of the input sequence.
+            offset_len (int): The gap between the input and prediction sequences.
+            pred_len (int): The length of the prediction sequence.
+
+        Returns:
+            pl.DataFrame: A DataFrame with original columns and newly created lagged
+                          and future columns. Rows with nulls introduced by shifting
+                          are dropped.
+        """
+
+        # Total window size needed to create one complete sample (input + offset + prediction)
         lag_window = seq_len + offset_len + pred_len
+
+        # Iterate backwards from the furthest point needed (pred_len ahead)
+        # down to the oldest point needed (seq_len-1 behind)
+        cols = df.columns
         for i in range(1, lag_window):
             for col in cols:
-                if seq_len - 1 < i and i <= (seq_len - 1 + offset_len):
-                    continue
+                if seq_len <= i <= (seq_len + offset_len):
+                    continue  # Skip creating columns for the offset gap
                 name = f"{col}_ahead_{i}"
                 df = df.with_columns(pl.col(col).shift(-i).alias(name))
+        # Drop rows at the end where future values couldn't be computed (NaNs)
         df = df.drop_nulls()
         return df
 
     @staticmethod
-    def download_and_extract(url, save_path):
+    def download_and_extract(url: str, save_path: str):
+        """
+        Downloads a ZIP file from a URL and extracts its contents.
+
+        Args:
+            url (str): The URL of the ZIP file.
+            save_path (str): The directory where the contents should be extracted.
+
+        Raises:
+            requests.exceptions.RequestException: If the download fails.
+            zipfile.BadZipFile: If the downloaded file is not a valid ZIP archive.
+        """
         response = requests.get(url)
         response.raise_for_status()
         with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
             zip_ref.extractall(save_path)
 
     @staticmethod
-    def download_file(url, save_path):
+    def download_file(url: str, save_path: str):
+        """
+        Downloads a file from a URL and saves it to a specified path.
+
+        Uses streaming to handle potentially large files efficiently.
+
+        Args:
+            url (str): The URL of the file to download.
+            save_path (str): The local path (including filename) where the file should be saved.
+        """
         response = requests.get(url, stream=True)
         if response.status_code == 200:
             with open(save_path, "wb") as f:
@@ -192,15 +336,42 @@ class BaseDataset:
             print(f"Failed to download {url} (Status Code: {response.status_code})")
 
     @staticmethod
-    def download_from_google_drive(file_id, save_path):
-        gdown.download(
-            f"https://drive.google.com/uc?id={file_id}", save_path, quiet=False
-        )
+    def download_from_google_drive(file_id: str, save_path: str):
+        """
+        Downloads a file from Google Drive using its file ID.
+
+        Requires the `gdown` library to be installed.
+
+        Args:
+            file_id (str): The Google Drive file ID.
+            save_path (str): The local path (including filename) to save the file.
+        """
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, save_path, quiet=False)
 
     @staticmethod
     def split_column_into_files(
-        df, path, station_column, date_column=None, remove_station_column=True
+        df: pl.DataFrame,
+        path: str,
+        station_column: str,
+        date_column: str | None = None,
+        remove_station_column: bool = True,
     ):
+        """
+        Splits a DataFrame into multiple CSV files based on unique values in a specific column.
+
+        Each unique value in `station_column` results in a separate CSV file named
+        after that value.
+
+        Args:
+            df (pl.DataFrame): The input DataFrame.
+            path (str): The directory where the output CSV files will be saved.
+            station_column (str): The name of the column whose unique values define the splits.
+            date_column (str, optional): If provided, sorts each subset by this date column
+                                         before saving. Defaults to None.
+            remove_station_column (bool, optional): If True, removes the `station_column`
+                                                    from the output files. Defaults to True.
+        """
         for station in df[station_column].unique().to_list():
             sdf = df.filter(df[station_column] == station)
             sdf = sdf.sort(date_column) if date_column else sdf
@@ -209,12 +380,28 @@ class BaseDataset:
 
     @staticmethod
     def split_columns_into_files(
-        df,
-        path,
-        date_column,
-        new_column_name="Value",
-        keep_old_column_name_as_filename=False,
+        df: pl.DataFrame,
+        path: str,
+        date_column: str,
+        new_column_name: str = "Value",
+        keep_old_column_name_as_filename: bool = False,
     ):
+        """
+        Splits a DataFrame into multiple CSV files, one for each column (excluding the date column).
+
+        Each output file contains the date column and one other column, renamed to `new_column_name`.
+        Files are named either sequentially (0.csv, 1.csv, ...) or using the original column names.
+
+        Args:
+            df (pl.DataFrame): The input DataFrame.
+            path (str): The directory where the output CSV files will be saved.
+            date_column (str): The name of the date/time column to include in each file.
+            new_column_name (str, optional): The name to give the value column in the output files.
+                                             Defaults to "Value".
+            keep_old_column_name_as_filename (bool, optional): If True, uses original column names
+                                                              for filenames. Otherwise, uses sequential integers.
+                                                              Defaults to False.
+        """
         cols = df.columns
         cols.remove(date_column)
         for idx, col in enumerate(cols):
@@ -228,7 +415,18 @@ class BaseDataset:
                 sdf.write_csv(os.path.join(path, f"{idx}.csv"))
 
     @staticmethod
-    def read(path):
+    def read(path: str) -> pl.DataFrame | None:
+        """
+        Reads a CSV file into a Polars DataFrame with automatic date parsing.
+
+        Handles potential `NoDataError` if the file is empty.
+
+        Args:
+            path (str): The path to the CSV file.
+
+        Returns:
+            pl.DataFrame | None: The loaded DataFrame, or None if the file is empty.
+        """
         try:
             df = pl.read_csv(path, try_parse_dates=True)
             return df
@@ -238,17 +436,49 @@ class BaseDataset:
 
     @staticmethod
     def get_transition_value(df: pl.DataFrame):
+        """
+        Calculates a 'transition value' for each numerical column in the DataFrame.
+
+        This metric is based on the algorithm described in:
+        Fulcher, B. D., & Jones, N. S. (2014). Highly comparative feature-based
+        time-series classification. IEEE Transactions on Knowledge and Data
+        Engineering, 26(12), 3026-3037.
+        (Specifically, the 'TransitionMeasure' feature CO_AutoPersist_z_tau_3)
+
+        Args:
+            df (pl.DataFrame): Input DataFrame with numerical time series columns.
+                               Assumes columns are numerical.
+
+        Returns:
+            pl.DataFrame: A DataFrame with one row, where the first column is 'variable'
+                          (value 'transition') and subsequent columns contain the calculated
+                          transition value (delta) for each corresponding column in the input df.
+        """
+
         def first_zero_ac(X: np.ndarray):
-            # Compute the autocorrelation of the time series X
+            """Computes the lag of the first zero crossing of the ACF."""
             n = len(X)
+
+            if n < 2:
+                return 1  # Handle very short series
+
             X_centered = X - np.mean(X)
+
+            # Compute autocorrelation using numpy's correlate
             acf = np.correlate(X_centered, X_centered, mode="full")[n - 1 :]
 
-            # Find the first zero crossing of the autocorrelation function
-            for tau in range(1, len(acf)):
-                if acf[tau] < 0:
-                    return tau
-            return len(acf)  # If no zero crossing, return the length of acf
+            # Normalize ACF (optional, but standard)
+            variance = np.var(X)
+            if variance == 0:
+                return 1  # Handle constant series
+            acf /= variance * n
+
+            # Find the first lag where ACF drops below zero
+            zero_crossings = np.where(acf < 0)[0]
+            if len(zero_crossings) > 0:
+                return zero_crossings[0]  # Return the first lag index
+            else:
+                return n  # If ACF never crosses zero, return series length
 
         # Loop through each column in the DataFrame to compute the transition value
         transition_data = {"variable": "transition"}
@@ -705,6 +935,7 @@ class BaseDataset:
             client_id = len(self.info)
             client_info = {
                 "client": client_id,
+                "file": path,
                 "stats": {"raw": raw_stats},
                 "paths": {
                     "train": {},
@@ -817,3 +1048,4 @@ class CustomDataset(BaseDataset):
             self.info.extend(dataset.info)
         for idx, info in enumerate(self.info):
             info["client"] = idx
+
