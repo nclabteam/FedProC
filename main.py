@@ -54,8 +54,15 @@ if __name__ == "__main__":
             server = getattr(__import__("strategies"), args.strategy)(args, t)
             server.train()
             for key, value in server.metrics.items():
-                stats[key]["min"].append(min(value))
-                stats[key]["max"].append(max(value))
+                sorted_values = sorted(v for v in value if v != server.default_value)
+                if sorted_values:
+                    min_val = sorted_values[0]
+                    max_val = sorted_values[-1]
+                else:
+                    min_val = server.default_value
+                    max_val = server.default_value
+                stats[key]["min"].append(min_val)
+                stats[key]["max"].append(max_val)
             stats["time_per_experiment"]["min"].append(time.time() - start)
             stats["time_per_experiment"]["max"].append(time.time() - start)
         rows = []
