@@ -290,7 +290,7 @@ class BaseDataset:
         cols = df.columns
         for i in range(1, lag_window):
             for col in cols:
-                if seq_len <= i <= (seq_len + offset_len):
+                if seq_len - 1 < i and i <= (seq_len - 1 + offset_len):
                     continue  # Skip creating columns for the offset gap
                 name = f"{col}_ahead_{i}"
                 df = df.with_columns(pl.col(col).shift(-i).alias(name))
