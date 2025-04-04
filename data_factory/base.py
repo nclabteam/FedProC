@@ -562,7 +562,10 @@ class BaseDataset:
 
     @staticmethod
     def compute_trend_seasonal_strength_auto(
-        df: pl.DataFrame, granularity: int, granularity_unit: str
+        df: pl.DataFrame,
+        granularity: int,
+        granularity_unit: str,
+        max_nan_fraction: float = 0.1,
     ):
         """
         Computes trend and seasonal strength for all numerical columns using auto-selected seasonal period.
@@ -586,7 +589,21 @@ class BaseDataset:
         seasonal_results = {"variable": f"seasonal_strength"}
 
         for col in df.columns:
-            ts_values = df[col].to_numpy()
+            ts_series = df[col]
+            original_length = len(ts_series)
+
+            # Check for NaN values and handle them
+            nan_count = ts_series.is_null().sum()
+            nan_fraction = nan_count / original_length
+
+            if 0 < nan_fraction < max_nan_fraction:
+                ts_series = ts_series.interpolate()
+            elif nan_fraction >= max_nan_fraction:
+                trend_results[col] = 0.0
+                seasonal_results[col] = 0.0
+                continue
+
+            ts_values = ts_series.to_numpy()
             stl = STL(ts_values, period=seasonal_period[granularity_unit], robust=True)
             result = stl.fit()
 
