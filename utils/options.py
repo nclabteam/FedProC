@@ -274,6 +274,7 @@ class Options:
         self._fix_specific_param("schedulers", "scheduler")
         self._fix_specific_param("optimizers", "optimizer")
         self._fix_specific_param("models", "model")
+        self.args.__dict__["max_epochs"] = self.args.iterations * self.args.epochs
         self.args.__dict__ = self._clean_none_args(args=self.args.__dict__)
         return self
 
