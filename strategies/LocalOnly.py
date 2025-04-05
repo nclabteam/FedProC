@@ -6,9 +6,6 @@ compulsory = {
 
 
 class LocalOnly(Server):
-    def initialize_model(self, *args, **kwargs):
-        pass
-
     def receive_from_clients(self, *args, **kwargs):
         pass
 
