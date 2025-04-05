@@ -179,8 +179,14 @@ class Options:
             choices=SCHEDULERS,
             help="learning rate adjustment",
         )
+        parser.add_argument(
+            "--exclude_server_model_processes",
+            action="store_true",
+            default=False,
+            help="Exclude server model processes",
+        )
 
-        for dir in ["strategies", "schedulers", "optimizers", "models"]:
+        for dir in ["strategies", "schedulers", "optimizers", "models", "topologies"]:
             self.apply_args_update(
                 parser=parser,
                 args_update_functions=getattr(__import__(dir), "args_update_functions"),
@@ -274,6 +280,7 @@ class Options:
         self._fix_specific_param("schedulers", "scheduler")
         self._fix_specific_param("optimizers", "optimizer")
         self._fix_specific_param("models", "model")
+        self._fix_specific_param("topologies", "topology")
         self.args.__dict__["max_epochs"] = self.args.iterations * self.args.epochs
         self.args.__dict__ = self._clean_none_args(args=self.args.__dict__)
         return self

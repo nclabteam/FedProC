@@ -17,8 +17,7 @@ from torch.utils.data import ConcatDataset, DataLoader, Subset, TensorDataset
 
 
 class SharedMethods:
-    def __init__(self):
-        self.default_value = 9_999_999.0
+    default_value = 9_999_999.0
 
     def save_results(self):
         pl_df = pl.DataFrame(self.metrics)
@@ -481,12 +480,12 @@ class Server(SharedMethods):
             for dataset_type in ["train", "test"]:
                 if dataset_type == "train" and self.skip_eval_train:
                     continue
-                # Generalization loss evaluation
-                self.evaluate_generalization_loss(dataset_type)
-                # Personalization loss evaluation
-                if not self.save_local_model:
-                    continue
-                self.evaluate_personalization_loss(dataset_type)
+                if not self.exclude_server_model_processes:
+                    # Generalization loss evaluation
+                    self.evaluate_generalization_loss(dataset_type)
+                if self.save_local_model:
+                    # Personalization loss evaluation
+                    self.evaluate_personalization_loss(dataset_type)
 
     def train_clients(self):
         if self.parallel:
@@ -578,38 +577,43 @@ class Server(SharedMethods):
         if not self.last_eval:
             return
 
-        merged_testset = DataLoader(
-            ConcatDataset([client.load_test_data().dataset for client in self.clients]),
-            batch_size=self.batch_size,
-            shuffle=False,
-        )
+        if self.exclude_server_model_processes:
+            results = []
+        else:
+            merged_testset = DataLoader(
+                ConcatDataset(
+                    [client.load_test_data().dataset for client in self.clients]
+                ),
+                batch_size=self.batch_size,
+                shuffle=False,
+            )
 
-        results = [
-            dict(
-                {"entity": self.name, "denorm": False, "type": "last"},
-                **self._last_eval(
-                    model=torch.load(
-                        os.path.join(
-                            self.model_path, self.name.lower().strip() + "_last.pt"
+            results = [
+                dict(
+                    {"entity": self.name, "denorm": False, "type": "last"},
+                    **self._last_eval(
+                        model=torch.load(
+                            os.path.join(
+                                self.model_path, self.name.lower().strip() + "_last.pt"
+                            ),
+                            weights_only=False,
                         ),
-                        weights_only=False,
+                        dataloader=merged_testset,
                     ),
-                    dataloader=merged_testset,
                 ),
-            ),
-            dict(
-                {"entity": self.name, "denorm": False, "type": "best"},
-                **self._last_eval(
-                    model=torch.load(
-                        os.path.join(
-                            self.model_path, self.name.lower().strip() + "_best.pt"
+                dict(
+                    {"entity": self.name, "denorm": False, "type": "best"},
+                    **self._last_eval(
+                        model=torch.load(
+                            os.path.join(
+                                self.model_path, self.name.lower().strip() + "_best.pt"
+                            ),
+                            weights_only=False,
                         ),
-                        weights_only=False,
+                        dataloader=merged_testset,
                     ),
-                    dataloader=merged_testset,
                 ),
-            ),
-        ]
+            ]
         if self.save_local_model:
             for client in self.clients:
                 for scaler in [None, client.scaler]:
@@ -660,7 +664,8 @@ class Server(SharedMethods):
         self.logger.info(f"Results saved to {path}")
 
     def get_model_info(self):
-        self.summarize_model(dataloader=self.clients[0].load_train_data())
+        if not self.exclude_server_model_processes:
+            self.summarize_model(dataloader=self.clients[0].load_train_data())
         if self.save_local_model:
             for client in self.clients:
                 client.summarize_model(dataloader=client.load_train_data())

@@ -2,6 +2,7 @@ from .base import Client, Server
 
 compulsory = {
     "save_local_model": True,
+    "exclude_server_model_processes": True,
 }
 
 
