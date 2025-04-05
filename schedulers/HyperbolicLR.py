@@ -26,23 +26,8 @@ def args_update(parser):
 
 class HyperbolicLR(_LRScheduler):
     """
-    Sets the learning rate according to a hyperbolic schedule, integrated with
-    argparse configuration.
-
-    The learning rate at iteration `x` is calculated as:
-    LR(x) = infimum_lr + (base_lr - infimum_lr) * scale_factor(x)
-    where scale_factor(x) decreases hyperbolically from 1 (at x=0) to 0 (at x=max_iter).
-
-    scale_factor(x) = sqrt(((N - x)/U) * (2 - (N + x)/U)) / sqrt((N/U) * (2 - N/U))
-    for 0 <= x <= N, where N = max_iter, U = upper_bound.
-
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        configs (Namespace): Configuration object, typically from argparse.
-                             Expected attributes: upper_bound, max_iter, infimum_lr.
-                             If an attribute is None or missing, the default from 'optional' is used.
-                             Optionally uses 'verbose_scheduler' flag from configs.
-        last_epoch (int, optional): The index of the last epoch. Default: -1.
+    Paper: https://arxiv.org/abs/2407.15200
+    Source: https://github.com/Axect/HyperbolicLR/blob/main/hyperbolic_lr.py
     """
 
     def __init__(self, optimizer: Optimizer, configs, last_epoch: int = -1):
