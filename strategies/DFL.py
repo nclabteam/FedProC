@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import ray
 import torch
@@ -95,12 +96,29 @@ class DFL(Server):
         pass
 
     def calculate_aggregation_weights(self, *args, **kwargs):
-        for node in self.clients:
-            node.calculate_aggregation_weights()
+        if self.parallel:
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                futures = [
+                    executor.submit(node.calculate_aggregation_weights)
+                    for node in self.clients
+                ]
+                for future in futures:
+                    future.result()
+        else:
+            for node in self.clients:
+                node.calculate_aggregation_weights()
 
     def aggregate_models(self, *args, **kwargs):
-        for node in self.clients:
-            node.aggregate_models()
+        if self.parallel:
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                futures = [
+                    executor.submit(node.aggregate_models) for node in self.clients
+                ]
+                for future in futures:
+                    future.result()
+        else:
+            for node in self.clients:
+                node.aggregate_models()
 
 
 class DFL_Client(Client):
