@@ -5,12 +5,6 @@ from .ETDataset import ETDatasetHour, ETDatasetMinute
 
 
 class Custom1(CustomDataset):
-    """
-    Custom1 dataset
-    self.sets is a must
-    "dataset" is a must
-    """
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Custom1")
