@@ -614,6 +614,10 @@ class Server(SharedMethods):
                     ),
                 ),
             ]
+            self.logger.info("-" * 50)
+            for res in results[-2:]:
+                for key, value in res.items():
+                    self.logger.info(f"{key}: {str(value)}")
         if self.save_local_model:
             for client in self.clients:
                 for scaler in [None, client.scaler]:
@@ -657,6 +661,11 @@ class Server(SharedMethods):
                             ),
                         ]
                     )
+
+                    for res in results[-2:]:
+                        self.logger.info("-" * 50)
+                        for key, value in res.items():
+                            client.logger.info(f"{key}: {str(value)}")
         results = pl.from_dicts(results)
         print(results)
         path = os.path.join(self.result_path, "all.csv")
