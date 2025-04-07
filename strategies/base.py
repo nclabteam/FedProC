@@ -663,7 +663,7 @@ class Server(SharedMethods):
                     )
 
                     for res in results[-2:]:
-                        self.logger.info("-" * 50)
+                        client.logger.info("-" * 50)
                         for key, value in res.items():
                             client.logger.info(f"{key}: {str(value)}")
         results = pl.from_dicts(results)
