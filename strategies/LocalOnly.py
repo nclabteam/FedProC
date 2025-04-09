@@ -22,9 +22,8 @@ class LocalOnly(Server):
     def evaluate_generalization_loss(self, *args, **kwargs):
         pass
 
-    def get_model_info(self):
-        for client in self.clients:
-            client.summarize_model(dataloader=client.load_train_data())
+    def initialize_model(self, *args, **kwargs):
+        pass
 
 
 class LocalOnly_Client(Client):

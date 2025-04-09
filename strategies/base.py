@@ -337,7 +337,8 @@ class Server(SharedMethods):
             client.save_results()
 
     def save_lastest_models(self):
-        self.save_model(postfix="last")
+        if not self.exclude_server_model_processes:
+            self.save_model(postfix="last")
         if not self.save_local_model:
             return
         for client in self.clients:
