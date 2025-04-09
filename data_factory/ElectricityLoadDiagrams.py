@@ -60,10 +60,6 @@ class ElectricityLoadDiagramsOG(ElectricityLoadDiagrams):
         self.path_raw = os.path.join("datasets", "ElectricityLoadDiagramsOG", "raw")
         self.path_temp = os.path.join("datasets", "ElectricityLoadDiagramsOG", "temp")
 
-        # Create the directory if it doesn't exist
-        os.makedirs(self.path_raw, exist_ok=True)
-        os.makedirs(self.path_temp, exist_ok=True)
-
         # Set the dataset parameters
         self.column_target = [f"MT_{i:03d}" for i in range(1, 371)]
         self.column_train = [f"MT_{i:03d}" for i in range(1, 371)]
