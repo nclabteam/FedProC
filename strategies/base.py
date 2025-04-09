@@ -352,7 +352,8 @@ class Server(SharedMethods):
         )
         if metric[-1] != min(metric):
             return
-        self.save_model(postfix="best")
+        if not self.exclude_server_model_processes:
+            self.save_model(postfix="best")
         if not self.save_local_model:
             return
         for client in self.clients:
