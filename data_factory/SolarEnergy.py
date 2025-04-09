@@ -12,15 +12,19 @@ from .base import BaseDataset
 class SolarEnergy(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Set the paths for the dataset
         self.save_path = os.path.join("datasets", "SolarEnergy")
         self.path_raw = os.path.join("datasets", "SolarEnergy", "raw")
         self.path_temp = os.path.join("datasets", "SolarEnergy", "temp")
+
+        # Set the dataset parameters
         self.column_date = "Date"
         self.column_target = ["Value"]
         self.column_train = ["Value"]
         self.granularity = 1
         self.granularity_unit = "hour"
         self.url = "https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/master/solar-energy/solar_AL.txt.gz"
+        self.split_files = True
 
     def download(self):
         # Create the directory if it doesn't exist
@@ -56,10 +60,28 @@ class SolarEnergy(BaseDataset):
         datetime_series = [start_date + timedelta(hours=i) for i in range(num_rows)]
         df = df.with_columns(pl.Series(self.column_date, datetime_series))
 
-        # Save the dataset
-        self.split_columns_into_files(
-            df=df,
-            path=self.path_raw,
-            date_column=self.column_date,
-            new_column_name="Value",
-        )
+        if self.split_files:
+            # Save the dataset as multiple files
+            self.split_columns_into_files(
+                df=df,
+                path=self.path_raw,
+                date_column=self.column_date,
+                new_column_name="Value",
+            )
+        else:
+            # Save the dataset as a single file
+            df.write_csv(os.path.join(self.path_raw, "solar_energy.csv"))
+
+
+class SolarEnergyOG(SolarEnergy):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set the paths for the dataset
+        self.save_path = os.path.join("datasets", "SolarEnergyOG")
+        self.path_raw = os.path.join("datasets", "SolarEnergyOG", "raw")
+        self.path_temp = os.path.join("datasets", "SolarEnergyOG", "temp")
+
+        # Set the dataset parameters
+        self.column_target = [f"column_{i}" for i in range(1, 138)]
+        self.column_train = [f"column_{i}" for i in range(1, 138)]
+        self.split_files = False
