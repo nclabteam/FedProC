@@ -24,6 +24,7 @@ class RAdam(Optimizer):
     """
     Source: https://github.com/LiyuanLucasLiu/RAdam/blob/master/radam/radam.py
     """
+
     def __init__(self, params, configs):
         betas = (configs.beta1, configs.beta2)
         if not 0.0 <= configs.learning_rate:
