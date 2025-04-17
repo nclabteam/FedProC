@@ -11,8 +11,8 @@ from .base import BaseDataset
 class BeijingAirQuality(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.path_raw = os.path.join("datasets", "BejingAirQuality", "raw")
-        self.save_path = os.path.join("datasets", "BejingAirQuality")
+        self.path_raw = os.path.join("datasets", "BeijingAirQuality", "raw")
+        self.save_path = os.path.join("datasets", "BeijingAirQuality")
         self.column_date = "Date"
         self.column_target = [
             "PM2.5",
