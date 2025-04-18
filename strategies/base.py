@@ -688,12 +688,16 @@ class Server(SharedMethods):
         self.save_results()
         self.evaluate_all_metrics()
 
+    def pre_train_clients(self):
+        pass
+
     def train(self):
         for i in range(self.iterations):
             s_t = time.time()
             self.current_iter = i
             self.select_clients()
             self.send_to_clients()
+            self.pre_train_clients()
             self.train_clients()
             self.receive_from_clients()
             self.calculate_aggregation_weights()

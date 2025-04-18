@@ -41,6 +41,10 @@ class Elastic(Server):
                 aggregated = local_param.data * weight
                 global_param.data -= coef * aggregated
 
+    def pre_train_clients(self):
+        for client in self.selected_clients:
+            client.calculate_sensitivity()
+
 
 class Elastic_Client(Client):
     """
@@ -90,8 +94,3 @@ class Elastic_Client(Client):
                 else:
                     sensitivity[i] = 1.0
         self.sensitivity = sensitivity
-
-    def receive_from_server(self, data):
-        super().receive_from_server(data)
-        self.calculate_sensitivity()
-        
