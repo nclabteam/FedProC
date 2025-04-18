@@ -91,6 +91,7 @@ class Elastic_Client(Client):
                     sensitivity[i] = 1.0
         self.sensitivity = sensitivity
 
-    def train(self):
+    def receive_from_server(self, data):
+        super().receive_from_server(data)
         self.calculate_sensitivity()
-        super().train()
+        
