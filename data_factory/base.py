@@ -960,6 +960,7 @@ class BaseDataset:
                 },
                 "date": {},
                 "samples": {},
+                "size_mb": {},
             }
             for split_name, (start, end) in zip(["train", "test"], split_indices):
                 split_df = self.subdf_from_indices(
@@ -1019,7 +1020,7 @@ class BaseDataset:
                 client_info["paths"][split_name] = file_path
                 client_info = client_info | self.get_config()
                 client_info["stats"][split_name] = split_stats
-                client_info["size_mb"] = os.path.getsize(file_path) / 1024 / 1024
+                client_info["size_mb"][split_name] = os.path.getsize(file_path) / 1024 / 1024
 
             self.info.append(client_info)
             print(json.dumps(self.info[-1], indent=4))
