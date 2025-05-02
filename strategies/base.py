@@ -74,23 +74,30 @@ class SharedMethods:
             setattr(self, key, value)
         self.configs = configs
 
+    @staticmethod
+    def _get_objective_function(func_type, func_name):
+        """
+        Dynamically import and return the specified function from the given module.
+        """
+        module = __import__(func_type, fromlist=[func_name])
+        func = getattr(module, func_name)
+        return func
+
     def initialize_loss(self):
-        self.loss = getattr(__import__("losses"), self.loss)()
+        obj = self._get_objective_function("losses", self.loss)
+        self.loss = obj()
 
     def initialize_model(self):
-        self.model = getattr(__import__("models"), self.model)(configs=self.configs).to(
-            self.device
-        )
+        obj = self._get_objective_function("models", self.model)
+        self.model = obj(configs=self.configs).to(self.device)
 
     def initialize_optimizer(self):
-        self.optimizer = getattr(__import__("optimizers"), self.optimizer)(
-            params=self.model.parameters(), configs=self.configs
-        )
+        obj = self._get_objective_function("optimizers", self.optimizer)
+        self.optimizer = obj(params=self.model.parameters(), configs=self.configs)
 
     def initialize_scheduler(self):
-        self.scheduler = getattr(__import__("schedulers"), self.scheduler)(
-            optimizer=self.optimizer, configs=self.configs
-        )
+        obj = self._get_objective_function("schedulers", self.scheduler)
+        self.scheduler = obj(optimizer=self.optimizer, configs=self.configs)
 
     def mkdir(self):
         self.save_path = os.path.join(self.save_path, str(self.times))
