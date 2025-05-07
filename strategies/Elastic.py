@@ -47,14 +47,11 @@ class Elastic(Server):
 
 
 class Elastic_Client(Client):
-    """
-    Source: https://github.com/KarhouTam/FL-bench/blob/master/src/client/elastic.py
-    """
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.init_sensitivity = torch.zeros(
-            len(list(self.model.parameters())), device=self.device
+            len(list(self.model.parameters())),
+            device=self.device,
         )
 
     def variables_to_be_sent(self):
