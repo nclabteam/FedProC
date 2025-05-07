@@ -59,15 +59,15 @@ class Elastic_Client(Client):
 
     def variables_to_be_sent(self):
         to_be_sent = super().variables_to_be_sent()
-        diff = {
+        diff_dict = {
             key: param_old - param_new
             for (key, param_old), param_new in zip(
                 self.snapshot.named_parameters(), self.model.parameters()
             )
         }
-        self.diff = copy.deepcopy(self.model)
-        self.diff.load_state_dict(diff)
-        to_be_sent["model"] = self.diff
+        diff_model = copy.deepcopy(self.model)
+        diff_model.load_state_dict(diff_dict)
+        to_be_sent["model"] = diff_model
         return {**to_be_sent, "sensitivity": self.sensitivity}
 
     def calculate_sensitivity(self):
