@@ -23,7 +23,9 @@ def extract_loss_number(s):
 
 
 if __name__ == "__main__":
-    script_df = pl.read_excel(os.path.join("scripts", "default.xlsx"))
+    filename = sys.argv[1] if len(sys.argv) > 1 else "default"
+    script_path = os.path.join("scripts", f"{filename}.xlsx")
+    script_df = pl.read_excel(script_path)
     data = []
     models = []
     for run in script_df["--name="].to_list():
