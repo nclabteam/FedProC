@@ -594,105 +594,6 @@ class Server(SharedMethods):
             ):
                 global_param.data.add_(local_param.data, alpha=weight)
 
-    def _last_eval(self, model, dataloader, scaler=None):
-        metrics = {}
-        func = getattr(__import__("losses"), "evaluation_result")
-        model.eval()
-        for batch_x, batch_y in dataloader:
-            batch_x = batch_x.float().to(self.device)
-            batch_y = batch_y.float().to(self.device)
-            outputs = model(batch_x)
-            if scaler is not None:
-                outputs = torch.tensor(
-                    scaler.inverse_transform(outputs.cpu().detach().numpy())
-                )
-                batch_y = torch.tensor(
-                    scaler.inverse_transform(batch_y.cpu().detach().numpy())
-                )
-            for key, value in func(y_pred=outputs, y_true=batch_y).items():
-                if key in metrics:
-                    metrics[key].append(value)  # Extend the existing list in a
-                else:
-                    metrics[key] = [value]  # If key is not in a, add it
-        for key, value in metrics.items():
-            metrics[key] = np.mean(value)
-        return metrics
-
-    def evaluate_all_metrics(self):
-        if not self.last_eval:
-            return
-
-        if self.exclude_server_model_processes:
-            results = []
-        else:
-            merged_testset = DataLoader(
-                ConcatDataset(
-                    [client.load_test_data().dataset for client in self.clients]
-                ),
-                batch_size=self.batch_size,
-                shuffle=False,
-            )
-
-            results = [
-                dict(
-                    {"entity": self.name, "denorm": False, "type": model_type},
-                    **self._last_eval(
-                        model=torch.load(
-                            os.path.join(
-                                self.model_path,
-                                f"{self.name.lower().strip()}_{model_type}.pt",
-                            ),
-                            weights_only=False,
-                        ),
-                        dataloader=merged_testset,
-                    ),
-                )
-                for model_type in ["last", "best"]
-            ]
-            self.logger.info("-" * 50)
-            for res in results[-2:]:
-                for key, value in res.items():
-                    self.logger.info(f"{key}: {str(value)}")
-        if self.save_local_model:
-            for client in self.clients:
-                for scaler in [None, client.scaler]:
-                    results.extend(
-                        [
-                            dict(
-                                {
-                                    "entity": client.name,
-                                    "denorm": scaler is not None,
-                                    "type": model_type,
-                                },
-                                **self._last_eval(
-                                    model=torch.load(
-                                        os.path.join(
-                                            client.model_path,
-                                            f"{client.name.lower().strip()}_{model_type}.pt",
-                                        ),
-                                        weights_only=False,
-                                    ),
-                                    dataloader=client.load_test_data(),
-                                    scaler=scaler,  # Pass the current scaler instance
-                                ),
-                            )
-                            for model_type in [
-                                "last",
-                                "best",
-                            ]  # Iterate for "last" and "best"
-                        ]
-                    )
-
-                    for res in results[-2:]:
-                        client.logger.info("-" * 50)
-                        for key, value in res.items():
-                            client.logger.info(f"{key}: {str(value)}")
-        results = pl.from_dicts(results)
-        print(results)
-        path = os.path.join(self.result_path, "all.csv")
-        results.write_csv(path)
-        self.logger.info(f"Results saved to {path}")
-
     def get_model_info(self):
         if not self.exclude_server_model_processes:
             self.summarize_model(dataloader=self.clients[0].load_train_data())
@@ -705,7 +606,6 @@ class Server(SharedMethods):
         self.logger.info("-" * 50)
         self.save_models(save_type="last")
         self.save_results()
-        self.evaluate_all_metrics()
 
     def pre_train_clients(self):
         pass
