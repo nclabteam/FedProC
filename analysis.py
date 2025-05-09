@@ -35,6 +35,7 @@ if __name__ == "__main__":
 
         with open(os.path.join("runs", run, "config.json"), "r") as f:
             j = json.load(f)
+            datum["path_info"] = j["path_info"]
             datum["dataset"] = j["dataset"]
             datum["input_len"] = j["input_len"]
             datum["output_len"] = j["output_len"]
@@ -60,9 +61,9 @@ if __name__ == "__main__":
             loss = df.filter(df["metric"].str.contains("personal_avg_test_loss"))
         else:
             loss = df.filter(df["metric"].str.contains("global_avg_test_loss"))
-        datum[
-            "loss"
-        ] = f"{round(loss['avg_min'].to_list()[0], r):.4f}±{round(loss['std_min'].to_list()[0]*10_000, r):.4f}"
+        datum["loss"] = (
+            f"{round(loss['avg_min'].to_list()[0], r):.4f}±{round(loss['std_min'].to_list()[0]*10_000, r):.4f}"
+        )
         try:
             send_to_clients_mb = max(
                 df.filter(df["metric"].str.contains("send_mb"))["avg_min"].to_list()[0],
