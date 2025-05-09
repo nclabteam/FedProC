@@ -635,29 +635,19 @@ class Server(SharedMethods):
 
             results = [
                 dict(
-                    {"entity": self.name, "denorm": False, "type": "last"},
+                    {"entity": self.name, "denorm": False, "type": model_type},
                     **self._last_eval(
                         model=torch.load(
                             os.path.join(
-                                self.model_path, self.name.lower().strip() + "_last.pt"
+                                self.model_path,
+                                f"{self.name.lower().strip()}_{model_type}.pt",
                             ),
                             weights_only=False,
                         ),
                         dataloader=merged_testset,
                     ),
-                ),
-                dict(
-                    {"entity": self.name, "denorm": False, "type": "best"},
-                    **self._last_eval(
-                        model=torch.load(
-                            os.path.join(
-                                self.model_path, self.name.lower().strip() + "_best.pt"
-                            ),
-                            weights_only=False,
-                        ),
-                        dataloader=merged_testset,
-                    ),
-                ),
+                )
+                for model_type in ["last", "best"]
             ]
             self.logger.info("-" * 50)
             for res in results[-2:]:
@@ -672,38 +662,24 @@ class Server(SharedMethods):
                                 {
                                     "entity": client.name,
                                     "denorm": scaler is not None,
-                                    "type": "last",
+                                    "type": model_type,
                                 },
                                 **self._last_eval(
                                     model=torch.load(
                                         os.path.join(
                                             client.model_path,
-                                            client.name.lower().strip() + "_last.pt",
+                                            f"{client.name.lower().strip()}_{model_type}.pt",
                                         ),
                                         weights_only=False,
                                     ),
                                     dataloader=client.load_test_data(),
-                                    scaler=scaler,
+                                    scaler=scaler,  # Pass the current scaler instance
                                 ),
-                            ),
-                            dict(
-                                {
-                                    "entity": client.name,
-                                    "denorm": scaler is not None,
-                                    "type": "best",
-                                },
-                                **self._last_eval(
-                                    model=torch.load(
-                                        os.path.join(
-                                            client.model_path,
-                                            client.name.lower().strip() + "_best.pt",
-                                        ),
-                                        weights_only=False,
-                                    ),
-                                    dataloader=client.load_test_data(),
-                                    scaler=scaler,
-                                ),
-                            ),
+                            )
+                            for model_type in [
+                                "last",
+                                "best",
+                            ]  # Iterate for "last" and "best"
                         ]
                     )
 
