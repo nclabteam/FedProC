@@ -19,6 +19,162 @@ from torch.utils.data import ConcatDataset, DataLoader, Subset, TensorDataset
 class SharedMethods:
     default_value = 9_999_999.0
 
+    @staticmethod
+    def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
+        """
+        General method to load and subsample data.
+
+        Args:
+            file (str): Path to the data file.
+            sample_ratio (float): Ratio of data to load (between 0 and 1).
+            shuffle (bool): Whether to shuffle the data (True for training, False otherwise).
+            batch_size (int): Batch size for the DataLoader.
+            scaler
+        """
+        assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
+
+        data = np.load(file)
+        x = data["x"]
+        y = data["y"]
+        x = scaler.transform(x)
+        y = scaler.transform(y)
+        x = torch.tensor(x, dtype=torch.float32)
+        y = torch.tensor(y, dtype=torch.float32)
+        dataset = TensorDataset(x, y)
+
+        # Apply subsampling if necessary
+        if sample_ratio < 1.0:
+            subset_size = int(len(dataset) * sample_ratio)
+            indices = torch.randperm(len(dataset))[:subset_size]
+            dataset = Subset(dataset, indices)
+
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+        )
+
+        return dataloader
+
+    @staticmethod
+    def calculate_loss(model, dataloader, criterion, device="cpu"):
+        losses = []
+        model.eval()
+        for batch_x, batch_y in dataloader:
+            batch_x = batch_x.float().to(device)
+            batch_y = batch_y.float().to(device)
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            losses.append(loss.item())
+        return losses
+
+    @staticmethod
+    def save_model(model, path, name, postfix="", extention="pt", verbose=None):
+        path = os.path.join(
+            path,
+            f"{'_'.join([name.lower().strip(), postfix])}.{extention}",
+        )
+        torch.save(obj=model, f=path)
+        if verbose is not None:
+            verbose.info(f"Model saved to {path}")
+
+    @staticmethod
+    def reset_model(model):
+        result = copy.deepcopy(model)
+        for param in result.parameters():
+            param.data.zero_()
+        return result
+
+    @staticmethod
+    def get_size(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.element_size() * obj.nelement() / (1024**2)  # Size in MB
+        if isinstance(obj, torch.nn.Module):
+            total_size = sum(
+                param.element_size() * param.nelement() for param in obj.parameters()
+            )
+            total_size += sum(
+                buffer.element_size() * buffer.nelement() for buffer in obj.buffers()
+            )  # Include buffers
+            return total_size / (1024**2)  # Size in MB
+        if isinstance(obj, DataLoader):
+            total_size = sum(
+                sum(
+                    item.element_size() * item.nelement()
+                    for item in data
+                    if isinstance(item, torch.Tensor)
+                )
+                for data in obj.dataset
+            )
+            return total_size / (1024**2)  # Size in MB
+        return sys.getsizeof(obj) / (1024**2)  # Size in MB
+
+    @staticmethod
+    def train_one_epoch(model, dataloader, optimizer, criterion, scheduler, device):
+        model.train()
+        for batch_x, batch_y in dataloader:
+            optimizer.zero_grad()
+            batch_x = batch_x.float().to(device)
+            batch_y = batch_y.float().to(device)
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+
+    @staticmethod
+    def update_model_params(old, new):
+        """Update the parameters of old_model with those from new_model."""
+        for old_param, new_param in zip(old.parameters(), new.parameters()):
+            old_param.data.copy_(new_param.data)
+
+    @staticmethod
+    def update_optimizer_params(old, new):
+        """Update the parameters and hyperparameters of old_optimizer with those from new_optimizer."""
+        for old_group, new_group in zip(old.param_groups, new.param_groups):
+            # Update all hyperparameters dynamically
+            for key in new_group.keys():
+                if key != "params":  # Skip updating "params" directly
+                    old_group[key] = new_group[key]
+
+            # Update the model parameters inside param_groups
+            for old_param, new_param in zip(old_group["params"], new_group["params"]):
+                old_param.data.copy_(new_param.data)
+
+    @staticmethod
+    def _get_objective_function(func_type, func_name):
+        """
+        Dynamically import and return the specified function from the given module.
+        """
+        module = __import__(func_type, fromlist=[func_name])
+        func = getattr(module, func_name)
+        return func
+
+    def initialize_loss(self):
+        obj = self._get_objective_function("losses", self.loss)
+        self.loss = obj()
+
+    def initialize_model(self):
+        obj = self._get_objective_function("models", self.model)
+        self.model = obj(configs=self.configs).to(self.device)
+
+    def initialize_optimizer(self):
+        obj = self._get_objective_function("optimizers", self.optimizer)
+        self.optimizer = obj(params=self.model.parameters(), configs=self.configs)
+
+    def initialize_scheduler(self):
+        obj = self._get_objective_function("schedulers", self.scheduler)
+        self.scheduler = obj(optimizer=self.optimizer, configs=self.configs)
+
+    def summarize_model(self, dataloader):
+        getattr(__import__("utils"), "ModelSummarizer")(
+            model=self.model,
+            dataloader=dataloader,
+            save_path=os.path.join(
+                self.model_info_path, f"{self.name.lower().strip()}.svg"
+            ),
+        ).execute()
+
     def save_results(self):
         pl_df = pl.DataFrame(self.metrics)
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
@@ -74,31 +230,6 @@ class SharedMethods:
             setattr(self, key, value)
         self.configs = configs
 
-    @staticmethod
-    def _get_objective_function(func_type, func_name):
-        """
-        Dynamically import and return the specified function from the given module.
-        """
-        module = __import__(func_type, fromlist=[func_name])
-        func = getattr(module, func_name)
-        return func
-
-    def initialize_loss(self):
-        obj = self._get_objective_function("losses", self.loss)
-        self.loss = obj()
-
-    def initialize_model(self):
-        obj = self._get_objective_function("models", self.model)
-        self.model = obj(configs=self.configs).to(self.device)
-
-    def initialize_optimizer(self):
-        obj = self._get_objective_function("optimizers", self.optimizer)
-        self.optimizer = obj(params=self.model.parameters(), configs=self.configs)
-
-    def initialize_scheduler(self):
-        obj = self._get_objective_function("schedulers", self.scheduler)
-        self.scheduler = obj(optimizer=self.optimizer, configs=self.configs)
-
     def mkdir(self):
         self.save_path = os.path.join(self.save_path, str(self.times))
         self.model_path = os.path.join(self.save_path, "models")
@@ -114,138 +245,6 @@ class SharedMethods:
         ]:
             if not os.path.exists(dir):
                 os.makedirs(dir)
-
-    @staticmethod
-    def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
-        """
-        General method to load and subsample data.
-
-        Args:
-            file (str): Path to the data file.
-            sample_ratio (float): Ratio of data to load (between 0 and 1).
-            shuffle (bool): Whether to shuffle the data (True for training, False otherwise).
-            batch_size (int): Batch size for the DataLoader.
-            scaler
-        """
-        assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
-
-        data = np.load(file)
-        x = data["x"]
-        y = data["y"]
-        x = scaler.transform(x)
-        y = scaler.transform(y)
-        x = torch.tensor(x, dtype=torch.float32)
-        y = torch.tensor(y, dtype=torch.float32)
-        dataset = TensorDataset(x, y)
-
-        # Apply subsampling if necessary
-        if sample_ratio < 1.0:
-            subset_size = int(len(dataset) * sample_ratio)
-            indices = torch.randperm(len(dataset))[:subset_size]
-            dataset = Subset(dataset, indices)
-
-        dataloader = DataLoader(
-            dataset=dataset,
-            batch_size=batch_size,
-            shuffle=shuffle,
-        )
-
-        return dataloader
-
-    @staticmethod
-    def calculate_loss(model, dataloader, criterion, device="cpu"):
-        losses = []
-        model.eval()
-        for batch_x, batch_y in dataloader:
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
-            loss = criterion(outputs, batch_y)
-            losses.append(loss.item())
-        return losses
-
-    def save_model(self, postfix="", extention="pt", verbose=True):
-        path = os.path.join(
-            self.model_path,
-            f"{'_'.join([self.name.lower().strip(), postfix])}.{extention}",
-        )
-        torch.save(obj=self.model, f=path)
-
-        # Display a message if verbose is set to True
-        if verbose:
-            self.logger.info(f"Model saved to {path}")
-
-    @staticmethod
-    def reset_model(model):
-        result = copy.deepcopy(model)
-        for param in result.parameters():
-            param.data.zero_()
-        return result
-
-    @staticmethod
-    def get_size(obj):
-        if isinstance(obj, torch.Tensor):
-            return obj.element_size() * obj.nelement() / (1024**2)  # Size in MB
-        if isinstance(obj, torch.nn.Module):
-            total_size = sum(
-                param.element_size() * param.nelement() for param in obj.parameters()
-            )
-            total_size += sum(
-                buffer.element_size() * buffer.nelement() for buffer in obj.buffers()
-            )  # Include buffers
-            return total_size / (1024**2)  # Size in MB
-        if isinstance(obj, DataLoader):
-            total_size = sum(
-                sum(
-                    item.element_size() * item.nelement()
-                    for item in data
-                    if isinstance(item, torch.Tensor)
-                )
-                for data in obj.dataset
-            )
-            return total_size / (1024**2)  # Size in MB
-        return sys.getsizeof(obj) / (1024**2)  # Size in MB
-
-    def summarize_model(self, dataloader):
-        getattr(__import__("utils"), "ModelSummarizer")(
-            model=self.model,
-            dataloader=dataloader,
-            save_path=os.path.join(
-                self.model_info_path, f"{self.name.lower().strip()}.svg"
-            ),
-        ).execute()
-
-    @staticmethod
-    def train_one_epoch(model, dataloader, optimizer, criterion, scheduler, device):
-        model.train()
-        for batch_x, batch_y in dataloader:
-            optimizer.zero_grad()
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
-        scheduler.step()
-
-    @staticmethod
-    def update_model_params(old, new):
-        """Update the parameters of old_model with those from new_model."""
-        for old_param, new_param in zip(old.parameters(), new.parameters()):
-            old_param.data.copy_(new_param.data)
-
-    @staticmethod
-    def update_optimizer_params(old, new):
-        """Update the parameters and hyperparameters of old_optimizer with those from new_optimizer."""
-        for old_group, new_group in zip(old.param_groups, new.param_groups):
-            # Update all hyperparameters dynamically
-            for key in new_group.keys():
-                if key != "params":  # Skip updating "params" directly
-                    old_group[key] = new_group[key]
-
-            # Update the model parameters inside param_groups
-            for old_param, new_param in zip(old_group["params"], new_group["params"]):
-                old_param.data.copy_(new_param.data)
 
 
 class Server(SharedMethods):
@@ -343,28 +342,65 @@ class Server(SharedMethods):
         for client in self.clients:
             client.save_results()
 
-    def save_lastest_models(self):
-        if not self.exclude_server_model_processes:
-            self.save_model(postfix="last")
-        if not self.save_local_model:
-            return
-        for client in self.clients:
-            client.save_model(postfix="last")
+    def save_models(self, save_type: str, verbose: bool = True):
+        """
+        Saves models based on the specified type ('last' or 'best').
 
-    def save_best_model(self):
-        metric = (
-            self.metrics["personal_avg_test_loss"]
-            if self.save_local_model
-            else self.metrics["global_avg_test_loss"]
-        )
-        if metric[-1] != min(metric):
+        Args:
+            save_type (str): The type of model to save. Expected values: "last", "best".
+        """
+        if save_type not in ["last", "best"]:
+            raise ValueError("save_type must be 'last' or 'best'")
+
+        should_save_this_round = True  # Assume we save, unless "best" condition fails
+
+        if save_type == "best":
+            # Determine the metric to check for "best"
+            metric_key = (
+                "personal_avg_test_loss"
+                if self.save_local_model
+                else "global_avg_test_loss"
+            )
+
+            # Ensure the metric exists and is not empty
+            if metric_key not in self.metrics or not self.metrics[metric_key]:
+                # print(f"Warning: Metric '{metric_key}' not found or empty. Cannot save 'best' model.")
+                should_save_this_round = False
+            else:
+                metric_values = self.metrics[metric_key]
+                if metric_values[-1] != min(metric_values):
+                    should_save_this_round = False
+
+        # If it's "best" type and the condition wasn't met, don't proceed
+        if not should_save_this_round:
             return
+
+        # --- Common saving logic ---
+        postfix = save_type  # "last" or "best"
+
+        # Save server/global model
         if not self.exclude_server_model_processes:
-            self.save_model(postfix="best")
+            self.save_model(
+                model=self.model,
+                path=self.model_path,
+                name=self.name,
+                postfix=postfix,
+                verbose=self.logger,
+            )
+
+        # If local models are not to be saved, return after server model (if saved)
         if not self.save_local_model:
             return
+
+        # Save client/local models
         for client in self.clients:
-            client.save_model(postfix="best")
+            client.save_model(
+                model=client.model,
+                path=client.model_path,
+                name=client.name,
+                postfix=postfix,
+                verbose=client.logger,
+            )
 
     def early_stopping(self):
         metric = (
@@ -691,7 +727,7 @@ class Server(SharedMethods):
     def post_process(self):
         self.logger.info("")
         self.logger.info("-" * 50)
-        self.save_lastest_models()
+        self.save_models(save_type="last")
         self.save_results()
         self.evaluate_all_metrics()
 
@@ -710,7 +746,7 @@ class Server(SharedMethods):
             self.calculate_aggregation_weights()
             self.aggregate_models()
             self.evaluate()
-            self.save_best_model()
+            self.save_models(save_type="best")
             self.metrics["time_per_iter"].append(time.time() - s_t)
             self.logger.info(f'Time cost: {self.metrics["time_per_iter"][-1]:.4f}s')
             self.fix_results()
