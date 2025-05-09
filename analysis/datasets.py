@@ -7,6 +7,8 @@ import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 # --- Configuration ---
 dataset_name = "Traffic"  # <--- CHANGE THIS IF NEEDED
 base_data_path = os.path.join("datasets")
@@ -15,7 +17,7 @@ sub_path = os.path.join(dataset_name, f"seq_96-offset_0-pred_96")  # Example
 full_data_path = os.path.join(base_data_path, sub_path)
 info_file_path = os.path.join(full_data_path, "info.json")
 # Define the folder where plots will be saved
-output_folder = os.path.join("saved_plots", dataset_name)
+output_folder = os.path.join("analysis", "saved_plots", dataset_name)
 
 # --- Create Output Folder ---
 try:

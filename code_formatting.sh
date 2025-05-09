@@ -12,8 +12,7 @@ TARGETS=(
     "strategies"
     "utils"
     "main.py"
-    "analysis.py"
-    "EDA.py"
+    "analysis"
 )
 
 # Iterate over each target and apply isort and black

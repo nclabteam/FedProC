@@ -1,4 +1,6 @@
 __pycache__
 runs
 datasets
-results.csv
+temp
+analysis/*.csv
+analysis/saved_plots
