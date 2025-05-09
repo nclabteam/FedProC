@@ -759,9 +759,11 @@ class BaseDataset:
             lambda df_t: (
                 df_t.rename(
                     {
-                        old_col: str(new_col)
-                        if new_col != df_t.slice(0, 1).select(pl.first()).item()
-                        else "col"
+                        old_col: (
+                            str(new_col)
+                            if new_col != df_t.slice(0, 1).select(pl.first()).item()
+                            else "col"
+                        )
                         for old_col, new_col in zip(
                             df_t.columns, df_t.slice(0, 1).rows()[0]
                         )
