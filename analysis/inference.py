@@ -68,7 +68,8 @@ for dir in os.listdir("runs"):
                 continue
             weights_path = os.path.join(path, weights)
 
-            model = torch.load(weights_path).cuda()
+            print(f"Loading {weights_path}")
+            model = torch.load(weights_path, weights_only=False).cuda()
             datum = []
             for client in data_info:
                 stats = client["stats"]["train"]
