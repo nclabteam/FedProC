@@ -39,14 +39,14 @@ FedProC is a federated learning framework for time-series forecasting, incorpora
 | ETTm2 | Energy | 15 minutes | 7 | 1 | 57_600 |
 | ETDatasetMinute | Energy | 15 minutes | 7 | 2 | 57_600 |
 | Electricity | Energy | 15 minutes | 1 | 321 | 26_304 |
-| ElectricityLoadDiagrams | Energy | 15 minutes | 1 | 370 | 26_304 |
-| METRLA | | | | | |
+| ElectricityLoadDiagrams | Energy | 15 minutes | 1 | 370 | 140_256 |
+| METRLA | | 5 minutes | 1 | 207 | 34_272 |
 | MekongSalinity | | | | | |
-| PeMS03 | | | | | |
-| PeMS04 | | | | | |
-| PeMS07 | | | | | |
-| PeMS08 | | | | | |
-| PeMSBAY | | | | | |
+| PeMS03 | | 5 minutes | 1 | 358 | 26_208 |
+| PeMS04 | | 5 minutes | 1 | 307 | 16_992 |
+| PeMS07 | | 5 minutes | 1 | 883 | 28_224 |
+| PeMS08 | | 5 minutes | 3 | 170 | 17_856 |
+| PeMSBAY | | 5 minutes | 1 | 325 | 52_116 |
 | PeMSSF | Traffic | 10 minutes | 1 | 963 | 63_345 |
 | SolarEnergy | Energy | 1 hour | 1 | 137 | 52_560 |
 | StatesILI | | | | | |
