@@ -6,48 +6,13 @@ from collections import defaultdict
 import numpy as np
 import polars as pl
 import torch
-from torch.utils.data import DataLoader, Subset, TensorDataset
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from losses import evaluation_result
+from strategies.base import SharedMethods
 
-
-@staticmethod
-def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
-    """
-    General method to load and subsample data.
-
-    Args:
-        file (str): Path to the data file.
-        sample_ratio (float): Ratio of data to load (between 0 and 1).
-        shuffle (bool): Whether to shuffle the data (True for training, False otherwise).
-        batch_size (int): Batch size for the DataLoader.
-        scaler
-    """
-    assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
-
-    data = np.load(file)
-    x = data["x"]
-    y = data["y"]
-    x = scaler.transform(x)
-    y = scaler.transform(y)
-    x = torch.tensor(x, dtype=torch.float32)
-    y = torch.tensor(y, dtype=torch.float32)
-    dataset = TensorDataset(x, y)
-
-    # Apply subsampling if necessary
-    if sample_ratio < 1.0:
-        subset_size = int(len(dataset) * sample_ratio)
-        indices = torch.randperm(len(dataset))[:subset_size]
-        dataset = Subset(dataset, indices)
-
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-    )
-
-    return dataloader
+load_data = SharedMethods.load_data
 
 
 dfs = []
@@ -135,7 +100,16 @@ for dir in os.listdir("runs"):
             f"{k}_avg": np.mean([r[k] for r in group]) for k in keys if k != "denorm"
         }
         std = {f"{k}_std": np.std([r[k] for r in group]) for k in keys if k != "denorm"}
-        result = {"case": dir, "denorm": denorm, "type": t, **avg, **std}
+        result = {
+            "case": dir,
+            "denorm": denorm,
+            "type": t,
+            "dataset": info["dataset"],
+            "input_len": info["input_len"],
+            "output_len": info["output_len"],
+            **avg,
+            **std,
+        }
         summary.append(result)
     # Convert the summary into a Polars DataFrame
     df = pl.DataFrame(summary)
