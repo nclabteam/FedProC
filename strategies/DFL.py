@@ -129,7 +129,7 @@ class DFL_Client(Client):
         self.metrics["receive_mb"] = []
 
     def receive_from_server(self, data):
-        self.scores = data["train_samples"]
+        self.scores = data["score"]
         self.models = data["model"]
 
     def calculate_aggregation_weights(self):

@@ -79,7 +79,7 @@ class FedAWA(Server):
         if self.awa_weights is None or self.awa_weights.shape[0] != num_clients:
             # Initialize based on sample counts for the first time or if client set changes
             ts = torch.tensor(
-                [client["train_samples"] for client in self.client_data],
+                [client["score"] for client in self.client_data],
                 dtype=torch.float32,
                 device=self.device,
             )

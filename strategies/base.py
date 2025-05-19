@@ -572,7 +572,6 @@ class Server(SharedMethods):
                         client.metrics["train_time"].append(
                             client_package["train_time"]
                         )
-                        client.train_samples = client_package["train_samples"]
 
         else:
             [client.train() for client in self.selected_clients]  # Serial execution
@@ -583,7 +582,7 @@ class Server(SharedMethods):
             client.fix_results(default=self.default_value)
 
     def calculate_aggregation_weights(self):
-        ts = [client["train_samples"] for client in self.client_data]
+        ts = [client["score"] for client in self.client_data]
         self.weights = torch.tensor(ts).to(self.device) / sum(ts)
 
     def aggregate_models(self):
@@ -671,7 +670,7 @@ class Client(SharedMethods):
         self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
 
     def variables_to_be_sent(self):
-        return {"model": self.model, "train_samples": self.train_samples}
+        return {"model": self.model, "score": self.train_samples}
 
     def send_to_server(self):
         to_be_sent = self.variables_to_be_sent()
@@ -722,7 +721,6 @@ class Client(SharedMethods):
                 "model": self.model,
                 "optimizer": self.optimizer,
                 "train_time": train_time,
-                "train_samples": self.train_samples,
             }
         self.metrics["train_time"].append(train_time)
         self.metrics["lr"].append(self.scheduler.get_last_lr()[0])
