@@ -677,7 +677,7 @@ class Client(SharedMethods):
     def variables_to_be_sent(self):
         if self.return_diff:
             diff_dict = {
-                key: param_old - param_new.detach()
+                key: param_old - param_new.detach().to("cpu")
                 for (key, param_old), param_new in zip(
                     self.snapshot.named_parameters(), self.model.parameters()
                 )
@@ -767,5 +767,5 @@ class Client(SharedMethods):
 
     def receive_from_server(self, data):
         if self.return_diff:
-            self.snapshot = copy.deepcopy(data["model"])
+            self.snapshot = copy.deepcopy(data["model"]).to("cpu")
         self.update_model_params(old=self.model, new=data["model"])
