@@ -585,12 +585,19 @@ class Server(SharedMethods):
         self.weights = torch.tensor(ts).to(self.device) / sum(ts)
 
     def aggregate_models(self):
-        self.model = self.reset_model(self.model)
-        for client, weight in zip(self.client_data, self.weights):
-            for global_param, local_param in zip(
-                self.model.parameters(), client["model"].parameters()
-            ):
-                global_param.data.add_(local_param.data, alpha=weight)
+        if self.return_diff:
+            for client, weight in zip(self.client_data, self.weights):
+                for global_param, local_param in zip(
+                    self.model.parameters(), client["model"].parameters()
+                ):
+                    global_param.data.sub_(local_param.data, alpha=weight)
+        else:
+            self.model = self.reset_model(self.model)
+            for client, weight in zip(self.client_data, self.weights):
+                for global_param, local_param in zip(
+                    self.model.parameters(), client["model"].parameters()
+                ):
+                    global_param.data.add_(local_param.data, alpha=weight)
 
     def get_model_info(self):
         if not self.exclude_server_model_processes:
@@ -668,7 +675,20 @@ class Client(SharedMethods):
         self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
 
     def variables_to_be_sent(self):
-        return {"model": self.model, "score": self.train_samples}
+        if self.return_diff:
+            diff_dict = {
+                key: param_old - param_new.detach()
+                for (key, param_old), param_new in zip(
+                    self.snapshot.named_parameters(), self.model.parameters()
+                )
+            }
+            diff_model = copy.deepcopy(self.model)
+            diff_model.load_state_dict(diff_dict)
+            model = diff_model
+            del self.snapshot
+        else:
+            model = self.model
+        return {"model": model, "score": self.train_samples}
 
     def send_to_server(self):
         to_be_sent = self.variables_to_be_sent()
@@ -746,4 +766,6 @@ class Client(SharedMethods):
         return losses
 
     def receive_from_server(self, data):
+        if self.return_diff:
+            self.snapshot = copy.deepcopy(data["model"])
         self.update_model_params(old=self.model, new=data["model"])

@@ -184,6 +184,12 @@ class Options:
             default=False,
             help="Exclude server model processes",
         )
+        parser.add_argument(
+            "--return_diff",
+            type=bool,
+            default=False,
+            help="Return the difference between the local model and the global model",
+        )
 
         for dir in ["strategies", "schedulers", "optimizers", "models", "topologies"]:
             self.apply_args_update(
