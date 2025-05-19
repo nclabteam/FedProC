@@ -312,7 +312,6 @@ class Server(SharedMethods):
                 b += self.get_size(value)
                 c[key] = value
             client.receive_from_server(c)
-            client.metrics["send_time"].append(2 * (time.time() - s))
         self.metrics["send_mb"].append(b)
 
     def receive_from_clients(self):
@@ -647,7 +646,6 @@ class Client(SharedMethods):
 
         self.metrics = {
             "train_time": [],
-            "send_time": [],
             "train_loss": [],
             "test_loss": [],
             "send_mb": [],
