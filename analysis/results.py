@@ -23,18 +23,12 @@ def extract_loss_number(s):
 
 
 if __name__ == "__main__":
-    filename = sys.argv[1] if len(sys.argv) > 1 else "default"
-    script_path = os.path.join("scripts", f"{filename}.xlsx")
-    script_df = pl.read_excel(script_path)
+    path = "runs"
     data = []
     models = []
-    for run in script_df["--name="].to_list():
-        p = os.path.join("runs", run, "results.csv")
+    for run in os.listdir(path):
+        p = os.path.join(path, run, "results.csv")
         if not os.path.exists(p):
-            script_value = script_df.filter(pl.col("--name=") == run)[
-                "script"
-            ].to_list()[0]
-            print(script_value)
             continue
         datum = {}
 
@@ -45,6 +39,7 @@ if __name__ == "__main__":
             datum["input_len"] = j["input_len"]
             datum["output_len"] = j["output_len"]
             datum["strategy"] = j["strategy"]
+            datum["run"] = run
             for keyword in [
                 "trend",
                 "seasonal",
@@ -87,48 +82,15 @@ if __name__ == "__main__":
     for model in list(set(models)):
         print(f"{model = }")
         d = [d for d in data if d["model"] == model]
-        d = pl.from_dicts(d).sort(by=["dataset", "input_len", "output_len", "strategy"])
+        # d = pl.from_dicts(d).sort(by=["dataset", "input_len", "output_len", "strategy"])
+        d = pl.from_dicts(d).sort(by=["run"])
 
         # Pivot the data to have strategy columns with their corresponding loss values
         table_loss = d.pivot(
-            index=["dataset", "input_len", "output_len"], on="strategy", values="loss"
+            index=["run"], on="strategy", values="loss"
         )
 
         # Save the normal loss table
         table_loss.write_csv(os.path.join("analysis", f"{model}_results_loss.csv"))
         print(table_loss)
         print("loss = mean±std(x10e-4)")
-
-        # Now calculate the relative increase table
-        strategy_cols = [
-            col
-            for col in table_loss.columns
-            if col not in ["dataset", "input_len", "output_len"]
-        ]
-
-        # Build a new table: percentage change
-        relative_rows = []
-        for row in table_loss.iter_rows(named=True):
-            fedavg_val = extract_loss_number(row.get("FedAvg", None))
-            relative_row = {k: row[k] for k in ["dataset", "input_len", "output_len"]}
-            if fedavg_val is None or fedavg_val == 0:
-                # If no FedAvg, set all % to None
-                for col in strategy_cols:
-                    relative_row[col] = None
-            else:
-                for col in strategy_cols:
-                    model_val = extract_loss_number(row.get(col, None))
-                    if model_val is None:
-                        relative_row[col] = None
-                    else:
-                        relative_row[col] = round(
-                            100 * (fedavg_val - model_val) / fedavg_val, 2
-                        )  # in percentage
-            relative_rows.append(relative_row)
-
-        table_relative = pl.from_dicts(relative_rows)
-        table_relative.write_csv(
-            os.path.join("analysis", f"{model}_results_relative.csv")
-        )
-        print(table_relative)
-        print("value = % increase compared to FedAvg")
