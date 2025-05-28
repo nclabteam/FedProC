@@ -571,6 +571,7 @@ class Server(SharedMethods):
                         client.metrics["train_time"].append(
                             client_package["train_time"]
                         )
+                        client.train_samples = client_package["train_samples"]
 
         else:
             [client.train() for client in self.selected_clients]  # Serial execution
