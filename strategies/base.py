@@ -740,6 +740,7 @@ class Client(SharedMethods):
                 "model": self.model,
                 "optimizer": self.optimizer,
                 "train_time": train_time,
+                "train_samples": self.train_samples,
             }
         self.metrics["train_time"].append(train_time)
         self.metrics["lr"].append(self.scheduler.get_last_lr()[0])
