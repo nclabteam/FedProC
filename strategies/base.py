@@ -173,7 +173,6 @@ class SharedMethods:
             save_path=os.path.join(
                 self.model_info_path, f"{self.name.lower().strip()}.svg"
             ),
-            device=self.device,
         ).execute()
 
     def save_results(self):
@@ -257,8 +256,7 @@ class Server(SharedMethods):
         self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
-        self.devices = [f"{self.device}:{i}" for i in self.device_id.split(",")]
-        self.num_gpus = len(self.devices)
+        self.num_gpus = len(self.device_id.split(","))
         configs.parallel = True if self.num_gpus > 1 else False
         self.parallel = configs.parallel
         ray.init(
@@ -423,7 +421,7 @@ class Server(SharedMethods):
 
         return False
 
-    def _compute_generalization_loss(self, client, dataset_type, model, device):
+    def _compute_generalization_loss(self, client, dataset_type, model):
         """
         Compute the loss for a single client. This will be executed in parallel.
 
@@ -432,15 +430,14 @@ class Server(SharedMethods):
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         - model: model being evaluated
         """
-        model = model.to(device)
-        dataloader = getattr(client, f"load_{dataset_type}_data")()
-        loss = self.calculate_loss(
-            model=model,
-            dataloader=dataloader,
-            criterion=client.loss,
-            device=device,
+        return np.mean(
+            self.calculate_loss(
+                model=model,
+                dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                criterion=client.loss,
+                device=client.device,
+            )
         )
-        return np.mean(loss)
 
     def evaluate_generalization_loss(self, dataset_type):
         """
@@ -450,14 +447,17 @@ class Server(SharedMethods):
         - dataset_type: str, type of dataset ('train', 'valid', 'test')
         """
         if 1 < self.num_workers < self.num_clients:
-            # Create (client, device, dataset_type, model) tuples
-            tasks = [
-                (client, dataset_type, self.model, self.devices[i % len(self.devices)])
-                for i, client in enumerate(self.clients)
-            ]
-
+            # Create a pool of processes
             with multiprocessing.Pool(processes=self.num_workers) as pool:
-                losses = pool.starmap(self._compute_generalization_loss, tasks)
+                # Prepare the partial function with the necessary arguments
+                func = partial(
+                    self._compute_generalization_loss,
+                    dataset_type=dataset_type,
+                    model=self.model,
+                )
+
+                # Run the function in parallel for each client
+                losses = pool.map(func, self.clients)
 
         else:
             losses = [
