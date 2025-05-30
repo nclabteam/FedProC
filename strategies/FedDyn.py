@@ -29,8 +29,11 @@ class FedDyn(Server):
         self.server_state = self.reset_model(self.model)
 
     def calculate_aggregation_weights(self):
-        model_delta = self.reset_model(self.model)
+        pass
 
+    def aggregate_models(self):
+        # Calculate the average model delta
+        model_delta = self.reset_model(self.model)
         for client in self.client_data:
             client_model = client["model"]
             for server_param, client_param, delta_param in zip(
@@ -40,20 +43,21 @@ class FedDyn(Server):
             ):
                 delta_param.data += (client_param - server_param) / self.num_clients
 
+        # Update the server state
         for state_param, delta_param in zip(
             self.server_state.parameters(), model_delta.parameters()
         ):
             state_param.data -= self.alpha * delta_param
 
-    def aggregate_models(self):
+        # Update the server model
         self.model = self.reset_model(self.model)
-
         for client in self.client_data:
             for server_param, client_param in zip(
                 self.model.parameters(), client["model"].parameters()
             ):
                 server_param.data += client_param.data.clone() / self.num_join_clients
 
+        # Apply the server state to the model
         for server_param, state_param in zip(
             self.model.parameters(), self.server_state.parameters()
         ):
@@ -64,9 +68,9 @@ class FedDyn_Client(Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.global_model_vector = None
-        old_grad = copy.deepcopy(self.model)
-        old_grad = model_parameter_vector(old_grad)
-        self.old_grad = torch.zeros_like(old_grad)
+        self.old_grad = torch.zeros_like(
+            self.model_parameter_vector(copy.deepcopy(self.model))
+        )
 
     def train_one_epoch(
         self, model, dataloader, optimizer, criterion, scheduler, device
@@ -78,24 +82,23 @@ class FedDyn_Client(Client):
             outputs = model(batch_x)
             loss = criterion(outputs, batch_y)
             if self.global_model_vector is not None:
-                v1 = model_parameter_vector(model)
+                v1 = self.model_parameter_vector(model)
                 loss += self.alpha / 2 * torch.norm(v1 - self.global_model_vector, 2)
                 loss -= torch.dot(v1, self.old_grad)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
         if self.global_model_vector is not None:
-            v1 = model_parameter_vector(model).detach()
+            v1 = self.model_parameter_vector(model).detach()
             self.old_grad = self.old_grad - self.alpha * (v1 - self.global_model_vector)
         scheduler.step()
 
     def receive_from_server(self, data):
         super().receive_from_server(data)
         self.global_model_vector = (
-            model_parameter_vector(data["model"]).detach().clone()
+            self.model_parameter_vector(data["model"]).detach().clone()
         )
 
-
-def model_parameter_vector(model):
-    param = [p.view(-1) for p in model.parameters()]
-    return torch.cat(param, dim=0)
+    @staticmethod
+    def model_parameter_vector(model):
+        return torch.cat([p.view(-1) for p in model.parameters()], dim=0)
