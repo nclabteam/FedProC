@@ -1,6 +1,9 @@
 # FedProC: Federated Prognos Chronos
 FedProC is a federated learning framework for time-series forecasting, incorporating various federated aggregation strategies, datasets, and models. It supports multiple forecasting models, datasets with a focus on **personalized federated learning**.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=neko941/FedProC&type=Timeline)](https://www.star-history.com/#neko941/FedProC&Timeline)
 
 ## Implemented Options
 ### Strategies
