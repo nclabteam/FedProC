@@ -86,7 +86,6 @@ class DFL(Server):
                     receive_mb += self.get_size(value)
                     all_to_be_received[key].append(value)
             node.metrics["receive_mb"].append(receive_mb)
-            node.metrics["send_time"].append(time.time() - start)
             node.receive_from_server(all_to_be_received)
 
     def send_to_clients(self, *args, **kwargs):
