@@ -190,11 +190,16 @@ class Options:
             default=False,
             help="Return the difference between the local model and the global model",
         )
-
-        for dir in ["strategies", "schedulers", "optimizers", "models", "topologies"]:
+        temp = parser.parse_known_args()[0]
+        for key, value in {
+            "strategies": temp.strategy,
+            "schedulers": temp.scheduler,
+            "optimizers": temp.optimizer,
+            "models": temp.model,
+        }.items():
             self.apply_args_update(
                 parser=parser,
-                args_update_functions=getattr(__import__(dir), "args_update_functions"),
+                update_func=getattr(__import__(key), "args_update_functions")[value],
             )
 
         self.args = parser.parse_args()
@@ -202,20 +207,21 @@ class Options:
         return self
 
     # Function to apply args_update to a parser
-    def apply_args_update(self, parser, args_update_functions):
+    def apply_args_update(self, parser, update_func):
+        if update_func is None or update_func == {}:
+            return
         existing_args = {action.dest for action in parser._actions}
-        for class_name, update_func in args_update_functions.items():
-            # Create a temporary parser to capture the arguments
-            temp_parser = argparse.ArgumentParser(add_help=False)
-            update_func(temp_parser)
+        # Create a temporary parser to capture the arguments
+        temp_parser = argparse.ArgumentParser(add_help=False)
+        update_func(temp_parser)
 
-            # Add only the new arguments to the main parser
-            for action in temp_parser._actions:
-                if action.dest not in existing_args:
-                    parser._add_action(action)
-                    existing_args.add(action.dest)
-                else:
-                    self.dup[action.dest] = 0
+        # Add only the new arguments to the main parser
+        for action in temp_parser._actions:
+            if action.dest not in existing_args:
+                parser._add_action(action)
+                existing_args.add(action.dest)
+            else:
+                self.dup[action.dest] = 0
 
     def _fix_specific_param(self, category, attr_name):
         """
@@ -233,6 +239,7 @@ class Options:
         param_key = getattr(
             self.args, attr_name
         )  # e.g., self.args.strategy for "strategies"
+
         self.update_if_none(params=optional.get(param_key, {}))
 
         # Access and update compulsory parameters
@@ -285,7 +292,6 @@ class Options:
         self._fix_specific_param("schedulers", "scheduler")
         self._fix_specific_param("optimizers", "optimizer")
         self._fix_specific_param("models", "model")
-        self._fix_specific_param("topologies", "topology")
         self.args.__dict__["max_epochs"] = self.args.iterations * self.args.epochs
         self.args.__dict__ = self._clean_none_args(args=self.args.__dict__)
         return self
