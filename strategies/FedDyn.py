@@ -9,7 +9,7 @@ optional = {
 }
 
 
-def args_update_feddyn(parser):
+def args_update(parser):
     parser.add_argument(
         "--alpha",
         type=float,
