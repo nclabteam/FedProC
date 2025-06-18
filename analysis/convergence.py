@@ -5,7 +5,7 @@ import polars as pl
 
 # --- Configuration ---
 # The column to analyze for convergence.
-TARGET_COLUMN = "global_avg_train_loss"
+TARGET_COLUMN = "global_avg_test_loss"
 # The step size for creating loss thresholds.
 LOSS_STEP = 0.01
 # The directory containing all experimental runs.
