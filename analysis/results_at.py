@@ -2,120 +2,137 @@ import json
 import os
 
 import numpy as np
-import polars as pl
+import pandas as pd
 
 # --- Configuration ---
-# The column to analyze.
+# The performance metric to analyze.
 TARGET_COLUMN = "global_avg_test_loss"
 # The specific rounds (iterations) to check performance at.
 MILESTONE_ROUNDS = [100, 200, 300, 400, 500]
-# The number of decimal places to round floats to.
+# The number of decimal places for rounding the final output.
 ROUND_PRECISION = 4
 # The directory containing all experimental runs.
 RUNS_DIRECTORY = "runs"
-# The output file for this new analysis.
-OUTPUT_FILE = os.path.join("analysis", "loss_at_milestones.csv")
+# The output file for this analysis.
+OUTPUT_FILE = os.path.join("analysis", "experiment_summary.csv")
 
 
-def perform_milestone_analysis(experiment_dir: str):
+def analyze_experiment_with_pandas(experiment_dir: str):
     """
-    Analyzes the mean and std of loss at specific milestone rounds for an experiment.
+    Analyzes all trials in an experiment to produce a summary of performance
+    at key milestones using Pandas.
+
+    Args:
+        experiment_dir (str): The name of the experiment directory.
+
+    Returns:
+        A Pandas DataFrame with the summarized results for the experiment, or None.
     """
-    print(f"--- Analyzing Milestones for: {experiment_dir} ---")
+    print(f"--- Analyzing Experiment: {experiment_dir} ---")
     base_path = os.path.join(RUNS_DIRECTORY, experiment_dir)
 
-    # Load experiment metadata
+    # 1. Load experiment metadata from config.json
     config_path = os.path.join(base_path, "config.json")
     metadata = {}
     try:
         with open(config_path, "r") as f:
-            config_data = json.load(f)
+            config = json.load(f)
         metadata = {
-            "dataset": config_data.get("dataset"),
-            "model": config_data.get("model"),
-            "input_len": config_data.get("input_len"),
-            "output_len": config_data.get("output_len"),
+            "dataset": config.get("dataset"),
+            "model": config.get("model"),
+            "input_len": config.get("input_len"),
+            "output_len": config.get("output_len"),
         }
         print(f"  - Loaded metadata: {metadata}")
     except Exception as e:
         print(f"  - Warning: Could not read config.json in {base_path}. Reason: {e}")
 
-    # 1. Load the loss data from each trial
-    trial_losses = []
-    for trial_name in os.listdir(base_path):
+    # 2. Load all trial CSVs into a list of DataFrames
+    trial_dfs = []
+    for i, trial_name in enumerate(os.listdir(base_path)):
         trial_path = os.path.join(base_path, trial_name)
         csv_path = os.path.join(trial_path, "results", "server.csv")
         if os.path.isdir(trial_path) and os.path.exists(csv_path):
             try:
-                df = pl.read_csv(csv_path)
+                df = pd.read_csv(csv_path)
                 if TARGET_COLUMN in df.columns:
-                    trial_losses.append(df.get_column(TARGET_COLUMN))
+                    df["trial_id"] = i
+                    df["round"] = df.index + 1  # Add a round number column
+                    trial_dfs.append(df)
             except Exception as e:
                 print(f"  - Error reading {csv_path}: {e}. Skipping trial.")
 
-    if not trial_losses:
-        print(
-            f"  - No valid trial data found for experiment '{experiment_dir}'. Skipping.\n"
-        )
+    if not trial_dfs:
+        print(f"  - No valid trial data found. Skipping experiment.\n")
         return None
 
-    print(f"  - Found {len(trial_losses)} trials to analyze.")
-    milestone_results = []
+    print(f"  - Found {len(trial_dfs)} trials to analyze.")
 
-    # 2. Analyze performance at fixed milestone rounds (100, 200, etc.)
-    for milestone_round in MILESTONE_ROUNDS:
-        losses_at_milestone = []
-        for loss_series in trial_losses:
-            # Check if the trial ran for at least this many rounds
-            if len(loss_series) >= milestone_round:
-                # Get loss at the specific round (index is round - 1)
-                losses_at_milestone.append(loss_series[milestone_round - 1])
+    # 3. Combine all trials into a single master DataFrame for this experiment
+    all_trials_df = pd.concat(trial_dfs, ignore_index=True)
 
-        # Calculate mean and std if any trials reached this milestone
-        if losses_at_milestone:
-            mean_loss = np.mean(losses_at_milestone)
-            std_loss = np.std(losses_at_milestone)
-            num_trials_at_milestone = len(losses_at_milestone)
-        else:
-            mean_loss, std_loss, num_trials_at_milestone = None, None, 0
+    # 4. Group and aggregate data for the fixed milestone rounds
+    milestones_df = all_trials_df[all_trials_df["round"].isin(MILESTONE_ROUNDS)]
+    milestone_summary = (
+        milestones_df.groupby("round")[TARGET_COLUMN]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
 
-        milestone_results.append(
+    # 5. Get the data for the 'last' round of each trial
+    # We find the index of the last round for each trial_id and select those rows
+    last_round_indices = all_trials_df.groupby("trial_id")["round"].idxmax()
+    last_rounds_df = all_trials_df.loc[last_round_indices]
+
+    # Calculate stats for the 'last' round
+    last_round_summary = pd.DataFrame(
+        [
             {
-                "case": experiment_dir,
-                **metadata,
-                "milestone_round": milestone_round,
-                "mean_loss": mean_loss,
-                "std_loss": std_loss,
-                "num_trials_at_milestone": num_trials_at_milestone,
-                "total_trials": len(trial_losses),
+                "round": "last",
+                "mean": last_rounds_df[TARGET_COLUMN].mean(),
+                "std": last_rounds_df[TARGET_COLUMN].std(),
+                "count": last_rounds_df[TARGET_COLUMN].count(),
             }
-        )
+        ]
+    )
 
-    # 3. Analyze performance at the LAST round for every trial
-    last_round_losses = [s[-1] for s in trial_losses if len(s) > 0]
-    if last_round_losses:
-        mean_loss = np.mean(last_round_losses)
-        std_loss = np.std(last_round_losses)
-        num_trials_at_milestone = len(last_round_losses)
+    # 6. Combine the milestone and last-round summaries
+    full_summary = pd.concat([milestone_summary, last_round_summary], ignore_index=True)
 
-        milestone_results.append(
-            {
-                "case": experiment_dir,
-                **metadata,
-                "milestone_round": "last",
-                "mean_loss": mean_loss,
-                "std_loss": std_loss,
-                "num_trials_at_milestone": num_trials_at_milestone,
-                "total_trials": len(trial_losses),
-            }
-        )
+    # Rename columns for clarity
+    full_summary = full_summary.rename(
+        columns={
+            "round": "milestone_round",
+            "mean": "mean_loss",
+            "std": "std_loss",
+            "count": "num_trials_at_milestone",
+        }
+    )
 
-    print(f"  - Milestone analysis complete.\n")
-    return pl.DataFrame(milestone_results)
+    # 7. Add metadata and case name to the summary DataFrame
+    full_summary["case"] = experiment_dir
+    for key, value in metadata.items():
+        full_summary[key] = value
+
+    # Reorder columns for a clean final output
+    final_columns = [
+        "case",
+        "dataset",
+        "model",
+        "input_len",
+        "output_len",
+        "milestone_round",
+        "mean_loss",
+        "std_loss",
+        "num_trials_at_milestone",
+    ]
+
+    print("  - Analysis complete.\n")
+    return full_summary[final_columns]
 
 
 def main():
-    """Main function to run the entire milestone analysis pipeline."""
+    """Main function to run the entire analysis pipeline."""
     output_dir = os.path.dirname(OUTPUT_FILE)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -124,31 +141,30 @@ def main():
         print(f"Error: The '{RUNS_DIRECTORY}' directory does not exist.")
         return
 
-    all_experiments_df = []
+    all_experiment_results = []
     for experiment_dir in sorted(os.listdir(RUNS_DIRECTORY)):
         if os.path.isdir(os.path.join(RUNS_DIRECTORY, experiment_dir)):
-            experiment_df = perform_milestone_analysis(experiment_dir)
-            if experiment_df is not None and not experiment_df.is_empty():
-                all_experiments_df.append(experiment_df)
+            result_df = analyze_experiment_with_pandas(experiment_dir)
+            if result_df is not None and not result_df.empty:
+                all_experiment_results.append(result_df)
 
-    if not all_experiments_df:
+    if not all_experiment_results:
         print(
             "No experiments were successfully analyzed. No output file will be created."
         )
         return
 
-    final_df = pl.concat(all_experiments_df)
-
-    float_columns = final_df.select(pl.col(pl.Float64)).columns
-    final_df = final_df.with_columns(pl.col(float_columns).round(ROUND_PRECISION))
+    # Create the final master DataFrame and save it
+    final_df = pd.concat(all_experiment_results, ignore_index=True)
+    final_df = final_df.round(ROUND_PRECISION)
 
     try:
-        final_df.write_csv(OUTPUT_FILE)
-        print("=" * 50)
-        print(f"✅ Milestone analysis successfully saved to: {OUTPUT_FILE}")
-        print("=" * 50)
+        final_df.to_csv(OUTPUT_FILE, index=False)
+        print("=" * 60)
+        print(f"✅ Experiment summary successfully saved to: {OUTPUT_FILE}")
+        print("=" * 60)
         print("Final DataFrame preview:")
-        print(final_df)
+        print(final_df.to_string())
     except Exception as e:
         print(f"Error: Could not write final CSV to {OUTPUT_FILE}. Reason: {e}")
 
