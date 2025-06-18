@@ -20,18 +20,11 @@ OUTPUT_FILE = os.path.join("analysis", "convergence.csv")
 def perform_convergence_analysis(experiment_dir: str):
     """
     Analyzes the convergence for all trials within a single experiment directory.
-
-    Args:
-        experiment_dir (str): The name of the experiment directory inside 'runs/'.
-
-    Returns:
-        A Polars DataFrame with the convergence analysis for the experiment,
-        or None if no valid data is found.
     """
     print(f"--- Analyzing Experiment: {experiment_dir} ---")
     base_path = os.path.join(RUNS_DIRECTORY, experiment_dir)
 
-    # --- MODIFICATION: Load experiment configuration to get metadata ---
+    # Load experiment metadata
     config_path = os.path.join(base_path, "config.json")
     metadata = {}
     try:
@@ -44,28 +37,19 @@ def perform_convergence_analysis(experiment_dir: str):
             "output_len": config_data.get("output_len"),
         }
         print(f"  - Loaded metadata: {metadata}")
-    except FileNotFoundError:
-        print(
-            f"  - Warning: config.json not found in {base_path}. Metadata will be empty."
-        )
     except Exception as e:
         print(f"  - Warning: Could not read config.json in {base_path}. Reason: {e}")
 
+    # 1. Load the loss data from each trial into a list of Polars Series (`dfs` in your description)
     trial_losses = []
-    # 1. Load the target loss column from each trial's server.csv
     for trial_name in os.listdir(base_path):
         trial_path = os.path.join(base_path, trial_name)
         csv_path = os.path.join(trial_path, "results", "server.csv")
-
         if os.path.isdir(trial_path) and os.path.exists(csv_path):
             try:
                 df = pl.read_csv(csv_path)
                 if TARGET_COLUMN in df.columns:
                     trial_losses.append(df.get_column(TARGET_COLUMN))
-                else:
-                    print(
-                        f"  - Warning: '{TARGET_COLUMN}' not found in {csv_path}. Skipping trial."
-                    )
             except Exception as e:
                 print(f"  - Error reading {csv_path}: {e}. Skipping trial.")
 
@@ -74,26 +58,57 @@ def perform_convergence_analysis(experiment_dir: str):
             f"  - No valid trial data found for experiment '{experiment_dir}'. Skipping.\n"
         )
         return None
-
     print(f"  - Found {len(trial_losses)} trials with valid data.")
 
-    # 2. Find the global min and max loss and round them
-    all_values = pl.concat(trial_losses)
-    min_loss = round(all_values.min(), ROUND_PRECISION)
-    max_loss = round(all_values.max(), ROUND_PRECISION)
+    # --- NEW: Manual implementation of `(sum(dfs) / len(dfs))` ---
+    print("  - Manually calculating mean learning curve to determine analysis range...")
+
+    # 2a. Find the length of the longest trial to define the size of our arrays.
+    max_len = 0
+    for s in trial_losses:
+        if len(s) > max_len:
+            max_len = len(s)
+
+    # 2b. Initialize arrays for summation and counting.
+    sum_at_iteration = np.zeros(max_len, dtype=np.float64)
+    count_at_iteration = np.zeros(max_len, dtype=np.int32)
+
+    # 2c. Loop through each trial and add its values to the sum and increment the count.
+    for loss_series in trial_losses:
+        # Convert series to numpy array for efficient numeric operations
+        values = loss_series.to_numpy()
+        series_len = len(values)
+        # Add this trial's values to the running sum for the iterations it completed
+        sum_at_iteration[:series_len] += values
+        # Increment the count for the iterations this trial completed
+        count_at_iteration[:series_len] += 1
+
+    # 2d. Calculate the mean curve, safely handling division by zero for any trailing iterations.
+    mean_loss_curve_np = np.divide(
+        sum_at_iteration,
+        count_at_iteration,
+        out=np.full(max_len, np.nan),  # Put NaN where count is 0
+        where=count_at_iteration != 0,
+    )
+    # Convert the final numpy array back to a Polars Series
+    mean_loss_curve = pl.Series(values=mean_loss_curve_np).drop_nans()
+    # --- END OF MANUAL CALCULATION BLOCK ---
+
+    # 3. Find min/max FROM THE MEAN CURVE and round them.
+    min_loss = round(mean_loss_curve.min(), ROUND_PRECISION)
+    max_loss = round(mean_loss_curve.max(), ROUND_PRECISION)
 
     if min_loss is None or max_loss is None:
         print(
-            f"  - Could not determine min/max loss for '{experiment_dir}'. Skipping.\n"
+            f"  - Could not determine min/max loss from mean curve for '{experiment_dir}'. Skipping.\n"
         )
         return None
+    print(f"  - Rounded loss range (from mean curve): [{min_loss:.4f}, {max_loss:.4f}]")
 
-    print(f"  - Rounded loss range for analysis: [{min_loss:.4f}, {max_loss:.4f}]")
-
-    # 3. Create the loss thresholds for the analysis
+    # 4. Create the loss thresholds for the analysis
     thresholds = np.arange(min_loss, max_loss + LOSS_STEP, LOSS_STEP)
 
-    # 4. For each threshold, find the number of iterations to converge for each trial
+    # 5. For each threshold, find the number of iterations to converge for each original trial
     analysis_results = []
     for threshold in thresholds:
         iters_to_reach_threshold = []
@@ -102,19 +117,17 @@ def perform_convergence_analysis(experiment_dir: str):
             if first_index is not None:
                 iters_to_reach_threshold.append(first_index + 1)
 
-        # 5. Calculate statistics for the current threshold
         num_converged = len(iters_to_reach_threshold)
-        if num_converged > 0:
-            avg_iters = np.mean(iters_to_reach_threshold)
-            std_iters = np.std(iters_to_reach_threshold)
-        else:
-            avg_iters, std_iters = None, None
+        avg_iters, std_iters = (
+            (np.mean(iters_to_reach_threshold), np.std(iters_to_reach_threshold))
+            if num_converged > 0
+            else (None, None)
+        )
 
-        # --- MODIFICATION: Add metadata to each result row ---
         analysis_results.append(
             {
                 "case": experiment_dir,
-                **metadata,  # Unpack the metadata dictionary here
+                **metadata,
                 "loss_threshold": threshold,
                 "avg_iters_to_reach": avg_iters,
                 "std_iters_to_reach": std_iters,
@@ -128,18 +141,14 @@ def perform_convergence_analysis(experiment_dir: str):
 
 
 def main():
-    """
-    Main function to run the entire convergence analysis pipeline.
-    """
+    """Main function to run the entire convergence analysis pipeline."""
     output_dir = os.path.dirname(OUTPUT_FILE)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"Created analysis directory at: {output_dir}")
 
     if not os.path.isdir(RUNS_DIRECTORY):
-        print(
-            f"Error: The '{RUNS_DIRECTORY}' directory does not exist. Please run your experiments first."
-        )
+        print(f"Error: The '{RUNS_DIRECTORY}' directory does not exist.")
         return
 
     all_experiments_df = []
@@ -157,7 +166,6 @@ def main():
 
     final_df = pl.concat(all_experiments_df)
 
-    # Round all float columns in the final DataFrame for clean output
     float_columns = final_df.select(pl.col(pl.Float64)).columns
     final_df = final_df.with_columns(pl.col(float_columns).round(ROUND_PRECISION))
 
@@ -166,7 +174,7 @@ def main():
         print("=" * 50)
         print(f"✅ Convergence analysis successfully saved to: {OUTPUT_FILE}")
         print("=" * 50)
-        print("Final DataFrame preview (with metadata and rounded values):")
+        print("Final DataFrame preview:")
         print(final_df)
     except Exception as e:
         print(f"Error: Could not write final CSV to {OUTPUT_FILE}. Reason: {e}")
