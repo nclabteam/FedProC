@@ -19,7 +19,7 @@ OUTPUT_FILE = os.path.join("analysis", "convergence.csv")
 
 def perform_convergence_analysis(experiment_dir: str):
     """
-    Analyzes the convergence for all trials within a single experiment directory.
+    Analyzes the convergence of the MEAN learning curve for an experiment.
     """
     print(f"--- Analyzing Experiment: {experiment_dir} ---")
     base_path = os.path.join(RUNS_DIRECTORY, experiment_dir)
@@ -40,7 +40,7 @@ def perform_convergence_analysis(experiment_dir: str):
     except Exception as e:
         print(f"  - Warning: Could not read config.json in {base_path}. Reason: {e}")
 
-    # 1. Load the loss data from each trial into a list of Polars Series (`dfs` in your description)
+    # 1. Load the loss data from each trial
     trial_losses = []
     for trial_name in os.listdir(base_path):
         trial_path = os.path.join(base_path, trial_name)
@@ -58,43 +58,29 @@ def perform_convergence_analysis(experiment_dir: str):
             f"  - No valid trial data found for experiment '{experiment_dir}'. Skipping.\n"
         )
         return None
-    print(f"  - Found {len(trial_losses)} trials with valid data.")
+    print(f"  - Found {len(trial_losses)} trials to average.")
 
-    # --- NEW: Manual implementation of `(sum(dfs) / len(dfs))` ---
-    print("  - Manually calculating mean learning curve to determine analysis range...")
-
-    # 2a. Find the length of the longest trial to define the size of our arrays.
-    max_len = 0
-    for s in trial_losses:
-        if len(s) > max_len:
-            max_len = len(s)
-
-    # 2b. Initialize arrays for summation and counting.
+    # 2. Manually calculate the mean learning curve: (sum(dfs) / len(dfs))
+    print("  - Calculating mean learning curve...")
+    max_len = max(len(s) for s in trial_losses) if trial_losses else 0
     sum_at_iteration = np.zeros(max_len, dtype=np.float64)
     count_at_iteration = np.zeros(max_len, dtype=np.int32)
 
-    # 2c. Loop through each trial and add its values to the sum and increment the count.
     for loss_series in trial_losses:
-        # Convert series to numpy array for efficient numeric operations
         values = loss_series.to_numpy()
         series_len = len(values)
-        # Add this trial's values to the running sum for the iterations it completed
         sum_at_iteration[:series_len] += values
-        # Increment the count for the iterations this trial completed
         count_at_iteration[:series_len] += 1
 
-    # 2d. Calculate the mean curve, safely handling division by zero for any trailing iterations.
     mean_loss_curve_np = np.divide(
         sum_at_iteration,
         count_at_iteration,
-        out=np.full(max_len, np.nan),  # Put NaN where count is 0
+        out=np.full(max_len, np.nan),
         where=count_at_iteration != 0,
     )
-    # Convert the final numpy array back to a Polars Series
     mean_loss_curve = pl.Series(values=mean_loss_curve_np).drop_nans()
-    # --- END OF MANUAL CALCULATION BLOCK ---
 
-    # 3. Find min/max FROM THE MEAN CURVE and round them.
+    # 3. Find min/max from the mean curve and create thresholds
     min_loss = round(mean_loss_curve.min(), ROUND_PRECISION)
     max_loss = round(mean_loss_curve.max(), ROUND_PRECISION)
 
@@ -104,39 +90,32 @@ def perform_convergence_analysis(experiment_dir: str):
         )
         return None
     print(f"  - Rounded loss range (from mean curve): [{min_loss:.4f}, {max_loss:.4f}]")
-
-    # 4. Create the loss thresholds for the analysis
     thresholds = np.arange(min_loss, max_loss + LOSS_STEP, LOSS_STEP)
 
-    # 5. For each threshold, find the number of iterations to converge for each original trial
+    # 4. --- CORE LOGIC CHANGE ---
+    #    For each threshold, find the number of iterations it took for the MEAN CURVE to converge.
     analysis_results = []
     for threshold in thresholds:
-        iters_to_reach_threshold = []
-        for loss_series in trial_losses:
-            first_index = loss_series.le(threshold).arg_true().first()
-            if first_index is not None:
-                iters_to_reach_threshold.append(first_index + 1)
+        # Find the first index in the mean curve that is <= the threshold
+        first_index = mean_loss_curve.le(threshold).arg_true().first()
 
-        num_converged = len(iters_to_reach_threshold)
-        avg_iters, std_iters = (
-            (np.mean(iters_to_reach_threshold), np.std(iters_to_reach_threshold))
-            if num_converged > 0
-            else (None, None)
-        )
+        # If an index is found, the iterations is index + 1. Otherwise, it's None.
+        iters_to_reach = first_index + 1 if first_index is not None else None
 
+        # The result is now much simpler.
         analysis_results.append(
             {
                 "case": experiment_dir,
                 **metadata,
                 "loss_threshold": threshold,
-                "avg_iters_to_reach": avg_iters,
-                "std_iters_to_reach": std_iters,
-                "num_converged_trials": num_converged,
-                "total_trials": len(trial_losses),
+                "iters_to_reach": iters_to_reach,
+                "total_trials": len(trial_losses),  # Kept as useful metadata
             }
         )
 
-    print(f"  - Analysis complete for {len(thresholds)} thresholds.\n")
+    print(
+        f"  - Analysis of the mean curve complete for {len(thresholds)} thresholds.\n"
+    )
     return pl.DataFrame(analysis_results)
 
 
@@ -145,7 +124,6 @@ def main():
     output_dir = os.path.dirname(OUTPUT_FILE)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        print(f"Created analysis directory at: {output_dir}")
 
     if not os.path.isdir(RUNS_DIRECTORY):
         print(f"Error: The '{RUNS_DIRECTORY}' directory does not exist.")
