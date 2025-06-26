@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import polars as pl
 import requests
 
-from .base import BaseDataset
+from .base import BaseDataset, CustomOnSingleDataset
 
 
 class Traffic(BaseDataset):
@@ -85,3 +85,27 @@ class TrafficOG(Traffic):
         self.column_target = [f"column_{i}" for i in range(1, 863)]
         self.column_train = [f"column_{i}" for i in range(1, 863)]
         self.split_files = False
+
+
+class TrafficOutVar1(CustomOnSingleDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.save_path = os.path.join("datasets", "Traffic", "3_96_96-1_96_720")
+        self.sets = [
+            {
+                "dataset": Traffic,
+                "output_len": 96,
+            },
+            {
+                "dataset": Traffic,
+                "output_len": 96,
+            },
+            {
+                "dataset": Traffic,
+                "output_len": 96,
+            },
+            {
+                "dataset": Traffic,
+                "output_len": 720,
+            },
+        ]
