@@ -18,6 +18,10 @@ optional = {
     "refine_epochs": 1,  # Epochs to refine global model on D_gt after aggregation
 }
 
+compulsory = {
+    "save_local_model": True,
+}
+
 
 def args_update(parser):
     # --- Client-side Synthetic Data (D_ct) Parameters ---
@@ -77,11 +81,6 @@ def args_update(parser):
     )
 
     return parser
-
-
-compulsory = {
-    "save_local_model": True,
-}
 
 
 class FedTrend(Server):
@@ -160,12 +159,10 @@ class FedTrend(Server):
                 trajectory = trajectories[client_id]
                 model_start_state = trajectory["start"].state_dict()
                 model_end_state = trajectory["end"].state_dict()
-                prev_delta = trajectory.get("prev_delta", None)
             else:
                 start_idx = np.random.randint(0, len(trajectories) - 1)
                 model_start_state = trajectories[start_idx].state_dict()
                 model_end_state = trajectories[start_idx + 1].state_dict()
-                prev_delta = None
 
             # --- INNER LOOP ---
             temp_model = copy.deepcopy(self.model).to(self.device)
@@ -201,9 +198,7 @@ class FedTrend(Server):
                 optimizer_data.zero_grad()
                 distance_loss = 0
 
-                # ... (Directional Consistency Masking remains the same) ...
                 mask = {}
-                # ... (your masking logic is fine) ...
 
                 # --- Calculate Distance using the `fmodel` parameters ---
                 # `fmodel.parameters()` gives you the updated, differentiable parameters.
