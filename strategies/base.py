@@ -107,6 +107,19 @@ class SharedMethods:
                 for data in obj.dataset
             )
             return total_size / (1024**2)  # Size in MB
+        if isinstance(obj, TensorDataset):
+            total_size = sum(
+                tensor.element_size() * tensor.nelement() for tensor in obj.tensors
+            )
+            return total_size / (1024**2)  # Size in MB
+        if isinstance(obj, dict):
+            total_size = sum(
+                SharedMethods.get_size(value) for value in obj.values()
+            )
+            return total_size / (1024**2)
+        if isinstance(obj, list):
+            total_size = sum(SharedMethods.get_size(item) for item in obj)
+            return total_size / (1024**2)
         return sys.getsizeof(obj) / (1024**2)  # Size in MB
 
     @staticmethod
@@ -309,7 +322,7 @@ class Server(SharedMethods):
             s = time.time()
             c = {}
             for key, value in to_be_sent.items():
-                if isinstance(value, list):
+                if isinstance(value, list) and len(value) == len(self.clients):
                     value = value[idx]
                 b += self.get_size(value)
                 c[key] = value
