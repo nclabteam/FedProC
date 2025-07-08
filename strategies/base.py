@@ -515,22 +515,6 @@ class Server(SharedMethods):
             f"Personalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
 
-    def evaluate(self):
-        self.logger.info("")
-        self.logger.info(
-            f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
-        )
-        if self.current_iter % self.eval_gap == 0:
-            for dataset_type in ["train", "test"]:
-                if dataset_type == "train" and self.skip_eval_train:
-                    continue
-                if not self.exclude_server_model_processes:
-                    # Generalization loss evaluation
-                    self.evaluate_generalization_loss(dataset_type)
-                if self.save_local_model:
-                    # Personalization loss evaluation
-                    self.evaluate_personalization_loss(dataset_type)
-
     def train_clients(self):
         if self.parallel:
             i = 0
@@ -620,14 +604,33 @@ class Server(SharedMethods):
         for i in range(self.iterations):
             s_t = time.time()
             self.current_iter = i
+
+            self.logger.info("")
+            self.logger.info(
+                f"-------------Round number: {str(self.current_iter).zfill(4)}-------------"
+            )
+
             self.select_clients()
             self.send_to_clients()
+            if self.current_iter % self.eval_gap == 0:
+                for dataset_type in ["train", "test"]:
+                    if dataset_type == "train" and self.skip_eval_train:
+                        continue
+                    if self.save_local_model:
+                        # Personalization loss evaluation
+                        self.evaluate_personalization_loss(dataset_type)
             self.pre_train_clients()
             self.train_clients()
             self.receive_from_clients()
             self.calculate_aggregation_weights()
             self.aggregate_models()
-            self.evaluate()
+            if self.current_iter % self.eval_gap == 0:
+                for dataset_type in ["train", "test"]:
+                    if dataset_type == "train" and self.skip_eval_train:
+                        continue
+                    if not self.exclude_server_model_processes:
+                        # Generalization loss evaluation
+                        self.evaluate_generalization_loss(dataset_type)
             self.save_models(save_type="best")
             self.metrics["time_per_iter"].append(time.time() - s_t)
             self.logger.info(f'Time cost: {self.metrics["time_per_iter"][-1]:.4f}s')
