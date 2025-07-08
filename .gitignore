@@ -1,5 +1,6 @@
 __pycache__
 runs
+runs_*
 datasets
 temp
 analysis/*.csv
