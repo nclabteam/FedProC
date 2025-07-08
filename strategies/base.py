@@ -713,7 +713,7 @@ class Client(SharedMethods):
         self.metrics["send_mb"].append(b)
         return to_be_sent
 
-    def load_train_data(self, sample_ratio=1.0, shuffle=False):
+    def load_train_data(self, sample_ratio=1.0, shuffle=True):
         trainloader = self.load_data(
             file=self.train_file,
             sample_ratio=sample_ratio,
