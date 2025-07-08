@@ -113,9 +113,7 @@ class SharedMethods:
             )
             return total_size / (1024**2)  # Size in MB
         if isinstance(obj, dict):
-            total_size = sum(
-                SharedMethods.get_size(value) for value in obj.values()
-            )
+            total_size = sum(SharedMethods.get_size(value) for value in obj.values())
             return total_size / (1024**2)
         if isinstance(obj, list):
             total_size = sum(SharedMethods.get_size(item) for item in obj)
