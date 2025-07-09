@@ -18,23 +18,19 @@ optional = {
     "refine_epochs": 1,  # Epochs to refine global model on D_gt after aggregation
 }
 
-compulsory = {
-    "save_local_model": True,
-}
-
 
 def args_update(parser):
     # --- Client-side Synthetic Data (D_ct) Parameters ---
     parser.add_argument(
         "--L_ct",
         type=int,
-        default=10,
+        default=None,
         help="Interval in rounds for updating the client-side synthetic data (D_ct).",
     )
     parser.add_argument(
         "--synthetic_data_size_ct",
         type=int,
-        default=100,
+        default=None,
         help="Number of synthetic data samples to create for D_ct.",
     )
 
@@ -42,13 +38,13 @@ def args_update(parser):
     parser.add_argument(
         "--L_gt",
         type=int,
-        default=10,
+        default=None,
         help="Interval in rounds for updating the server-side synthetic data (D_gt).",
     )
     parser.add_argument(
         "--synthetic_data_size_gt",
         type=int,
-        default=100,
+        default=None,
         help="Number of synthetic data samples to create for D_gt.",
     )
 
@@ -56,19 +52,19 @@ def args_update(parser):
     parser.add_argument(
         "--synthetic_epochs",
         type=int,
-        default=300,
+        default=None,
         help="Outer-loop training epochs for generating the synthetic datasets.",
     )
     parser.add_argument(
         "--synthetic_inner_epochs",
         type=int,
-        default=1,
+        default=None,
         help="Inner-loop epochs for training a temporary model on synthetic data during its generation.",
     )
     parser.add_argument(
         "--synthetic_lr",
         type=float,
-        default=3e-4,
+        default=None,
         help="Learning rate for optimizing the synthetic data itself.",
     )
 
@@ -76,7 +72,7 @@ def args_update(parser):
     parser.add_argument(
         "--refine_epochs",
         type=int,
-        default=1,
+        default=None,
         help="Number of epochs to refine the global model on D_gt after aggregation.",
     )
 
@@ -131,22 +127,18 @@ class FedTrend(Server):
         This implements Algorithm 1, lines 29-36, using the `higher` library for
         model-agnostic differentiable inner-loop optimization.
         """
-        if not trajectories:
-            self.logger.warning(
-                "Trajectory bank is empty. Skipping synthetic data construction."
-            )
-            return None
-
-        self.logger.info(
-            f"Starting synthetic data construction... Trajectory count: {len(trajectories)}"
-        )
-
         # 1. Initialize synthetic dataset D_syn
         synthetic_x = torch.randn(
-            data_size, *input_shape, requires_grad=True, device=self.device
+            data_size,
+            *input_shape,
+            requires_grad=True,
+            device="cpu",
         )
         synthetic_y = torch.randn(
-            data_size, *output_shape, requires_grad=True, device=self.device
+            data_size,
+            *output_shape,
+            requires_grad=True,
+            device="cpu",
         )
         synthetic_data = TensorDataset(synthetic_x, synthetic_y)
         optimizer_data = torch.optim.Adam([synthetic_x, synthetic_y], lr=synthetic_lr)
@@ -165,7 +157,7 @@ class FedTrend(Server):
                 model_end_state = trajectories[start_idx + 1].state_dict()
 
             # --- INNER LOOP ---
-            temp_model = copy.deepcopy(self.model).to(self.device)
+            temp_model = copy.deepcopy(self.model).to("cpu")
             temp_model.load_state_dict(model_start_state)
 
             # Use a standard optimizer, `higher` will make it differentiable
@@ -208,14 +200,11 @@ class FedTrend(Server):
                     if name_end not in dict(fmodel.named_parameters()):
                         continue  # Should not happen if models are identical
 
-                    param_dist = torch.sum(
-                        (param_end.to(self.device) - param_tilde) ** 2
-                    )
+                    param_dist = torch.sum((param_end.to("cpu") - param_tilde) ** 2)
 
                     if is_client_trajectory and name_end in mask:
                         param_dist = torch.sum(
-                            mask[name_end]
-                            * (param_end.to(self.device) - param_tilde) ** 2
+                            mask[name_end] * (param_end.to("cpu") - param_tilde) ** 2
                         )
                     distance_loss += param_dist
 
@@ -227,13 +216,9 @@ class FedTrend(Server):
             distance_loss.backward()
             optimizer_data.step()
 
-        self.logger.info("Synthetic data construction finished.")
         return TensorDataset(synthetic_x.detach().cpu(), synthetic_y.detach().cpu())
 
     def _update_D_ct(self):
-        """Handles the logic for updating the client-side synthetic data D_ct."""
-        self.logger.info(f"Updating D_ct at round {self.current_iter}.")
-
         # Get data shape from a client
         input_shape = (self.input_len, self.input_channels)
         output_shape = (self.output_len, self.output_channels)
@@ -346,22 +331,17 @@ class FedTrend_Client(Client):
         to_be_sent["id"] = self.id
         return to_be_sent
 
-    def load_train_data(self, sample_ratio=1.0, shuffle=False):
+    def load_train_data(self, *args, **kwargs):
         """
         Override to mix local data with synthetic data D_ct.
         This implements Algorithm 1, line 26, in a more encapsulated way.
         """
         # Get the original dataloader for local data
-        local_dataloader = super().load_train_data(
-            sample_ratio=sample_ratio, shuffle=shuffle
-        )
+        local_dataloader = super().load_train_data(*args, **kwargs)
         local_dataset = local_dataloader.dataset
 
         # Check if synthetic data D_ct is available to be mixed in
         if self.D_ct is not None and len(self.D_ct) > 0:
-            self.logger.info(
-                f"Mixing local data ({len(local_dataset)} samples) with synthetic D_ct ({len(self.D_ct)} samples)."
-            )
             # Combine the local dataset with the synthetic one
             final_dataset = ConcatDataset([local_dataset, self.D_ct])
         else:
