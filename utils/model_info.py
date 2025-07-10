@@ -353,9 +353,11 @@ class ModelSummarizer:
                         summary_dict[m_key]["output_shape"].append(shape)
                     elif isinstance(o, (tuple, list)):
                         sub_shapes = [
-                            list(sub_o.size())
-                            if isinstance(sub_o, torch.Tensor)
-                            else "Non-tensor output"
+                            (
+                                list(sub_o.size())
+                                if isinstance(sub_o, torch.Tensor)
+                                else "Non-tensor output"
+                            )
                             for sub_o in o
                         ]
                         summary_dict[m_key]["output_shape"].append(sub_shapes)
