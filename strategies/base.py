@@ -59,6 +59,7 @@ class SharedMethods:
     @staticmethod
     def calculate_loss(model, dataloader, criterion, device="cpu"):
         losses = []
+        model.to(device)
         model.eval()
         for batch_x, batch_y in dataloader:
             batch_x = batch_x.float().to(device)
@@ -66,6 +67,7 @@ class SharedMethods:
             outputs = model(batch_x)
             loss = criterion(outputs, batch_y)
             losses.append(loss.item())
+        model.to("cpu")
         return losses
 
     @staticmethod
@@ -122,6 +124,7 @@ class SharedMethods:
 
     @staticmethod
     def train_one_epoch(model, dataloader, optimizer, criterion, scheduler, device):
+        model.to(device)
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
@@ -131,6 +134,7 @@ class SharedMethods:
             loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
+        model.to("cpu")
         scheduler.step()
 
     @staticmethod
@@ -167,7 +171,7 @@ class SharedMethods:
 
     def initialize_model(self):
         obj = self._get_objective_function("models", self.model)
-        self.model = obj(configs=self.configs).to(self.device)
+        self.model = obj(configs=self.configs)
 
     def initialize_optimizer(self):
         obj = self._get_objective_function("optimizers", self.optimizer)
@@ -451,6 +455,7 @@ class Server(SharedMethods):
             criterion=client.loss,
             device=device,
         )
+        model = model.to("cpu")  # Move model back to CPU after evaluation
         return np.mean(loss)
 
     def evaluate_generalization_loss(self, dataset_type):
@@ -578,7 +583,7 @@ class Server(SharedMethods):
 
     def calculate_aggregation_weights(self):
         ts = [client["score"] for client in self.client_data]
-        self.weights = torch.tensor(ts).to(self.device) / sum(ts)
+        self.weights = torch.tensor(ts) / sum(ts)
 
     def aggregate_models(self):
         if self.return_diff:

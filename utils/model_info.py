@@ -46,6 +46,8 @@ class ModelSummarizer:
         self.dtypes = dtypes
         self.save_path = save_path
 
+        self.model.to(self.device)
+
         if self.dataloader is not None:
             # Get input size from dataloader
             self.input_size = next(iter(self.dataloader))[0].shape[1:]
