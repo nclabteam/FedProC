@@ -46,8 +46,6 @@ class ModelSummarizer:
         self.dtypes = dtypes
         self.save_path = save_path
 
-        self.model.to(self.device)
-
         if self.dataloader is not None:
             # Get input size from dataloader
             self.input_size = next(iter(self.dataloader))[0].shape[1:]
@@ -55,6 +53,7 @@ class ModelSummarizer:
             raise ValueError("Please provide either 'dataloader' or 'input_size'")
 
     def execute(self):
+        self.model.to(self.device)
         """Prints the model summary."""
         summary_dict, hooks = self._create_summary_dict()
         total_params, trainable_params = self._get_params_info(summary_dict)
@@ -66,6 +65,7 @@ class ModelSummarizer:
         )
         self._print_table(table, summary_str)
         df = self._table_to_df(table).write_csv(self.save_path.replace(".svg", ".csv"))
+        self.model.to("cpu")
         return table, (total_params, trainable_params, total_macs, total_flops)
 
     def _create_summary_dict(self):
