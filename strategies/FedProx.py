@@ -19,6 +19,7 @@ class FedProx_Client(Client):
     def train_one_epoch(
         self, model, dataloader, optimizer, criterion, scheduler, device
     ):
+        model.to(device)
         global_params = copy.deepcopy(list(model.parameters()))
         model.train()
         for batch_x, batch_y in dataloader:
@@ -33,3 +34,4 @@ class FedProx_Client(Client):
                     w.grad.data += self.mu * (w.data - w_t.data)
             optimizer.step()
         scheduler.step()
+        model.to("cpu")
