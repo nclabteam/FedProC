@@ -41,12 +41,12 @@ class FedALA_Client(Client):
 
     def receive_from_server(self, data):
         model = self.adaptive_local_aggregation(
-            global_model=data["model"], local_model=self.model
+            global_model=data["model"], local_model=self.model, device=self.device
         )
         super().update_model_params(old=self.model, new=model)
 
     def adaptive_local_aggregation(
-        self, global_model: nn.Module, local_model: nn.Module
+        self, global_model: nn.Module, local_model: nn.Module, device: str = "cpu"
     ) -> None:
         """
         Performs Adaptive Local Aggregation (ALA) with partial local training data
@@ -56,6 +56,10 @@ class FedALA_Client(Client):
             global_model (nn.Module): The received global model.
             local_model (nn.Module): The trained local model.
         """
+        #
+        local_model.to(device)
+        global_model.to(device)
+
         # Generate a DataLoader with shuffled data
         rand_loader = self.load_train_data(
             sample_ratio=self.sample_ratio, shuffle=False
@@ -144,5 +148,8 @@ class FedALA_Client(Client):
         # Update local model with temp model
         for param, param_t in zip(params_p, params_tp):
             param.data = param_t.data.clone()
+
+        local_model.to("cpu")
+        global_model.to("cpu")
 
         return local_model
