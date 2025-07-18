@@ -68,6 +68,7 @@ class Elastic_Client(Client):
             len(list(self.model.parameters())),
             device=self.device,
         )
+        self.model.to(self.device)
         self.model.eval()
         for x, y in self.load_train_data(sample_ratio=self.sample_ratio, shuffle=False):
             x = x.to(self.device)
@@ -89,3 +90,4 @@ class Elastic_Client(Client):
                 else:
                     sensitivity[i] = 1.0
         self.sensitivity = sensitivity
+        self.model.to("cpu")
