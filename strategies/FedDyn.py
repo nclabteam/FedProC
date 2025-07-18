@@ -75,6 +75,7 @@ class FedDyn_Client(Client):
     def train_one_epoch(
         self, model, dataloader, optimizer, criterion, scheduler, device
     ):
+        model.to(device)
         model.train()
         for batch_x, batch_y in dataloader:
             batch_x = batch_x.float().to(device)
@@ -82,6 +83,8 @@ class FedDyn_Client(Client):
             outputs = model(batch_x)
             loss = criterion(outputs, batch_y)
             if self.global_model_vector is not None:
+                self.global_model_vector = self.global_model_vector.to(device)
+                self.old_grad = self.old_grad.to(device)
                 v1 = self.model_parameter_vector(model)
                 loss += self.alpha / 2 * torch.norm(v1 - self.global_model_vector, 2)
                 loss -= torch.dot(v1, self.old_grad)
@@ -92,6 +95,10 @@ class FedDyn_Client(Client):
             v1 = self.model_parameter_vector(model).detach()
             self.old_grad = self.old_grad - self.alpha * (v1 - self.global_model_vector)
         scheduler.step()
+
+        self.model.to("cpu")
+        self.global_model_vector = None
+        self.old_grad = self.old_grad.to("cpu")
 
     def receive_from_server(self, data):
         super().receive_from_server(data)
