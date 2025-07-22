@@ -1,0 +1,50 @@
+site_name: FedProC
+site_description: Federated Prognos Chronos – A federated learning framework for time-series forecasting
+site_author: Khoa Nguyen
+repo_name: neko941/FedProC
+repo_url: https://github.com/neko941/FedProC
+edit_uri: ""
+
+theme:
+  name: material
+  logo: assets/logo.png  # optional, add a logo if you have one
+  favicon: assets/favicon.ico  # optional
+  palette:
+    scheme: default
+    primary: indigo
+    accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Installation: installation.md
+  - Usage: usage.md
+  - Strategies: strategies.md
+  - Datasets: datasets.md
+  - Models: models.md
+  - Losses: losses.md
+  - Schedulers: schedulers.md
+  - Customization: customization.md
+  - Code Formatting: formatting.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - codehilite
+  - footnotes
+  - def_list
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+
+plugins:
+  - search
