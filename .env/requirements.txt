@@ -6,11 +6,13 @@ scipy~=1.13.0
 pandas~=2.2.2
 requests~=2.32.3
 xlsx2csv~=0.8.4
-isort~=5.13.2
-black~=23.3.0
 numpy~=1.26.3
 ray~=2.48.0
 statsmodels~=0.14.4
+
+# Code quality
+isort~=5.13.2
+black~=24.3.0
 
 # PeMSSF (dataset)
 holidays~=0.64 
