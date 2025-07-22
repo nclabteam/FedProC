@@ -1,5 +1,5 @@
-torch~=2.1.2
-torchvision~=0.16.2
+torch~=2.7.1
+torchvision~=0.22.1
 polars~=1.19.0
 rich~=14.0.0
 scipy~=1.13.0
@@ -9,7 +9,7 @@ xlsx2csv~=0.8.4
 isort~=5.13.2
 black~=23.3.0
 numpy~=1.26.3
-ray~=2.10.0
+ray~=2.48.0
 statsmodels~=0.14.4
 
 # PeMSSF (dataset)
