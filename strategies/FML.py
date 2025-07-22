@@ -29,9 +29,7 @@ class FML(Server):
     """
 
     def calculate_aggregation_weights(self):
-        self.weights = torch.tensor(
-            [1 / len(self.client_data)] * len(self.client_data)
-        ).to(self.device)
+        self.weights = torch.tensor([1 / len(self.client_data)] * len(self.client_data))
 
 
 class FML_Client(Client):
@@ -50,6 +48,8 @@ class FML_Client(Client):
         return {"model": self.model_g}
 
     def train_one_epoch(self, dataloader, *args, **kwargs):
+        self.model.to(self.device)
+        self.model_g.to(self.device)
         self.model.train()
         self.model_g.train()
         for batch_x, batch_y in dataloader:
@@ -72,6 +72,8 @@ class FML_Client(Client):
             self.optimizer.step()
             self.optimizer_g.step()
         self.scheduler.step()
+        self.model.to("cpu")
+        self.model_g.to("cpu")
 
     def receive_from_server(self, data):
         self.update_model_params(old=self.model_g, new=data["model"])
