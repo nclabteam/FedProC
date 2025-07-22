@@ -89,5 +89,5 @@ class Elastic_Client(Client):
                     )
                 else:
                     sensitivity[i] = 1.0
-        self.sensitivity = sensitivity
+        self.sensitivity = sensitivity.to("cpu")
         self.model.to("cpu")
