@@ -1,7 +1,7 @@
 torch~=2.1.2
-torchvision~=0.22.1
+torchvision~=0.16.2
 polars~=1.19.0
-rich~=13.7.1
+rich~=14.0.0
 scipy~=1.13.0
 pandas~=2.2.2
 requests~=2.32.3
@@ -21,3 +21,6 @@ gdown~=5.2.0
 # SWIFT (model)
 PyWavelets~=1.8.0
 pytorch_wavelets~=1.3.0
+
+# FedTrend (model)
+higher~=0.2.1
