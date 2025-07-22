@@ -40,13 +40,18 @@ class FedALA_Client(Client):
         self.start_phase = True
 
     def receive_from_server(self, data):
-        model = self.adaptive_local_aggregation(
-            global_model=data["model"], local_model=self.model, device=self.device
+        super().update_model_params(
+            old=self.model,
+            new=self.adaptive_local_aggregation(
+                global_model=data["model"],
+                local_model=self.model,
+            ),
         )
-        super().update_model_params(old=self.model, new=model)
 
     def adaptive_local_aggregation(
-        self, global_model: nn.Module, local_model: nn.Module, device: str = "cpu"
+        self,
+        global_model: nn.Module,
+        local_model: nn.Module,
     ) -> None:
         """
         Performs Adaptive Local Aggregation (ALA) with partial local training data
@@ -56,10 +61,6 @@ class FedALA_Client(Client):
             global_model (nn.Module): The received global model.
             local_model (nn.Module): The trained local model.
         """
-        #
-        local_model.to(device)
-        global_model.to(device)
-
         # Generate a DataLoader with shuffled data
         rand_loader = self.load_train_data(
             sample_ratio=self.sample_ratio, shuffle=False
@@ -97,9 +98,7 @@ class FedALA_Client(Client):
 
         # Initialize weights if not already done
         if self.weights is None:
-            self.weights = [
-                torch.ones_like(param.data).to(self.device) for param in params_p
-            ]
+            self.weights = [torch.ones_like(param.data) for param in params_p]
 
         # Initialize higher layers in the temp model
         for param_t, param, param_g, weight in zip(
@@ -111,8 +110,8 @@ class FedALA_Client(Client):
         losses = []
         while True:
             for batch_x, batch_y in rand_loader:
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
+                batch_x = batch_x.float()
+                batch_y = batch_y.float()
                 optimizer.zero_grad()
                 output = model_t(batch_x)
                 loss_value = self.loss(output, batch_y)  # Local objective
@@ -148,8 +147,5 @@ class FedALA_Client(Client):
         # Update local model with temp model
         for param, param_t in zip(params_p, params_tp):
             param.data = param_t.data.clone()
-
-        local_model.to("cpu")
-        global_model.to("cpu")
 
         return local_model
