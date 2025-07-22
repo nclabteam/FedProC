@@ -114,11 +114,11 @@ class FedAWA(Server):
 
         # 2. Prepare models and flatten parameters
         # Detach parameters as they are constants during weight optimization
-        global_flat = self._flatten_params(self.model).detach()
+        global_flat = self._flatten_params(self.model).detach().to(self.device)
         client_models = [client["model"] for client in self.client_data]
         client_flats = torch.stack(
             [self._flatten_params(m).detach() for m in client_models]
-        )
+        ).to(self.device)
 
         # 4. Server optimization loop
         for i in range(self.server_epochs):
