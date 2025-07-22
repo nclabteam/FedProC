@@ -13,6 +13,7 @@ TARGETS=(
     "utils"
     "main.py"
     "analysis"
+    "hyper_tuning.py"
 )
 
 # Iterate over each target and apply isort and black
