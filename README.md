@@ -7,15 +7,15 @@ FedProC is a federated learning framework for time-series forecasting, incorpora
 
 
 ## 📚 Documentation Sections
-- **[Installation](installation.md)**: Get started with FedProC
-- **[Usage](usage.md)**: Run a full experiment in 5 minutes
-- **[Strategies](strategies.md)**: Use or implement FL algorithms
-- **[Datasets](datasets.md)**: Understand dataset formats and splits
-- **[Models](models.md)**: Explore the prebuilt forecasting models
-- **[Losses](losses.md)**: Choose or define your loss functions
-- **[Schedulers](schedulers.md)**: Control learning rate during training 
-- **[Customization](customization.md)**: Plug in your own logic
-- **[Code Formatting](code_formatting.md)**: Follow consistent coding style and linting rules 
+- **[Installation](docs/code_formatting.md)**: Get started with FedProC
+- **[Usage](docs/usage.md)**: Run a full experiment in 5 minutes
+- **[Strategies](docs/strategies.md)**: Use or implement FL algorithms
+- **[Datasets](docs/datasets.md)**: Understand dataset formats and splits
+- **[Models](docs/models.md)**: Explore the prebuilt forecasting models
+- **[Losses](docs/losses.md)**: Choose or define your loss functions
+- **[Schedulers](docs/schedulers.md)**: Control learning rate during training 
+- **[Customization](docs/customization.md)**: Plug in your own logic
+- **[Code Formatting](docs/code_formatting.md)**: Follow consistent coding style and linting rules 
 
 
 ## 📖 Citation
