@@ -26,7 +26,7 @@ class SoftDTW(torch.nn.Module):
         dist_func: Callable = None,
         use_cuda: bool = True,
         bandwidth: int = None,
-        reduction='mean'
+        reduction="mean",
     ):
         """
         Args:
@@ -56,9 +56,9 @@ class SoftDTW(torch.nn.Module):
         X, Y, XY_lengths = _prepare_input(X, Y)
         XY_D = self.dist_func(X, Y)
         dtw = self.dtw_func(XY_D, XY_lengths, self.gamma, self.bandwidth)
-        if self.reduction == 'mean':
+        if self.reduction == "mean":
             return dtw.mean()
-        elif self.reduction == 'sum':
+        elif self.reduction == "sum":
             return dtw.sum()
         else:
             return dtw
@@ -240,7 +240,6 @@ class SoftDTWcuda(Function):
         dtype = D.dtype
         gamma = torch.tensor(gamma, dtype=dtype, device=dev)
         bandwidth = torch.tensor(bandwidth, dtype=dtype, device=dev)
-
 
         B, M, N = D.shape
         T = min(max(M, N), MAX_THREADS_PER_BLOCK)
