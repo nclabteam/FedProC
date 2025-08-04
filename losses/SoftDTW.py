@@ -26,6 +26,7 @@ class SoftDTW(torch.nn.Module):
         dist_func: Callable = None,
         use_cuda: bool = True,
         bandwidth: int = None,
+        reduction='mean'
     ):
         """
         Args:
@@ -40,6 +41,7 @@ class SoftDTW(torch.nn.Module):
         self.dist_func = dist_func if dist_func is not None else pairwise_l2_squared
         self.use_cuda = use_cuda
         self.dtw_func = SoftDTWcuda.apply if use_cuda else SoftDTWcpu.apply
+        self.reduction = reduction
 
     def forward(self, X: Union[T, PS], Y: Union[T, PS]):
         """Compute the soft-DTW value between X and Y.
@@ -54,8 +56,12 @@ class SoftDTW(torch.nn.Module):
         X, Y, XY_lengths = _prepare_input(X, Y)
         XY_D = self.dist_func(X, Y)
         dtw = self.dtw_func(XY_D, XY_lengths, self.gamma, self.bandwidth)
-
-        return dtw
+        if self.reduction == 'mean':
+            return dtw.mean()
+        elif self.reduction == 'sum':
+            return dtw.sum()
+        else:
+            return dtw
 
 
 def _prepare_input(x: Union[T, PS], y: Union[T, PS]) -> Tuple[T, T, T]:
@@ -114,8 +120,9 @@ class SoftDTWcpu(Function):
     def forward(ctx, D, lengths, gamma, bandwidth):
         dev = D.device
         dtype = D.dtype
-        gamma = torch.Tensor([gamma]).to(dev).type(dtype)  # dtype fixed
-        bandwidth = torch.Tensor([bandwidth]).to(dev).type(dtype)
+        gamma = torch.tensor(gamma, dtype=dtype, device=dev)
+        bandwidth = torch.tensor(bandwidth, dtype=dtype, device=dev)
+
         D_ = D.detach().cpu().numpy()
         g_ = gamma.item()
         b_ = bandwidth.item()
@@ -231,8 +238,9 @@ class SoftDTWcuda(Function):
     def forward(ctx, D, lengths, gamma, bandwidth):
         dev = D.device
         dtype = D.dtype
-        gamma = torch.cuda.FloatTensor([gamma])
-        bandwidth = torch.cuda.FloatTensor([bandwidth])
+        gamma = torch.tensor(gamma, dtype=dtype, device=dev)
+        bandwidth = torch.tensor(bandwidth, dtype=dtype, device=dev)
+
 
         B, M, N = D.shape
         T = min(max(M, N), MAX_THREADS_PER_BLOCK)
