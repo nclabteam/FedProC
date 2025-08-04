@@ -22,7 +22,7 @@ class SoftDTW(torch.nn.Module):
 
     def __init__(
         self,
-        gamma: float = 1.0,
+        gamma: float = 0.001,
         dist_func: Callable = None,
         use_cuda: bool = True,
         bandwidth: int = None,
