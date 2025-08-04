@@ -1,9 +1,10 @@
 import copy
 
-import numpy as np
+# import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+
+from losses import KLDivergence
 
 from .base import Client, Server
 
@@ -36,13 +37,13 @@ class FML_Client(Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.metrics["train_loss_g"] = []
-        self.metrics["test_loss_g"] = []
+        # self.metrics["train_loss_g"] = []
+        # self.metrics["test_loss_g"] = []
 
         self.model_g = copy.deepcopy(self.model)
         obj = self._get_objective_function("optimizers", "Adam")
         self.optimizer_g = obj(params=self.model_g.parameters(), configs=self.configs)
-        self.KL = nn.KLDivLoss()
+        self.KL = KLDivergence()
 
     def variables_to_be_sent(self):
         return {"model": self.model_g}
@@ -78,26 +79,26 @@ class FML_Client(Client):
     def receive_from_server(self, data):
         self.update_model_params(old=self.model_g, new=data["model"])
 
-    def get_train_loss(self):
-        results = super().get_train_loss()
-        losses = self.calculate_loss(
-            model=self.model_g,
-            dataloader=self.load_train_data(),
-            criterion=self.loss,
-            device=self.device,
-        )
-        losses = np.mean(losses)
-        self.metrics["train_loss_g"].append(losses)
-        return results
+    # def get_train_loss(self):
+    #     results = super().get_train_loss()
+    #     losses = self.calculate_loss(
+    #         model=self.model_g,
+    #         dataloader=self.load_train_data(),
+    #         criterion=self.loss,
+    #         device=self.device,
+    #     )
+    #     losses = np.mean(losses)
+    #     self.metrics["train_loss_g"].append(losses)
+    #     return results
 
-    def get_test_loss(self):
-        results = super().get_test_loss()
-        losses = self.calculate_loss(
-            model=self.model_g,
-            dataloader=self.load_test_data(),
-            criterion=self.loss,
-            device=self.device,
-        )
-        losses = np.mean(losses)
-        self.metrics["test_loss_g"].append(losses)
-        return results
+    # def get_test_loss(self):
+    #     results = super().get_test_loss()
+    #     losses = self.calculate_loss(
+    #         model=self.model_g,
+    #         dataloader=self.load_test_data(),
+    #         criterion=self.loss,
+    #         device=self.device,
+    #     )
+    #     losses = np.mean(losses)
+    #     self.metrics["test_loss_g"].append(losses)
+    #     return results
