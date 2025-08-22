@@ -7,7 +7,7 @@ import polars as pl
 from .base import BaseDataset
 
 
-class PEMS04(BaseDataset):
+class PeMS04(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "PeMS04", "raw")

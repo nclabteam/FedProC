@@ -1,32 +1,54 @@
-# FedProC: Federated Prognos Chronos
-FedProC is a federated learning framework for time-series forecasting, incorporating various federated aggregation strategies, datasets, and models. It supports multiple forecasting models, datasets with a focus on **personalized federated learning**.
+# FedProC
 
+**Federated Prognos Chronos** – A federated learning framework for time-series forecasting.
+
+📖 **Documentation**: [https://fedproc.readthedocs.io/en/latest/](https://fedproc.readthedocs.io/en/latest/)
+
+## Overview
+
+FedProC is a comprehensive federated learning framework designed specifically for time-series forecasting tasks. It enables distributed machine learning across multiple clients while preserving data privacy.
 
 ## Star History
-[![Star History Chart](https://api.star-history.com/svg?repos=neko941/FedProC&type=Timeline)](https://www.star-history.com/#neko941/FedProC&Timeline)
 
+<a href="https://www.star-history.com/#fedproc/fedproc&Timeline">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline" />
+ </picture>
+</a>
 
-## 📚 Documentation Sections
-- **[Installation](installation.md)**: Get started with FedProC
-- **[Usage](usage.md)**: Run a full experiment in 5 minutes
-- **[Strategies](strategies.md)**: Use or implement FL algorithms
-- **[Datasets](datasets.md)**: Understand dataset formats and splits
-- **[Models](models.md)**: Explore the prebuilt forecasting models
-- **[Losses](losses.md)**: Choose or define your loss functions
-- **[Schedulers](schedulers.md)**: Control learning rate during training 
-- **[Customization](customization.md)**: Plug in your own logic
-- **[Code Formatting](code_formatting.md)**: Follow consistent coding style and linting rules 
+## Features
 
+- 🔒 **Privacy-Preserving**: Keeps data local while enabling collaborative learning
+- 📈 **Time-Series Focused**: Optimized for forecasting tasks
+- 🚀 **Scalable**: Supports multiple clients and strategies
+- 🧩 **Modular**: Easy to extend with custom models and strategies
 
-## 📖 Citation
+## Quick Start
 
-If you use FedProc in your research, please cite our work:
+Get started with FedProC in just a few steps:
 
-```bibtex
-@software{FedProx,
-  author = {Khoa, Nguyen},
-  title = {FedProC: Federated Prognos Chronos},
-  url = {https://github.com/neko941/FedProC},
-  version = {1.0.0}
-}
-```
+1. [Installation](docs/installation.md) - Set up your environment
+2. [Usage](docs/usage.md) - Run your first experiment
+3. [Strategies](docs/strategies.md) - Choose your federated learning strategy
+
+## Documentation Structure
+
+- **[Installation](docs/installation.md)** - Installation guide and requirements
+- **[Usage](docs/usage.md)** - Basic usage and examples
+- **[Strategies](docs/strategies.md)** - Available federated learning strategies
+- **[Datasets](docs/datasets.md)** - Supported datasets and data preparation
+- **[Models](docs/models.md)** - Available models and architectures
+- **[Losses](docs/losses.md)** - Loss functions and metrics
+- **[Schedulers](docs/schedulers.md)** - Learning rate schedulers
+- **[Customization](docs/customization.md)** - Extending the framework
+- **[Code Formatting](docs/formatting.md)** - Development guidelines
+
+## Contributing
+
+We welcome contributions! Please see our contributing guidelines for more information.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
