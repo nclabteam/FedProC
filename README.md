@@ -23,7 +23,7 @@ FedProC is a federated learning framework for time-series forecasting, incorpora
 If you use FedProc in your research, please cite our work:
 
 ```bibtex
-@software{FedProx,
+@software{FedProC,
   author = {Khoa, Nguyen},
   title = {FedProC: Federated Prognos Chronos},
   url = {https://github.com/neko941/FedProC},
