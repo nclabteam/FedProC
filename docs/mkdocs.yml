@@ -5,6 +5,8 @@ repo_name: neko941/FedProC
 repo_url: https://github.com/neko941/FedProC
 edit_uri: ""
 
+docs_dir: .
+
 theme:
   name: readthedocs
 
