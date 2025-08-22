@@ -2,6 +2,12 @@
 
 **Federated Prognos Chronos** – A federated learning framework for time-series forecasting.
 
+📖 **Documentation**: [https://fedproc.readthedocs.io/en/latest/](https://fedproc.readthedocs.io/en/latest/)
+
+## Overview
+
+FedProC is a comprehensive federated learning framework designed specifically for time-series forecasting tasks. It enables distributed machine learning across multiple clients while preserving data privacy.
+
 ## Star History
 
 <a href="https://www.star-history.com/#fedproc/fedproc&Timeline">
@@ -11,12 +17,6 @@
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline" />
  </picture>
 </a>
-
-📖 **Documentation**: [https://fedproc.readthedocs.io/en/latest/](https://fedproc.readthedocs.io/en/latest/)
-
-## Overview
-
-FedProC is a comprehensive federated learning framework designed specifically for time-series forecasting tasks. It enables distributed machine learning across multiple clients while preserving data privacy.
 
 ## Features
 
