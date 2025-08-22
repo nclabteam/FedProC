@@ -29,21 +29,21 @@ FedProC is a comprehensive federated learning framework designed specifically fo
 
 Get started with FedProC in just a few steps:
 
-1. [Installation](installation.md) - Set up your environment
-2. [Usage](usage.md) - Run your first experiment
-3. [Strategies](strategies.md) - Choose your federated learning strategy
+1. [Installation](docs/installation.md) - Set up your environment
+2. [Usage](docs/usage.md) - Run your first experiment
+3. [Strategies](docs/strategies.md) - Choose your federated learning strategy
 
 ## Documentation Structure
 
-- **[Installation](installation.md)** - Installation guide and requirements
-- **[Usage](usage.md)** - Basic usage and examples
-- **[Strategies](strategies.md)** - Available federated learning strategies
-- **[Datasets](datasets.md)** - Supported datasets and data preparation
-- **[Models](models.md)** - Available models and architectures
-- **[Losses](losses.md)** - Loss functions and metrics
-- **[Schedulers](schedulers.md)** - Learning rate schedulers
-- **[Customization](customization.md)** - Extending the framework
-- **[Code Formatting](formatting.md)** - Development guidelines
+- **[Installation](docs/installation.md)** - Installation guide and requirements
+- **[Usage](docs/usage.md)** - Basic usage and examples
+- **[Strategies](docs/strategies.md)** - Available federated learning strategies
+- **[Datasets](docs/datasets.md)** - Supported datasets and data preparation
+- **[Models](docs/models.md)** - Available models and architectures
+- **[Losses](docs/losses.md)** - Loss functions and metrics
+- **[Schedulers](docs/schedulers.md)** - Learning rate schedulers
+- **[Customization](docs/customization.md)** - Extending the framework
+- **[Code Formatting](docs/formatting.md)** - Development guidelines
 
 ## Contributing
 
