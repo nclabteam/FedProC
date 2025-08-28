@@ -10,11 +10,11 @@ FedProC is a comprehensive federated learning framework designed specifically fo
 
 ## Star History
 
-<a href="https://www.star-history.com/#fedproc/fedproc&Timeline">
+<a href="https://www.star-history.com/#nclabteam/FedProC&Timeline">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fedproc/fedproc&type=Timeline" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=nclabteam/FedProC&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=nclabteam/FedProC&type=Timeline" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=nclabteam/FedProC&type=Timeline" />
  </picture>
 </a>
 
