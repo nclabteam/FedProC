@@ -6,6 +6,10 @@ from collections import defaultdict
 import numpy as np
 import polars as pl
 
+# Configure Polars display settings
+pl.Config.set_tbl_cols(100)
+pl.Config.set_tbl_rows(100)
+
 # Import utility functions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from analysis.utils import (
