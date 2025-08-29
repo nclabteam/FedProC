@@ -44,6 +44,7 @@ Get started with FedProC in just a few steps:
 - **[Schedulers](docs/schedulers.md)** - Learning rate schedulers
 - **[Customization](docs/customization.md)** - Extending the framework
 - **[Code Formatting](docs/formatting.md)** - Development guidelines
+- **[Analysis](docs/analysis.md)** - Results analysis
 
 ## Contributing
 
