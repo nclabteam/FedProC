@@ -1,8 +1,8 @@
 site_name: FedProC
-site_description: Federated Prognos Chronos – A federated learning framework for time-series forecasting
-site_author: Khoa Nguyen
-repo_name: neko941/FedProC
-repo_url: https://github.com/neko941/FedProC
+site_description: Federated Prognos Chronos - A federated learning framework for time-series forecasting
+site_author: NCLab
+repo_name: nclabteam/FedProC
+repo_url: https://github.com/nclabteam/FedProC
 edit_uri: ""
 
 docs_dir: .
