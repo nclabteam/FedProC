@@ -518,9 +518,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--no-metadata",
+        "--show-metadata",
         action="store_true",
-        help="Don't display or save metadata table",
+        help="Display metadata table to console (metadata always saved to file)",
     )
 
     parser.add_argument(
@@ -596,12 +596,8 @@ def main():
 
     if not args.quiet:
         print(f"Loading experiments from: {args.runs_dir}")
-        if args.std_multiplier != 1.0:
-            print(f"Standard deviation will be multiplied by: {args.std_multiplier}")
-        if args.decimal_places != 4:
-            print(
-                f"Results will be displayed with {args.decimal_places} decimal places"
-            )
+        print(f"Standard deviation will be multiplied by: {args.std_multiplier}")
+        print(f"Results will be displayed with {args.decimal_places} decimal places")
 
     # Load experiments using the utils function with custom runs_dir
     from analysis.utils import load_all_experiments
@@ -645,16 +641,16 @@ def main():
         if not args.no_display:
             display_model_tables(
                 model_tables,
-                metadata_table if not args.no_metadata else None,
-                show_metadata=not args.no_metadata,
+                metadata_table if args.show_metadata else None,
+                show_metadata=args.show_metadata,
                 std_multiplier=args.std_multiplier,
                 decimal_places=args.decimal_places,
             )
 
-        # Save tables
+        # Save tables (metadata always saved)
         save_model_tables(
             model_tables,
-            metadata_table if not args.no_metadata else None,
+            metadata_table,  # Always save metadata
             output_dir=args.output_dir,
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
@@ -674,15 +670,15 @@ def main():
         if not args.no_display:
             display_comparison_tables(
                 comp_tables,
-                comp_metadata if not args.no_metadata else None,
+                comp_metadata if args.show_metadata else None,
                 std_multiplier=args.std_multiplier,
                 decimal_places=args.decimal_places,
             )
 
-        # Save comparison tables
+        # Save comparison tables (metadata always saved)
         save_comparison_tables(
             comp_tables,
-            comp_metadata if not args.no_metadata else None,
+            comp_metadata,  # Always save metadata
             output_dir=args.output_dir,
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
