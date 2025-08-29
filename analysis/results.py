@@ -1,7 +1,7 @@
 import argparse
 import os
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import numpy as np
 import polars as pl
@@ -148,6 +148,119 @@ def create_comparison_tables(
     return model_tables, metadata_table
 
 
+def create_ranking_table(model_tables):
+    """
+    Create ranking tables for each model based on mean performance and std as tiebreaker.
+
+    Args:
+        model_tables (dict): Dictionary with model names as keys and tables as values
+
+    Returns:
+        dict: Dictionary with model names as keys and ranking DataFrames as values
+    """
+    ranking_tables = {}
+
+    for model_name, tables in model_tables.items():
+        if "mean" not in tables or "std" not in tables:
+            continue
+
+        mean_df = tables["mean"]
+        std_df = tables["std"]
+
+        # Get strategy columns (exclude index columns)
+        strategy_columns = [
+            col
+            for col in mean_df.columns
+            if col not in ["model", "dataset", "in", "out"]
+        ]
+
+        if not strategy_columns:
+            continue
+
+        ranking_rows = []
+        best_strategy_counts = Counter()
+
+        # Process each configuration row
+        for i in range(len(mean_df)):
+            row_data = {
+                "dataset": mean_df["dataset"][i],
+                "in": mean_df["in"][i],
+                "out": mean_df["out"][i],
+            }
+
+            # Get mean and std values for this configuration
+            strategy_scores = []
+            for strategy in strategy_columns:
+                mean_val = mean_df[strategy][i]
+                std_val = std_df[strategy][i] if strategy in std_df.columns else 0
+
+                if mean_val is not None and not np.isnan(mean_val):
+                    strategy_scores.append((strategy, mean_val, std_val))
+
+            if not strategy_scores:
+                continue
+
+            # Sort by mean (ascending - lower is better), then by std (ascending - lower is better)
+            strategy_scores.sort(key=lambda x: (x[1], x[2]))
+
+            # Create rankings
+            rankings = {}
+            for rank, (strategy, mean_val, std_val) in enumerate(strategy_scores, 1):
+                rankings[strategy] = rank
+
+            # Add rankings to row
+            for strategy in strategy_columns:
+                if strategy in rankings:
+                    row_data[strategy] = rankings[strategy]
+                else:
+                    row_data[strategy] = "N/A"
+
+            # Find best strategy (rank 1)
+            best_strategies = [s for s, r in rankings.items() if r == 1]
+            if best_strategies:
+                best_strategy = best_strategies[0]  # In case of ties, take first
+                best_strategy_counts[best_strategy] += 1
+                row_data["best_strategy"] = best_strategy
+            else:
+                row_data["best_strategy"] = "N/A"
+
+            ranking_rows.append(row_data)
+
+        # Calculate average ranks
+        if ranking_rows:
+            avg_ranks = {"dataset": "AVG_RANK", "in": "", "out": ""}
+
+            for strategy in strategy_columns:
+                valid_ranks = [
+                    row[strategy]
+                    for row in ranking_rows
+                    if row[strategy] != "N/A"
+                    and isinstance(row[strategy], (int, float))
+                ]
+                if valid_ranks:
+                    avg_ranks[strategy] = round(np.mean(valid_ranks), 2)
+                else:
+                    avg_ranks[strategy] = "N/A"
+
+            # Find most frequent best strategy
+            if best_strategy_counts:
+                most_frequent = best_strategy_counts.most_common(1)[0][0]
+                avg_ranks["best_strategy"] = (
+                    f"{most_frequent} ({best_strategy_counts[most_frequent]}x)"
+                )
+            else:
+                avg_ranks["best_strategy"] = "N/A"
+
+            ranking_rows.append(avg_ranks)
+
+        # Create DataFrame
+        if ranking_rows:
+            ranking_df = pl.DataFrame(ranking_rows)
+            ranking_tables[model_name] = ranking_df
+
+    return ranking_tables
+
+
 def create_model_specific_tables(
     experiment_paths, runs_dir="runs", std_multiplier=1.0, decimal_places=4
 ):
@@ -161,7 +274,7 @@ def create_model_specific_tables(
         decimal_places (int): Number of decimal places to display
 
     Returns:
-        tuple: (model_tables, metadata_table) where each model gets its own table
+        tuple: (model_tables, metadata_table, ranking_tables) where each model gets its own table
     """
     # Load experiment data
     all_experiments = []
@@ -185,6 +298,7 @@ def create_model_specific_tables(
     # Create metadata and model tables
     metadata_data = []
     model_tables = {}
+    comparison_tables = {}  # Store mean/std tables for ranking
 
     for model_name, experiments in model_groups.items():
         if not args.quiet:
@@ -226,9 +340,12 @@ def create_model_specific_tables(
                 if loss_value is not None and run_name != "avg":
                     combination_data[combination_key].append(loss_value)
 
-        # Create table rows
+        # Create table rows for display
         table_rows = []
         config_groups = defaultdict(dict)
+
+        # Data for ranking tables
+        table_data = []
 
         for combination_key, values in combination_data.items():
             strategy, dataset, input_len, output_len = combination_key
@@ -236,12 +353,29 @@ def create_model_specific_tables(
 
             mean_value = np.mean(values) if values else None
             std_value = np.std(values, ddof=1) if len(values) > 1 else 0.0
-            # Apply std multiplier
-            std_value *= std_multiplier
+            # Apply std multiplier for display only
+            std_value_display = std_value * std_multiplier
 
-            config_groups[config_key][strategy] = {"mean": mean_value, "std": std_value}
+            config_groups[config_key][strategy] = {
+                "mean": mean_value,
+                "std": std_value_display,
+            }
 
-        # Build table rows
+            # Store raw data for ranking (without multiplier)
+            table_data.append(
+                {
+                    "model": model_name,
+                    "strategy": strategy,
+                    "dataset": dataset,
+                    "in": input_len,
+                    "out": output_len,
+                    "loss_mean": mean_value,
+                    "loss_std": std_value,  # Raw std for ranking
+                    "n_runs": len(values),
+                }
+            )
+
+        # Build table rows for display
         for config_key, strategies in config_groups.items():
             dataset, input_len, output_len = config_key
 
@@ -261,7 +395,28 @@ def create_model_specific_tables(
 
             table_rows.append(row)
 
-        # Create DataFrame
+        # Create comparison tables for ranking
+        if table_data:
+            df = pl.DataFrame(table_data)
+
+            mean_pivot = df.pivot(
+                values="loss_mean",
+                index=["model", "dataset", "in", "out"],
+                on="strategy",
+            )
+
+            std_pivot = df.pivot(
+                values="loss_std",
+                index=["model", "dataset", "in", "out"],
+                on="strategy",
+            )
+
+            comparison_tables[model_name] = {
+                "mean": mean_pivot,
+                "std": std_pivot,
+            }
+
+        # Create DataFrame for display
         if table_rows:
             model_df = pl.DataFrame(table_rows)
             model_tables[model_name] = model_df
@@ -270,8 +425,11 @@ def create_model_specific_tables(
                     f"Created table for {model_name} with {len(table_rows)} configurations"
                 )
 
+    # Create ranking tables
+    ranking_tables = create_ranking_table(comparison_tables)
+
     metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
-    return model_tables, metadata_table
+    return model_tables, metadata_table, ranking_tables
 
 
 def display_comparison_tables(
@@ -301,12 +459,13 @@ def display_comparison_tables(
 
 def display_model_tables(
     model_tables,
+    ranking_tables=None,
     metadata_table=None,
     show_metadata=True,
     std_multiplier=1.0,
     decimal_places=4,
 ):
-    """Display individual model tables."""
+    """Display individual model tables with rankings."""
     for model_name, table in model_tables.items():
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()}")
@@ -320,6 +479,21 @@ def display_model_tables(
         print("-" * 80)
         print(table)
         print()
+
+        # Display ranking table
+        if ranking_tables and model_name in ranking_tables:
+            print(f"\n{'='*80}")
+            print(f"RANKING TABLE FOR {model_name.upper()}")
+            print(f"{'='*80}")
+            print(
+                "Strategies ranked by mean performance (1=best, lower loss is better)"
+            )
+            print("Ties broken by standard deviation (lower std is better)")
+            print("Last row shows average rank across all configurations")
+            print("Last column shows which strategy wins most often")
+            print("-" * 80)
+            print(ranking_tables[model_name])
+            print()
 
     if metadata_table is not None and show_metadata:
         print(f"\n{'='*80}")
@@ -373,12 +547,13 @@ def save_comparison_tables(
 
 def save_model_tables(
     model_tables,
+    ranking_tables=None,
     metadata_table=None,
     output_dir="analysis/tables",
     std_multiplier=1.0,
     decimal_places=4,
 ):
-    """Save individual model tables to CSV files."""
+    """Save individual model tables and ranking tables to CSV files."""
     os.makedirs(output_dir, exist_ok=True)
 
     # Add std_multiplier and decimal_places info to filenames if not default
@@ -389,10 +564,18 @@ def save_model_tables(
         suffix += f"_dec{decimal_places}"
 
     for model_name, table in model_tables.items():
+        # Save analysis table
         filename = f"{model_name}_analysis{suffix}.csv"
         filepath = os.path.join(output_dir, filename)
         table.write_csv(filepath)
         print(f"Saved analysis table for {model_name} to {filepath}")
+
+        # Save ranking table
+        if ranking_tables and model_name in ranking_tables:
+            ranking_filename = f"{model_name}_ranking{suffix}.csv"
+            ranking_filepath = os.path.join(output_dir, ranking_filename)
+            ranking_tables[model_name].write_csv(ranking_filepath)
+            print(f"Saved ranking table for {model_name} to {ranking_filepath}")
 
     if metadata_table is not None:
         metadata_filepath = os.path.join(output_dir, f"experiment_metadata{suffix}.csv")
@@ -631,7 +814,7 @@ def main():
         if not args.quiet:
             print("\nGenerating model-specific tables...")
 
-        model_tables, metadata_table = create_model_specific_tables(
+        model_tables, metadata_table, ranking_tables = create_model_specific_tables(
             experiment_paths,
             runs_dir=args.runs_dir,
             std_multiplier=args.std_multiplier,
@@ -641,6 +824,7 @@ def main():
         if not args.no_display:
             display_model_tables(
                 model_tables,
+                ranking_tables,
                 metadata_table if args.show_metadata else None,
                 show_metadata=args.show_metadata,
                 std_multiplier=args.std_multiplier,
@@ -650,6 +834,7 @@ def main():
         # Save tables (metadata always saved)
         save_model_tables(
             model_tables,
+            ranking_tables,
             metadata_table,  # Always save metadata
             output_dir=args.output_dir,
             std_multiplier=args.std_multiplier,
