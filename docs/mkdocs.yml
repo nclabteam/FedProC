@@ -20,6 +20,7 @@ nav:
   - Schedulers: schedulers.md
   - Customization: customization.md
   - Code Formatting: formatting.md
+  - Analysis: analysis.md
 
 markdown_extensions:
   - toc:
