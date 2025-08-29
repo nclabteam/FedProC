@@ -21,14 +21,14 @@ Generates statistical analysis tables from federated learning experiment results
 **Command Line Arguments:**
 
 | Argument         | Short | Type   | Default           | Description                                          |
-|------------------|-------|--------|-------------------|----------------------------------------------------- |
+|------------------|-------|--------|-------------------|------------------------------------------------------|
 | --runs-dir       | -r    | str    | "runs"            | Directory containing experiment folders              |
 | --output-dir     | -o    | str    | "analysis/tables" | Output directory for generated tables                |
 | --table-type     | -t    | choice | "model-specific"  | Type of tables: model-specific, comparison, both     |
 | --std-multiplier | -s    | float  | 10000             | Factor to multiply standard deviation for visibility |
 | --decimal-places | -d    | int    | 3                 | Number of decimal places to display                  |
 | --no-display     |       | flag   | False             | Don't display tables to console, only save files     |
-| --no-metadata    |       | flag   | False             | Don't display or save metadata table                 |
+| --show-metadata  |       | flag   | False             | Display metadata table to console (always saved)     |
 | --quiet          | -q    | flag   | False             | Reduce output verbosity                              |
 | --models         |       | list   | None              | Filter to specific models (e.g. linear lstm)         |
 | --strategies     |       | list   | None              | Filter to specific strategies (e.g. fedavg fedprox)  |
@@ -41,20 +41,23 @@ Generates statistical analysis tables from federated learning experiment results
 # Basic usage with defaults
 python analysis/results.py
 
+# Show metadata table in console and save to file
+python analysis/results.py --show-metadata
+
 # High precision with small std multiplier
 python analysis/results.py --std-multiplier=1000 --decimal-places=4
 
-# Filter specific models and generate both table types
-python analysis/results.py --models linear lstm --table-type=both
+# Filter specific models and generate both table types with metadata display
+python analysis/results.py --models linear lstm --table-type both --show-metadata
 
 # Quiet mode, save only, no console output
-python analysis/results.py --no-display --quiet --no-metadata
+python analysis/results.py --no-display --quiet
 
-# Filter by strategy and dataset
-python analysis/results.py --strategies fedavg fedprox --datasets=electricity
+# Filter by strategy and dataset with metadata display
+python analysis/results.py --strategies fedavg fedprox --datasets stock --show-metadata
 
-# Process specific experiments only
-python analysis/results.py --experiments exp76 exp77 exp78 --table-type=both
+# Process specific experiments only with full output
+python analysis/results.py --experiments exp76 exp77 exp78 --table-type both --show-metadata
 ```
 
 ## Output Files
@@ -63,5 +66,7 @@ Analysis tools typically save results to the `analysis/tables/` directory with d
 
 Common output formats:
 - CSV files for tabular data
-- Metadata files with experiment details
+- Metadata files with experiment details (always saved)
 - Summary statistics files
+
+**Note:** Metadata files are always saved to disk regardless of the `--show-metadata` flag. The flag only controls whether metadata is displayed in the console output.
