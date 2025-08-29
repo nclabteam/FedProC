@@ -42,19 +42,19 @@ Generates statistical analysis tables from federated learning experiment results
 python analysis/results.py
 
 # High precision with small std multiplier
-python analysis/results.py --std-multiplier 1000 --decimal-places 4
+python analysis/results.py --std-multiplier=1000 --decimal-places=4
 
 # Filter specific models and generate both table types
-python analysis/results.py --models linear lstm --table-type both
+python analysis/results.py --models linear lstm --table-type=both
 
 # Quiet mode, save only, no console output
 python analysis/results.py --no-display --quiet --no-metadata
 
 # Filter by strategy and dataset
-python analysis/results.py --strategies fedavg fedprox --datasets stock
+python analysis/results.py --strategies fedavg fedprox --datasets=electricity
 
 # Process specific experiments only
-python analysis/results.py --experiments exp76 exp77 exp78 --table-type both
+python analysis/results.py --experiments exp76 exp77 exp78 --table-type=both
 ```
 
 ## Output Files
