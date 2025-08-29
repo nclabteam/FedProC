@@ -6,10 +6,11 @@ This directory contains analysis tools for processing federated learning experim
 
 ### results.py - Results Table Generator
 
-Generates statistical analysis tables from federated learning experiment results with mean±std format.
+Generates statistical analysis tables from federated learning experiment results with mean±std format and strategy rankings.
 
 **Features:**
 - Generate statistical tables from federated learning experiment results with mean±std format
+- Create ranking tables showing strategy performance rankings (1=best, lower loss is better)
 - Filter experiments by models, strategies, datasets, or specific experiment names
 - Control output precision with customizable decimal places and standard deviation multipliers
 - Create two table types: model-specific (combined mean±std) or comparison (separate mean/std tables)
@@ -17,6 +18,7 @@ Generates statistical analysis tables from federated learning experiment results
 - Batch processing with quiet mode and optional console display control
 - Handle multiple runs by calculating statistics across experimental repetitions
 - Flexible input/output with customizable source and destination directories
+- Automatic ranking with tiebreaking by standard deviation
 
 **Command Line Arguments:**
 
@@ -64,9 +66,28 @@ python analysis/results.py --experiments exp76 exp77 exp78 --table-type both --s
 
 Analysis tools typically save results to the `analysis/tables/` directory with descriptive filenames that include parameter suffixes when non-default values are used.
 
-Common output formats:
-- CSV files for tabular data
-- Metadata files with experiment details (always saved)
-- Summary statistics files
+**Generated Files:**
+- `{model}_analysis{suffix}.csv`: Main analysis table with mean±std format
+- `{model}_ranking{suffix}.csv`: Strategy ranking table with performance ranks
+- `experiment_metadata{suffix}.csv`: Experiment details (always saved)
+
+**Filename Suffixes:**
+- `_stdx{value}`: Added when std_multiplier != 10000
+- `_dec{value}`: Added when decimal_places != 3
 
 **Note:** Metadata files are always saved to disk regardless of the `--show-metadata` flag. The flag only controls whether metadata is displayed in the console output.
+
+## Understanding Rankings
+
+**Ranking Logic:**
+1. **Primary Sort**: Mean loss value (ascending - lower is better)
+2. **Tiebreaker**: Standard deviation (ascending - lower variability is better)
+3. **Best Strategy**: Strategy with rank 1 (lowest loss) for each configuration
+4. **Average Rank**: Mean ranking across all configurations for each strategy
+5. **Most Frequent Winner**: Strategy that achieves rank 1 most often across configurations
+
+**Interpreting Results:**
+- **Rank 1**: Best performing strategy (lowest loss)
+- **Lower ranks**: Better average performance
+- **Consistent winners**: Strategies appearing frequently in "best_strategy" column
+- **Robust strategies**: Low average rank with low standard deviation
