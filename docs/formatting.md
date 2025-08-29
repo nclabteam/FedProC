@@ -1,9 +1,9 @@
-## Code Formatting
-### Linux
+# Code Formatting
+## Linux
 ```bash
 bash code_formatting.sh
 ```
-### Window
+## Window
 ```bash
 sh code_formatting.sh
 ```

@@ -1,4 +1,4 @@
-## Models
+# Models
 SSM: State Space Model  
 Univariate (Persistent temporal patterns): encompassing trends and seasonal patterns  
 Multivariate (Cross-variate information): correlations between different variables  

@@ -1,5 +1,6 @@
-## Installation
-### Linux
+# Installation
+
+## Linux
 ```bash
 apt install python3-virtualenv
 ```
@@ -19,7 +20,7 @@ pip install -r .env/requirements.txt
 python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-### Window
+## Window
 ```bash
 pip install virtualenv
 ```

@@ -1,5 +1,5 @@
-## Customization
-### Dataset
+# Customization
+## Dataset
 The customized dataset should be inherited from one of those classes: `BaseDataset`, `CustomDataset`, `CustomOnSingleDataset`.
 
 ```
@@ -79,7 +79,7 @@ class Custom2(CustomOnSingleDataset):
         ]
 ```
 
-### Strategy
+## Strategy
 The customized server class should be inherited from `Server` and client class should be inherited from `Client`. For example, if the `strategy` inherit from `FedAvg`:
 
 ```
@@ -122,7 +122,7 @@ class FedNew(Server):
     pass
 ```
 
-### Specific Hyper-parameters
+## Specific Hyper-parameters
 In each method (`loss`, `optimizer`, `strategy`, etc.), there will be 2 dictionaries `optional` and `compulsory`. 
 
 `optional` is the dictionary storing the configurations that only used for the customized method. For example: 
@@ -187,3 +187,12 @@ def args_update(parser):
         help="what is this parameter",
     )
 ```
+
+## Analysis Tools
+
+When adding new analysis tools to this package:
+
+1. Create the tool in the `analysis/` directory
+2. Add imports to `analysis/utils.py` if needed
+3. Document the tool in this file following the same format
+4. Add usage examples for common use cases
