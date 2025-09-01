@@ -11,6 +11,7 @@ Generates statistical analysis tables from federated learning experiment results
 **Features:**
 - Generate statistical tables from federated learning experiment results with mean±std format
 - Create ranking tables showing strategy performance rankings (1=best, lower loss is better)
+- Advanced tiebreaking: when win counts are equal, use average ranking as tiebreaker
 - Filter experiments by models, strategies, datasets, or specific experiment names
 - Control output precision with customizable decimal places and standard deviation multipliers
 - Create two table types: model-specific (combined mean±std) or comparison (separate mean/std tables)
@@ -18,7 +19,7 @@ Generates statistical analysis tables from federated learning experiment results
 - Batch processing with quiet mode and optional console display control
 - Handle multiple runs by calculating statistics across experimental repetitions
 - Flexible input/output with customizable source and destination directories
-- Automatic ranking with tiebreaking by standard deviation
+- Automatic ranking with comprehensive tiebreaking logic
 
 **Command Line Arguments:**
 
@@ -62,6 +63,43 @@ python analysis/results.py --strategies fedavg fedprox --datasets stock --show-m
 python analysis/results.py --experiments exp76 exp77 exp78 --table-type both --show-metadata
 ```
 
+**Output Tables:**
+
+For `model-specific` table type, the tool generates:
+1. **Analysis Table**: Mean±std format for easy comparison
+2. **Ranking Table**: Strategy rankings with performance insights
+
+**Ranking Table Features:**
+- **Ranking Method**: Strategies ranked by mean performance (1=best, lower loss is better)
+- **Primary Tiebreaker**: When means are equal, lower standard deviation wins
+- **Best Strategy Column**: Shows which strategy achieved rank 1 for each configuration
+- **Average Ranks**: Last row shows average rank across all configurations
+- **Most Frequent Winner**: Bottom-right cell shows strategy that wins most often
+- **Advanced Tiebreaking**: When win counts are tied, the strategy with lower average rank wins
+
+**Example Ranking Tables:**
+
+**Simple Winner (No Ties):**
+```
+dataset      | in | out | fedavg | fedprox | fedmixer | best_strategy
+-------------|----|----- |--------|---------|----------|---------------
+ETDatasetHour| 96 | 720 | 2      | 1       | 3        | fedprox
+ETTh1        | 96 | 720 | 1      | 2       | 3        | fedavg
+AVG_RANK     |    |     | 1.5    | 1.5     | 3.0      | fedprox (1x)
+```
+
+**Tied Winner with Tiebreaker:**
+```
+dataset      | in | out | fedavg | fedprox | fedmixer | best_strategy
+-------------|----|----- |--------|---------|----------|---------------
+ETDatasetHour| 96 | 720 | 2      | 1       | 3        | fedprox
+ETTh1        | 96 | 720 | 1      | 2       | 3        | fedavg
+Weather      | 24 | 1   | 1      | 3       | 2        | fedavg
+Stock        | 60 | 1   | 3      | 1       | 2        | fedprox
+AVG_RANK     |    |     | 1.75   | 1.75    | 2.5      | fedavg (tie: fedavg(2x,avg:1.75), fedprox(2x,avg:1.75))
+```
+
+
 ## Output Files
 
 Analysis tools typically save results to the `analysis/tables/` directory with descriptive filenames that include parameter suffixes when non-default values are used.
@@ -81,13 +119,22 @@ Analysis tools typically save results to the `analysis/tables/` directory with d
 
 **Ranking Logic:**
 1. **Primary Sort**: Mean loss value (ascending - lower is better)
-2. **Tiebreaker**: Standard deviation (ascending - lower variability is better)
+2. **Performance Tiebreaker**: Standard deviation (ascending - lower variability is better)
 3. **Best Strategy**: Strategy with rank 1 (lowest loss) for each configuration
 4. **Average Rank**: Mean ranking across all configurations for each strategy
 5. **Most Frequent Winner**: Strategy that achieves rank 1 most often across configurations
+6. **Winner Tiebreaker**: When multiple strategies have the same win count, the one with the lowest average rank wins
 
 **Interpreting Results:**
 - **Rank 1**: Best performing strategy (lowest loss)
-- **Lower ranks**: Better average performance
-- **Consistent winners**: Strategies appearing frequently in "best_strategy" column
-- **Robust strategies**: Low average rank with low standard deviation
+- **Lower average ranks**: Better overall performance consistency
+- **Simple winner display**: `"FedAvg (3x)"` when there's a clear most frequent winner
+- **Tied winner display**: `"FedAvg (tie: FedAvg(2x,avg:1.5), FedProx(2x,avg:1.8))"` showing all tied strategies with counts and average ranks
+- **Robust strategies**: Low average rank with low standard deviation and frequent wins
+- **Consistent performers**: Strategies that appear often in the "best_strategy" column with good average ranks
+
+**Key Insights:**
+- **Overall Champion**: Strategy shown in bottom-right cell (considers both frequency and consistency)
+- **Configuration-Specific Winners**: Individual "best_strategy" entries for specific use cases
+- **Performance Stability**: Strategies with low variance in rankings across different configurations
+- **Reliable Choices**: Strategies that consistently rank in top positions even if they don't always win

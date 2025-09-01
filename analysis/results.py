@@ -229,6 +229,7 @@ def create_ranking_table(model_tables):
         # Calculate average ranks
         if ranking_rows:
             avg_ranks = {"dataset": "AVG_RANK", "in": "", "out": ""}
+            strategy_avg_ranks = {}
 
             for strategy in strategy_columns:
                 valid_ranks = [
@@ -238,16 +239,44 @@ def create_ranking_table(model_tables):
                     and isinstance(row[strategy], (int, float))
                 ]
                 if valid_ranks:
-                    avg_ranks[strategy] = round(np.mean(valid_ranks), 2)
+                    avg_rank = round(np.mean(valid_ranks), 2)
+                    avg_ranks[strategy] = avg_rank
+                    strategy_avg_ranks[strategy] = avg_rank
                 else:
                     avg_ranks[strategy] = "N/A"
+                    strategy_avg_ranks[strategy] = float(
+                        "inf"
+                    )  # High value for strategies with no data
 
-            # Find most frequent best strategy
+            # Find most frequent best strategy with tiebreaking by average rank
             if best_strategy_counts:
-                most_frequent = best_strategy_counts.most_common(1)[0][0]
-                avg_ranks["best_strategy"] = (
-                    f"{most_frequent} ({best_strategy_counts[most_frequent]}x)"
-                )
+                max_count = max(best_strategy_counts.values())
+                # Get all strategies with the maximum count
+                top_strategies = [
+                    strategy
+                    for strategy, count in best_strategy_counts.items()
+                    if count == max_count
+                ]
+
+                if len(top_strategies) == 1:
+                    # No tie, simple case
+                    most_frequent = top_strategies[0]
+                    avg_ranks["best_strategy"] = f"{most_frequent} ({max_count}x)"
+                else:
+                    # Tie in count, use average rank as tiebreaker (lower avg rank wins)
+                    best_by_avg_rank = min(
+                        top_strategies,
+                        key=lambda s: strategy_avg_ranks.get(s, float("inf")),
+                    )
+                    tied_strategies_info = ", ".join(
+                        [
+                            f"{s}({best_strategy_counts[s]}x,avg:{strategy_avg_ranks.get(s, 'N/A')})"
+                            for s in top_strategies
+                        ]
+                    )
+                    avg_ranks["best_strategy"] = (
+                        f"{best_by_avg_rank} (tie: {tied_strategies_info})"
+                    )
             else:
                 avg_ranks["best_strategy"] = "N/A"
 
