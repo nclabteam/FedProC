@@ -16,11 +16,15 @@ class FedProx(Server):
 
 
 class FedProx_Client(Client):
+    def receive_from_server(self, data):
+        self.snapshot = copy.deepcopy(data["model"]).to("cpu")
+        self.update_model_params(old=self.model, new=data["model"])
+
     def train_one_epoch(
         self, model, dataloader, optimizer, criterion, scheduler, device
     ):
         model.to(device)
-        global_params = copy.deepcopy(list(model.parameters()))
+        global_params = copy.deepcopy(list(self.snapshot.to(device).parameters()))
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
@@ -35,3 +39,4 @@ class FedProx_Client(Client):
             optimizer.step()
         scheduler.step()
         model.to("cpu")
+        del global_params
