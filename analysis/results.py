@@ -448,6 +448,8 @@ def create_model_specific_tables(
         # Create DataFrame for display
         if table_rows:
             model_df = pl.DataFrame(table_rows)
+            # Sort by dataset, in, out
+            model_df = model_df.sort(["dataset", "in", "out"])
             model_tables[model_name] = model_df
             if not args.quiet:
                 print(
@@ -456,6 +458,13 @@ def create_model_specific_tables(
 
     # Create ranking tables
     ranking_tables = create_ranking_table(comparison_tables)
+    # Sort ranking tables as well
+    for model_name, ranking_df in ranking_tables.items():
+        # Only sort rows that have a dataset value (not the AVG_RANK row)
+        data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
+        avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
+        data_rows = data_rows.sort(["dataset", "in", "out"])
+        ranking_tables[model_name] = pl.concat([data_rows, avg_row])
 
     metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
     return model_tables, metadata_table, ranking_tables
