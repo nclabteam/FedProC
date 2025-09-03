@@ -21,6 +21,14 @@ from analysis.utils import (
 )
 
 
+def get_experiment_names_from_excel(excel_path):
+    """Read experiment names from the excel file (column '--name=')"""
+    df = pl.read_excel(excel_path)
+    if "--name=" not in df.columns:
+        raise ValueError("Excel file must have a '--name=' column.")
+    return set(df["--name="].to_list())
+
+
 def create_comparison_tables(
     experiment_paths, runs_dir="runs", std_multiplier=1.0, decimal_places=4
 ):
@@ -778,6 +786,13 @@ def parse_args():
         help="Process only specific experiments (e.g., --experiments exp76 exp77)",
     )
 
+    # Excel experiment filter
+    parser.add_argument(
+        "--excel",
+        type=str,
+        help="Excel file to filter experiments (column '--name=' should contain experiment names)",
+    )
+
     return parser.parse_args()
 
 
@@ -831,6 +846,19 @@ def main():
 
     # Filter experiments if requested
     experiments = filter_experiments(experiments, args)
+
+    # Additional filter: Excel file
+    if args.excel:
+        if not os.path.exists(args.excel):
+            print(f"Excel file not found: {args.excel}")
+            return
+        excel_names = get_experiment_names_from_excel(args.excel)
+        experiments = [
+            exp for exp in experiments if exp.get("experiment_name", "") in excel_names
+        ]
+        if not args.quiet:
+            print(f"Filtered experiments using Excel file: {args.excel}")
+            print(f"Remaining experiments: {len(experiments)}")
 
     if not experiments:
         print("No experiments match the specified filters")

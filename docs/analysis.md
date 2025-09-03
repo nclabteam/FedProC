@@ -12,7 +12,7 @@ Generates statistical analysis tables from federated learning experiment results
 - Generate statistical tables from federated learning experiment results with mean±std format
 - Create ranking tables showing strategy performance rankings (1=best, lower loss is better)
 - Advanced tiebreaking: when win counts are equal, use average ranking as tiebreaker
-- Filter experiments by models, strategies, datasets, or specific experiment names
+- Filter experiments by models, strategies, datasets, specific experiment names, or an Excel file
 - Control output precision with customizable decimal places and standard deviation multipliers
 - Create two table types: model-specific (combined mean±std) or comparison (separate mean/std tables)
 - Save results to CSV with automatic file naming based on parameters
@@ -37,6 +37,7 @@ Generates statistical analysis tables from federated learning experiment results
 | --strategies     |       | list   | None              | Filter to specific strategies (e.g. fedavg fedprox)  |
 | --datasets       |       | list   | None              | Filter to specific datasets (e.g. stock crypto)      |
 | --experiments    |       | list   | None              | Process specific experiments (e.g. exp76 exp77)      |
+| --excel          |       | str    | None              | Excel file to filter experiments (column '--name=' must contain experiment names) |
 
 **Usage Examples:**
 
@@ -61,6 +62,9 @@ python analysis/results.py --strategies fedavg fedprox --datasets stock --show-m
 
 # Process specific experiments only with full output
 python analysis/results.py --experiments exp76 exp77 exp78 --table-type both --show-metadata
+
+# Combine multiple filters: dataset, Excel, and quiet mode
+python analysis/results.py --datasets stock crypto --excel experiments.xlsx --quiet
 ```
 
 **Output Tables:**
