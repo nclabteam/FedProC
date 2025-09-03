@@ -156,12 +156,13 @@ def create_comparison_tables(
     return model_tables, metadata_table
 
 
-def create_ranking_table(model_tables):
+def create_ranking_table(model_tables, decimal_places=4):
     """
-    Create ranking tables for each model based on mean performance and std as tiebreaker.
+    Create ranking tables for each model based on rounded mean performance and rounded std as tiebreaker.
 
     Args:
         model_tables (dict): Dictionary with model names as keys and tables as values
+        decimal_places (int): Number of decimal places to round before ranking
 
     Returns:
         dict: Dictionary with model names as keys and ranking DataFrames as values
@@ -196,24 +197,28 @@ def create_ranking_table(model_tables):
                 "out": mean_df["out"][i],
             }
 
-            # Get mean and std values for this configuration
+            # Get rounded mean and std values for this configuration
             strategy_scores = []
             for strategy in strategy_columns:
                 mean_val = mean_df[strategy][i]
                 std_val = std_df[strategy][i] if strategy in std_df.columns else 0
 
                 if mean_val is not None and not np.isnan(mean_val):
-                    strategy_scores.append((strategy, mean_val, std_val))
+                    rounded_mean = round(mean_val, decimal_places)
+                    rounded_std = round(std_val, decimal_places)
+                    strategy_scores.append((strategy, rounded_mean, rounded_std))
 
             if not strategy_scores:
                 continue
 
-            # Sort by mean (ascending - lower is better), then by std (ascending - lower is better)
+            # Sort by rounded mean (ascending - lower is better), then by rounded std (ascending - lower is better)
             strategy_scores.sort(key=lambda x: (x[1], x[2]))
 
             # Create rankings
             rankings = {}
-            for rank, (strategy, mean_val, std_val) in enumerate(strategy_scores, 1):
+            for rank, (strategy, rounded_mean, rounded_std) in enumerate(
+                strategy_scores, 1
+            ):
                 rankings[strategy] = rank
 
             # Add rankings to row
@@ -228,9 +233,9 @@ def create_ranking_table(model_tables):
             if best_strategies:
                 best_strategy = best_strategies[0]  # In case of ties, take first
                 best_strategy_counts[best_strategy] += 1
-                row_data["best_strategy"] = best_strategy
+                row_data["best"] = best_strategy
             else:
-                row_data["best_strategy"] = "N/A"
+                row_data["best"] = "N/A"
 
             ranking_rows.append(row_data)
 
@@ -252,14 +257,11 @@ def create_ranking_table(model_tables):
                     strategy_avg_ranks[strategy] = avg_rank
                 else:
                     avg_ranks[strategy] = "N/A"
-                    strategy_avg_ranks[strategy] = float(
-                        "inf"
-                    )  # High value for strategies with no data
+                    strategy_avg_ranks[strategy] = float("inf")
 
             # Find most frequent best strategy with tiebreaking by average rank
             if best_strategy_counts:
                 max_count = max(best_strategy_counts.values())
-                # Get all strategies with the maximum count
                 top_strategies = [
                     strategy
                     for strategy, count in best_strategy_counts.items()
@@ -267,26 +269,16 @@ def create_ranking_table(model_tables):
                 ]
 
                 if len(top_strategies) == 1:
-                    # No tie, simple case
                     most_frequent = top_strategies[0]
-                    avg_ranks["best_strategy"] = f"{most_frequent} ({max_count}x)"
+                    avg_ranks["best"] = f"{most_frequent} ({max_count}x)"
                 else:
-                    # Tie in count, use average rank as tiebreaker (lower avg rank wins)
                     best_by_avg_rank = min(
                         top_strategies,
                         key=lambda s: strategy_avg_ranks.get(s, float("inf")),
                     )
-                    tied_strategies_info = ", ".join(
-                        [
-                            f"{s}({best_strategy_counts[s]}x,avg:{strategy_avg_ranks.get(s, 'N/A')})"
-                            for s in top_strategies
-                        ]
-                    )
-                    avg_ranks["best_strategy"] = (
-                        f"{best_by_avg_rank} (tie: {tied_strategies_info})"
-                    )
+                    avg_ranks["best"] = f"{best_by_avg_rank} ({max_count}x)(tie)"
             else:
-                avg_ranks["best_strategy"] = "N/A"
+                avg_ranks["best"] = "N/A"
 
             ranking_rows.append(avg_ranks)
 
