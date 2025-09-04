@@ -7,3 +7,5 @@ runs*
 analysis/*.csv
 analysis/saved_plots
 analysis/predictions
+analysis/plots
+analysis/tables
