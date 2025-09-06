@@ -334,7 +334,7 @@ def create_model_specific_tables(
                 )
 
     # Create ranking tables
-    ranking_tables = create_ranking_table(comparison_tables)
+    ranking_tables = create_ranking_table(model_tables=comparison_tables, decimal_places=decimal_places)
     # Sort ranking tables as well
     for model_name, ranking_df in ranking_tables.items():
         # Only sort rows that have a dataset value (not the AVG_RANK row)
