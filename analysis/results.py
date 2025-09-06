@@ -159,7 +159,6 @@ def create_ranking_table(model_tables, decimal_places=4, std_multiplier=1.0):
             main_df=tables["mean"],
             tiebreak_df=tables["std"],
             decimal_places=decimal_places,
-            std_multiplier=std_multiplier,
             sort_cols=["dataset", "in", "out"],
         )
         if ranking_df is not None:
@@ -277,7 +276,7 @@ def create_model_specific_tables(
                     "in": input_len,
                     "out": output_len,
                     "loss_mean": mean_value,
-                    "loss_std": std_value,  # Raw std for ranking
+                    "loss_std": std_value_display,
                     "n_runs": len(values),
                 }
             )
@@ -293,10 +292,12 @@ def create_model_specific_tables(
                 mean_val = stats["mean"]
                 std_val = stats["std"]
 
+                # Multiply std by std_multiplier before rounding and displaying
                 if mean_val is not None and std_val is not None:
-                    row[strategy] = (
-                        f"{mean_val:.{decimal_places}f}±{std_val:.{decimal_places}f}"
-                    )
+                    std_val_display = round(std_val, decimal_places)
+                    row[
+                        strategy
+                    ] = f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
                 else:
                     row[strategy] = "N/A"
 
@@ -364,8 +365,7 @@ def display_comparison_tables(
 
         print(f"\n{'='*50}")
         print(f"MODEL: {model_name.upper()} - STANDARD DEVIATION")
-        if std_multiplier != 1.0:
-            print(f"(multiplied by {std_multiplier})")
+        print(f"(multiplied by {std_multiplier})")
         print(f"{'='*50}")
         print(tables["std"])
         print()
@@ -389,10 +389,8 @@ def display_model_tables(
     for model_name, table in model_tables.items():
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()}")
-        if std_multiplier != 1.0:
-            print(f"(Standard deviation multiplied by {std_multiplier})")
-        if decimal_places != 4:
-            print(f"(Displayed with {decimal_places} decimal places)")
+        print(f"(Standard deviation multiplied by {std_multiplier})")
+        print(f"(Displayed with {decimal_places} decimal places)")
         print(f"{'='*80}")
         print("Each row shows a unique configuration (dataset, in, out)")
         print("Columns show mean±std across multiple runs for each strategy")
@@ -552,9 +550,9 @@ def create_combined_summary_table(model_tables, decimal_places=4):
             std_value = tables["std"].select(pl.col(strategy).mean()).item()
 
             if mean_value is not None and std_value is not None:
-                summary_row[strategy] = (
-                    f"{mean_value:.{decimal_places}f}±{std_value:.{decimal_places}f}"
-                )
+                summary_row[
+                    strategy
+                ] = f"{mean_value:.{decimal_places}f}±{std_value:.{decimal_places}f}"
             else:
                 summary_row[strategy] = "N/A"
 

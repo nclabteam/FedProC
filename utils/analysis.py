@@ -298,13 +298,12 @@ def pivot_table(df, value_col, index_cols, on_col):
 
 
 def create_ranking_table_from_pivot(
-    main_df, tiebreak_df=None, decimal_places=3, sort_cols=None, std_multiplier=1.0
+    main_df, tiebreak_df=None, decimal_places=3, sort_cols=None
 ):
     """
     Create a ranking table from a main DataFrame and an optional tiebreak DataFrame.
     If tiebreak_df is None, use main_df for both mean and std (for time tables).
     Both mean and std are rounded before ranking.
-    std_multiplier is applied to std before rounding and sorting.
     """
     strategy_columns = [
         col for col in main_df.columns if col not in ["model", "dataset", "in", "out"]
@@ -328,9 +327,8 @@ def create_ranking_table_from_pivot(
                 tiebreak_val = main_val  # Use main_val as std if tiebreak_df is None
             if main_val is not None and not np.isnan(main_val):
                 rounded_main = round(main_val, decimal_places)
-                # Multiply std by std_multiplier, then round
                 rounded_tiebreak = round(
-                    (tiebreak_val if tiebreak_val is not None else 0) * std_multiplier,
+                    (tiebreak_val if tiebreak_val is not None else 0),
                     decimal_places,
                 )
                 strategy_scores.append((strategy, rounded_main, rounded_tiebreak))
