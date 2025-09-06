@@ -292,9 +292,11 @@ def create_model_specific_tables(
                 mean_val = stats["mean"]
                 std_val = stats["std"]
 
+                # Multiply std by std_multiplier before rounding and displaying
                 if mean_val is not None and std_val is not None:
+                    std_val_display = round(std_val * std_multiplier, decimal_places)
                     row[strategy] = (
-                        f"{mean_val:.{decimal_places}f}±{std_val:.{decimal_places}f}"
+                        f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
                     )
                 else:
                     row[strategy] = "N/A"
@@ -361,8 +363,7 @@ def display_comparison_tables(
 
         print(f"\n{'='*50}")
         print(f"MODEL: {model_name.upper()} - STANDARD DEVIATION")
-        if std_multiplier != 1.0:
-            print(f"(multiplied by {std_multiplier})")
+        print(f"(multiplied by {std_multiplier})")
         print(f"{'='*50}")
         print(tables["std"])
         print()
@@ -386,10 +387,8 @@ def display_model_tables(
     for model_name, table in model_tables.items():
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()}")
-        if std_multiplier != 1.0:
-            print(f"(Standard deviation multiplied by {std_multiplier})")
-        if decimal_places != 4:
-            print(f"(Displayed with {decimal_places} decimal places)")
+        print(f"(Standard deviation multiplied by {std_multiplier})")
+        print(f"(Displayed with {decimal_places} decimal places)")
         print(f"{'='*80}")
         print("Each row shows a unique configuration (dataset, in, out)")
         print("Columns show mean±std across multiple runs for each strategy")
