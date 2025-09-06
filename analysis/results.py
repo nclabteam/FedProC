@@ -138,7 +138,7 @@ def create_comparison_tables(
     return model_tables, metadata_table
 
 
-def create_ranking_table(model_tables, decimal_places=4):
+def create_ranking_table(model_tables, decimal_places=4, std_multiplier=1.0):
     """
     Create ranking tables for each model based on rounded mean performance and rounded std as tiebreaker.
 
@@ -156,9 +156,10 @@ def create_ranking_table(model_tables, decimal_places=4):
             continue
 
         ranking_df = create_ranking_table_from_pivot(
-            tables["mean"],
-            tables["std"],
-            decimal_places,
+            main_df=tables["mean"],
+            tiebreak_df=tables["std"],
+            decimal_places=decimal_places,
+            std_multiplier=std_multiplier,
             sort_cols=["dataset", "in", "out"],
         )
         if ranking_df is not None:
@@ -335,7 +336,9 @@ def create_model_specific_tables(
 
     # Create ranking tables
     ranking_tables = create_ranking_table(
-        model_tables=comparison_tables, decimal_places=decimal_places
+        model_tables=comparison_tables,
+        decimal_places=decimal_places,
+        std_multiplier=std_multiplier,
     )
     # Sort ranking tables as well
     for model_name, ranking_df in ranking_tables.items():

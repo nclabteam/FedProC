@@ -144,15 +144,16 @@ def create_efficiency_tables(experiment_paths, runs_dir="runs", decimal_places=3
     return model_tables, metadata_table
 
 
-def create_efficiency_ranking_table(model_tables, decimal_places=3):
+def create_efficiency_ranking_table(model_tables, decimal_places=3, std_multiplier=1.0):
     ranking_tables = {}
     for model_name, tables in model_tables.items():
         if "total_time" not in tables or "avg_time" not in tables:
             continue
         ranking_df = create_ranking_table_from_pivot(
-            tables["total_time"],
-            tables["total_time_std"],
-            decimal_places,
+            main_df=tables["total_time"],
+            tiebreak_df=tables["total_time_std"],
+            decimal_places=decimal_places,
+            std_multiplier=std_multiplier,
             sort_cols=["dataset", "in", "out"],
         )
         if ranking_df is not None:
@@ -160,15 +161,16 @@ def create_efficiency_ranking_table(model_tables, decimal_places=3):
     return ranking_tables
 
 
-def create_avg_time_ranking_table(model_tables, decimal_places=3):
+def create_avg_time_ranking_table(model_tables, decimal_places=3, std_multiplier=1.0):
     ranking_tables = {}
     for model_name, tables in model_tables.items():
         if "avg_time" not in tables:
             continue
         ranking_df = create_ranking_table_from_pivot(
-            tables["avg_time"],
-            tables["avg_time_std"],
-            decimal_places,
+            main_df=tables["avg_time"],
+            tiebreak_df=tables["avg_time_std"],
+            decimal_places=decimal_places,
+            std_multiplier=std_multiplier,
             sort_cols=["dataset", "in", "out"],
         )
         if ranking_df is not None:
@@ -338,10 +340,14 @@ def main():
         decimal_places=args.decimal_places,
     )
     ranking_tables = create_efficiency_ranking_table(
-        model_tables, decimal_places=args.decimal_places
+        model_tables=model_tables,
+        decimal_places=args.decimal_places,
+        std_multiplier=args.std_multiplier,
     )
     avg_time_ranking_tables = create_avg_time_ranking_table(
-        model_tables, decimal_places=args.decimal_places
+        model_tables=model_tables,
+        decimal_places=args.decimal_places,
+        std_multiplier=args.std_multiplier,
     )
     if not args.no_display:
         display_efficiency_tables(
