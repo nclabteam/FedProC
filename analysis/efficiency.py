@@ -9,7 +9,6 @@ pl.Config.set_tbl_rows(100)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.analysis import (
-    create_avg_time_ranking_table_from_pivot,
     create_ranking_table_from_pivot,
     extract_loss_values,
     filter_experiments,
@@ -118,14 +117,26 @@ def create_efficiency_tables(experiment_paths, runs_dir="runs", decimal_places=3
                 index=["dataset", "in", "out"],
                 on="strategy",
             ).sort(["dataset", "in", "out"])
+            total_time_std_pivot = df.pivot(
+                values="total_time_std",
+                index=["dataset", "in", "out"],
+                on="strategy",
+            ).sort(["dataset", "in", "out"])
             avg_time_pivot = df.pivot(
                 values="avg_time_mean",
                 index=["dataset", "in", "out"],
                 on="strategy",
             ).sort(["dataset", "in", "out"])
+            avg_time_std_pivot = df.pivot(
+                values="avg_time_std",
+                index=["dataset", "in", "out"],
+                on="strategy",
+            ).sort(["dataset", "in", "out"])
             model_tables[model_name] = {
                 "total_time": total_time_pivot,
+                "total_time_std": total_time_std_pivot,
                 "avg_time": avg_time_pivot,
+                "avg_time_std": avg_time_std_pivot,
                 "raw_data": df,
             }
 
@@ -140,7 +151,7 @@ def create_efficiency_ranking_table(model_tables, decimal_places=3):
             continue
         ranking_df = create_ranking_table_from_pivot(
             tables["total_time"],
-            tables["avg_time"],
+            tables["total_time_std"],
             decimal_places,
             sort_cols=["dataset", "in", "out"],
         )
@@ -154,8 +165,11 @@ def create_avg_time_ranking_table(model_tables, decimal_places=3):
     for model_name, tables in model_tables.items():
         if "avg_time" not in tables:
             continue
-        ranking_df = create_avg_time_ranking_table_from_pivot(
-            tables["avg_time"], decimal_places, sort_cols=["dataset", "in", "out"]
+        ranking_df = create_ranking_table_from_pivot(
+            tables["avg_time"],
+            tables["avg_time_std"],
+            decimal_places,
+            sort_cols=["dataset", "in", "out"],
         )
         if ranking_df is not None:
             ranking_tables[model_name] = ranking_df
@@ -174,14 +188,33 @@ def display_efficiency_tables(
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()} - TOTAL TIME (sum of time_per_iter)")
         print(f"{'='*80}")
-        print(tables["total_time"])
+        # Combine mean and std for display
+        total_time = tables["total_time"]
+        total_time_std = tables["total_time_std"]
+        # Create a mean±std table for display
+        total_time_display = total_time.clone()
+        for col in total_time.columns:
+            if col in ["dataset", "in", "out"]:
+                continue
+            std_col = total_time_std[col] if col in total_time_std.columns else None
+            mean_col = total_time[col]
+            total_time_display = total_time_display.with_columns(
+                [
+                    (
+                        pl.col(col).cast(str) + "±" + total_time_std[col].cast(str)
+                        if col in total_time_std.columns
+                        else pl.col(col).cast(str)
+                    )
+                ]
+            )
+        print(total_time_display)
         # Show ranking table immediately after total time table
         if ranking_tables and model_name in ranking_tables:
             print(f"\n{'-'*80}")
             print(f"RANKING TABLE (by total time) FOR {model_name.upper()}")
             print(f"{'-'*80}")
             print("Strategies ranked by total time (1=fastest, lower is better)")
-            print("Ties broken by average time per iteration (lower is better)")
+            print("Ties broken by standard deviation (lower std is better)")
             print("Last row shows average rank across all configurations")
             print("Last column shows which strategy is fastest most often")
             print("-" * 80)
@@ -190,7 +223,23 @@ def display_efficiency_tables(
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()} - AVG TIME PER ITERATION")
         print(f"{'='*80}")
-        print(tables["avg_time"])
+        # Combine mean and std for display
+        avg_time = tables["avg_time"]
+        avg_time_std = tables["avg_time_std"]
+        avg_time_display = avg_time.clone()
+        for col in avg_time.columns:
+            if col in ["dataset", "in", "out"]:
+                continue
+            avg_time_display = avg_time_display.with_columns(
+                [
+                    (
+                        pl.col(col).cast(str) + "±" + avg_time_std[col].cast(str)
+                        if col in avg_time_std.columns
+                        else pl.col(col).cast(str)
+                    )
+                ]
+            )
+        print(avg_time_display)
         # Show ranking table immediately after avg time table
         if avg_time_ranking_tables and model_name in avg_time_ranking_tables:
             print(f"\n{'-'*80}")
@@ -199,6 +248,7 @@ def display_efficiency_tables(
             print(
                 "Strategies ranked by average time per iteration (1=fastest, lower is better)"
             )
+            print("Ties broken by standard deviation (lower std is better)")
             print("Last row shows average rank across all configurations")
             print("Last column shows which strategy is fastest most often")
             print("-" * 80)

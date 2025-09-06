@@ -298,8 +298,14 @@ def pivot_table(df, value_col, index_cols, on_col):
 
 
 def create_ranking_table_from_pivot(
-    main_df, tiebreak_df, decimal_places=3, sort_cols=None
+    main_df, tiebreak_df=None, decimal_places=3, sort_cols=None, std_multiplier=1.0
 ):
+    """
+    Create a ranking table from a main DataFrame and an optional tiebreak DataFrame.
+    If tiebreak_df is None, use main_df for both mean and std (for time tables).
+    Both mean and std are rounded before ranking.
+    std_multiplier is applied to std before rounding and sorting.
+    """
     strategy_columns = [
         col for col in main_df.columns if col not in ["model", "dataset", "in", "out"]
     ]
@@ -316,101 +322,23 @@ def create_ranking_table_from_pivot(
         strategy_scores = []
         for strategy in strategy_columns:
             main_val = main_df[strategy][i]
-            tiebreak_val = (
-                tiebreak_df[strategy][i] if strategy in tiebreak_df.columns else 0
-            )
+            if tiebreak_df is not None and strategy in tiebreak_df.columns:
+                tiebreak_val = tiebreak_df[strategy][i]
+            else:
+                tiebreak_val = main_val  # Use main_val as std if tiebreak_df is None
             if main_val is not None and not np.isnan(main_val):
                 rounded_main = round(main_val, decimal_places)
-                rounded_tiebreak = round(tiebreak_val, decimal_places)
+                # Multiply std by std_multiplier, then round
+                rounded_tiebreak = round(
+                    (tiebreak_val if tiebreak_val is not None else 0) * std_multiplier,
+                    decimal_places,
+                )
                 strategy_scores.append((strategy, rounded_main, rounded_tiebreak))
         if not strategy_scores:
             continue
         strategy_scores.sort(key=lambda x: (x[1], x[2]))
         rankings = {}
         for rank, (strategy, _, _) in enumerate(strategy_scores, 1):
-            rankings[strategy] = rank
-        for strategy in strategy_columns:
-            row_data[strategy] = rankings.get(strategy, "N/A")
-        best_strategies = [s for s, r in rankings.items() if r == 1]
-        if best_strategies:
-            best_strategy = best_strategies[0]
-            best_strategy_counts[best_strategy] += 1
-            row_data["best_strategy"] = best_strategy
-        else:
-            row_data["best_strategy"] = "N/A"
-        ranking_rows.append(row_data)
-    # Average ranks and most frequent winner
-    if ranking_rows:
-        avg_ranks = {"dataset": "AVG_RANK", "in": "", "out": ""}
-        strategy_avg_ranks = {}
-        for strategy in strategy_columns:
-            valid_ranks = [
-                row[strategy]
-                for row in ranking_rows
-                if row[strategy] != "N/A" and isinstance(row[strategy], (int, float))
-            ]
-            if valid_ranks:
-                avg_rank = round(np.mean(valid_ranks), 2)
-                avg_ranks[strategy] = avg_rank
-                strategy_avg_ranks[strategy] = avg_rank
-            else:
-                avg_ranks[strategy] = "N/A"
-                strategy_avg_ranks[strategy] = float("inf")
-        if best_strategy_counts:
-            max_count = max(best_strategy_counts.values())
-            top_strategies = [
-                strategy
-                for strategy, count in best_strategy_counts.items()
-                if count == max_count
-            ]
-            if len(top_strategies) == 1:
-                most_frequent = top_strategies[0]
-                avg_ranks["best_strategy"] = f"{most_frequent} ({max_count}x)"
-            else:
-                best_by_avg_rank = min(
-                    top_strategies,
-                    key=lambda s: strategy_avg_ranks.get(s, float("inf")),
-                )
-                avg_ranks["best_strategy"] = f"{best_by_avg_rank} ({max_count}x)(tie)"
-        else:
-            avg_ranks["best_strategy"] = "N/A"
-        ranking_rows.append(avg_ranks)
-    if ranking_rows:
-        ranking_df = pl.DataFrame(ranking_rows)
-        if sort_cols:
-            data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
-            avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
-            data_rows = data_rows.sort(sort_cols)
-            ranking_df = pl.concat([data_rows, avg_row])
-        return ranking_df
-    return None
-
-
-def create_avg_time_ranking_table_from_pivot(avg_df, decimal_places=3, sort_cols=None):
-    strategy_columns = [
-        col for col in avg_df.columns if col not in ["model", "dataset", "in", "out"]
-    ]
-    if not strategy_columns:
-        return None
-    ranking_rows = []
-    best_strategy_counts = Counter()
-    for i in range(len(avg_df)):
-        row_data = {
-            "dataset": avg_df["dataset"][i],
-            "in": avg_df["in"][i],
-            "out": avg_df["out"][i],
-        }
-        strategy_scores = []
-        for strategy in strategy_columns:
-            avg_val = avg_df[strategy][i]
-            if avg_val is not None and not np.isnan(avg_val):
-                rounded_avg = round(avg_val, decimal_places)
-                strategy_scores.append((strategy, rounded_avg))
-        if not strategy_scores:
-            continue
-        strategy_scores.sort(key=lambda x: x[1])
-        rankings = {}
-        for rank, (strategy, _) in enumerate(strategy_scores, 1):
             rankings[strategy] = rank
         for strategy in strategy_columns:
             row_data[strategy] = rankings.get(strategy, "N/A")
