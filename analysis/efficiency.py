@@ -183,30 +183,30 @@ def display_efficiency_tables(
     metadata_table=None,
     show_metadata=True,
     decimal_places=3,
-    std_multiplier=1.0,
 ):
     for model_name, tables in model_tables.items():
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()} - TOTAL TIME (sum of time_per_iter)")
         print(f"{'='*80}")
-        # Combine mean and std for display, multiply std by std_multiplier before rounding
+        # Combine mean and std for display
         total_time = tables["total_time"]
         total_time_std = tables["total_time_std"]
+        # Create a mean±std table for display
         total_time_display = total_time.clone()
         for col in total_time.columns:
             if col in ["dataset", "in", "out"]:
                 continue
-            if col in total_time_std.columns:
-                # Multiply std by std_multiplier before rounding and displaying
-                std_col = (total_time_std[col] * std_multiplier).round(decimal_places)
-                mean_col = total_time[col].round(decimal_places)
-                total_time_display = total_time_display.with_columns(
-                    [(mean_col.cast(str) + "±" + std_col.cast(str)).alias(col)]
-                )
-            else:
-                total_time_display = total_time_display.with_columns(
-                    [pl.col(col).cast(str)]
-                )
+            std_col = total_time_std[col] if col in total_time_std.columns else None
+            mean_col = total_time[col]
+            total_time_display = total_time_display.with_columns(
+                [
+                    (
+                        pl.col(col).cast(str) + "±" + total_time_std[col].cast(str)
+                        if col in total_time_std.columns
+                        else pl.col(col).cast(str)
+                    )
+                ]
+            )
         print(total_time_display)
         # Show ranking table immediately after total time table
         if ranking_tables and model_name in ranking_tables:
@@ -223,22 +223,22 @@ def display_efficiency_tables(
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.upper()} - AVG TIME PER ITERATION")
         print(f"{'='*80}")
+        # Combine mean and std for display
         avg_time = tables["avg_time"]
         avg_time_std = tables["avg_time_std"]
         avg_time_display = avg_time.clone()
         for col in avg_time.columns:
             if col in ["dataset", "in", "out"]:
                 continue
-            if col in avg_time_std.columns:
-                std_col = (avg_time_std[col] * std_multiplier).round(decimal_places)
-                mean_col = avg_time[col].round(decimal_places)
-                avg_time_display = avg_time_display.with_columns(
-                    [(mean_col.cast(str) + "±" + std_col.cast(str)).alias(col)]
-                )
-            else:
-                avg_time_display = avg_time_display.with_columns(
-                    [pl.col(col).cast(str)]
-                )
+            avg_time_display = avg_time_display.with_columns(
+                [
+                    (
+                        pl.col(col).cast(str) + "±" + avg_time_std[col].cast(str)
+                        if col in avg_time_std.columns
+                        else pl.col(col).cast(str)
+                    )
+                ]
+            )
         print(avg_time_display)
         # Show ranking table immediately after avg time table
         if avg_time_ranking_tables and model_name in avg_time_ranking_tables:
