@@ -9,6 +9,7 @@ import gdown
 import numpy as np
 import polars as pl
 import requests
+from scipy.stats import entropy
 from statsmodels.tsa.seasonal import STL
 
 
@@ -561,14 +562,14 @@ class BaseDataset:
         return pl.DataFrame(delta_data)
 
     @staticmethod
-    def compute_trend_seasonal_strength_auto(
+    def compute_trend_seasonal_strength_and_entropy_auto(
         df: pl.DataFrame,
         granularity: int,
         granularity_unit: str,
         max_nan_fraction: float = 0.1,
     ):
         """
-        Computes trend and seasonal strength for all numerical columns using auto-selected seasonal period.
+        Computes trend and seasonal strength and entropy for all numerical columns using auto-selected seasonal period.
 
         Parameters:
             df (pl.DataFrame): Time series dataset.
@@ -576,8 +577,9 @@ class BaseDataset:
             granularity_unit (str): Unit of time granularity ("minute", "hour", "day", etc.).
 
         Returns:
-            pl.DataFrame: A DataFrame with trend & seasonal strengths for each column.
+            pl.DataFrame: A DataFrame with trend & seasonal strengths and entropies for each column.
         """
+
         seasonal_period = {
             "m": max(60 // granularity, 1),
             "h": max(24 // granularity, 1),
@@ -585,8 +587,10 @@ class BaseDataset:
             "w": max(52 // granularity, 1),
             "mo": max(12 // granularity, 1),
         }
-        trend_results = {"variable": f"trend_strength"}
-        seasonal_results = {"variable": f"seasonal_strength"}
+        trend_results = {"variable": "trend_strength"}
+        seasonal_results = {"variable": "seasonal_strength"}
+        trend_entropy_results = {"variable": "trend_entropy"}
+        seasonal_entropy_results = {"variable": "seasonal_entropy"}
 
         for col in df.columns:
             ts_series = df[col]
@@ -601,6 +605,8 @@ class BaseDataset:
             elif nan_fraction >= max_nan_fraction:
                 trend_results[col] = 0.0
                 seasonal_results[col] = 0.0
+                trend_entropy_results[col] = 0.0
+                seasonal_entropy_results[col] = 0.0
                 continue
 
             ts_values = ts_series.to_numpy()
@@ -618,10 +624,29 @@ class BaseDataset:
             trend_strength = max(0.0, 1 - (var_residual / var_diff_seasonal))
             seasonal_strength = max(0.0, 1 - (var_residual / var_diff_trend))
 
+            # Calculate entropy for trend and seasonal components
+            def safe_entropy(arr, bins=20):
+                hist, _ = np.histogram(arr, bins=bins, density=True)
+                hist = hist + 1e-12  # avoid log(0)
+                hist = hist / hist.sum()
+                return float(entropy(hist))
+
+            trend_entropy = safe_entropy(trend)
+            seasonal_entropy = safe_entropy(seasonal)
+
             trend_results[col] = trend_strength
             seasonal_results[col] = seasonal_strength
+            trend_entropy_results[col] = trend_entropy
+            seasonal_entropy_results[col] = seasonal_entropy
 
-        return pl.DataFrame([trend_results, seasonal_results])
+        return pl.DataFrame(
+            [
+                trend_results,
+                seasonal_results,
+                trend_entropy_results,
+                seasonal_entropy_results,
+            ]
+        )
 
     def dir(self):
         name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
@@ -747,7 +772,7 @@ class BaseDataset:
                 statistics,
                 # self.calculate_shifting_values(df=df),
                 self.get_transition_value(df=df),
-                self.compute_trend_seasonal_strength_auto(
+                self.compute_trend_seasonal_strength_and_entropy_auto(
                     df=df,
                     granularity=self.granularity,
                     granularity_unit=self.granularity_unit,
