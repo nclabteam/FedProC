@@ -55,6 +55,11 @@ class FedAWA(Server):
         """
         x_col = x.unsqueeze(-2)
         y_lin = y.unsqueeze(-3)
+        # Ensure both are float (real) tensors
+        if torch.is_complex(x_col):
+            x_col = x_col.real
+        if torch.is_complex(y_lin):
+            y_lin = y_lin.real
         if dis == "cos":
             # Cosine distance: 1 - cosine similarity
             d_cosine = nn.CosineSimilarity(dim=-1, eps=1e-8)
