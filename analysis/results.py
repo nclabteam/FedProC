@@ -295,9 +295,9 @@ def create_model_specific_tables(
                 # Multiply std by std_multiplier before rounding and displaying
                 if mean_val is not None and std_val is not None:
                     std_val_display = round(std_val, decimal_places)
-                    row[
-                        strategy
-                    ] = f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
+                    row[strategy] = (
+                        f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
+                    )
                 else:
                     row[strategy] = "N/A"
 
@@ -550,9 +550,9 @@ def create_combined_summary_table(model_tables, decimal_places=4):
             std_value = tables["std"].select(pl.col(strategy).mean()).item()
 
             if mean_value is not None and std_value is not None:
-                summary_row[
-                    strategy
-                ] = f"{mean_value:.{decimal_places}f}±{std_value:.{decimal_places}f}"
+                summary_row[strategy] = (
+                    f"{mean_value:.{decimal_places}f}±{std_value:.{decimal_places}f}"
+                )
             else:
                 summary_row[strategy] = "N/A"
 
