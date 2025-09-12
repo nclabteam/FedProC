@@ -482,6 +482,12 @@ def parse_args(default_table_type="model-specific"):
         help="Filter to specific datasets (e.g., --datasets stock crypto)",
     )
     parser.add_argument(
+        "--output-lens",
+        type=int,
+        nargs="+",
+        help="Filter to specific output lengths (e.g., --output-lens 24 48 96)",
+    )
+    parser.add_argument(
         "--experiments",
         type=str,
         nargs="+",
@@ -508,6 +514,12 @@ def filter_experiments(experiments, args):
     if args.datasets:
         filtered = [
             exp for exp in filtered if exp.get("dataset", "unknown") in args.datasets
+        ]
+    if args.output_lens:
+        filtered = [
+            exp
+            for exp in filtered
+            if exp.get("output_length", exp.get("output_len", None)) in args.output_lens
         ]
     if args.experiments:
         filtered = [
