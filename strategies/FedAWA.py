@@ -8,7 +8,7 @@ optional = {
     "reg_distance": "cos",
     "server_lr": 0.01,
     "server_optimizer": "Adam",
-    "gamma": 1.0,
+    "fedawa_gamma": 1.0,
 }
 
 
@@ -22,7 +22,7 @@ def args_update(parser):
     parser.add_argument(
         "--server_optimizer", type=str, default=None, choices=["SGD", "Adam"]
     )
-    parser.add_argument("--gamma", type=float, default=None)
+    parser.add_argument("--fedawa_gamma", type=float, default=None)
 
 
 class FedAWA(Server):
@@ -183,8 +183,8 @@ class FedAWA(Server):
             final_awa_weights_logits, dim=0
         )
 
-        # Apply gamma scaling
-        scaled_weights = final_probabilities * self.gamma
+        # Apply fedawa_gamma scaling
+        scaled_weights = final_probabilities * self.fedawa_gamma
 
         # Renormalize weights to sum to 1 for standard aggregation framework
         # This ensures the aggregation behaves like a weighted average.
