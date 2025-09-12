@@ -304,6 +304,7 @@ def create_ranking_table_from_pivot(
     Create a ranking table from a main DataFrame and an optional tiebreak DataFrame.
     If tiebreak_df is None, use main_df for both mean and std (for time tables).
     Both mean and std are rounded before ranking.
+    If the tiebreaker also results in a tie, all tied strategies are counted as winners.
     """
     strategy_columns = [
         col for col in main_df.columns if col not in ["model", "dataset", "in", "out"]
@@ -334,17 +335,31 @@ def create_ranking_table_from_pivot(
                 strategy_scores.append((strategy, rounded_main, rounded_tiebreak))
         if not strategy_scores:
             continue
+        # Sort by mean, then tiebreaker
         strategy_scores.sort(key=lambda x: (x[1], x[2]))
+        # Assign ranks, handling ties in both mean and tiebreaker
         rankings = {}
-        for rank, (strategy, _, _) in enumerate(strategy_scores, 1):
+        prev_score = None
+        rank = 1
+        for idx, (strategy, mean, tiebreak) in enumerate(strategy_scores):
+            if prev_score is not None and (mean, tiebreak) == prev_score:
+                # Same as previous, assign same rank
+                pass
+            else:
+                rank = idx + 1
             rankings[strategy] = rank
+            prev_score = (mean, tiebreak)
         for strategy in strategy_columns:
             row_data[strategy] = rankings.get(strategy, "N/A")
+        # Find all strategies with rank 1 (could be multiple if tie in both mean and tiebreak)
         best_strategies = [s for s, r in rankings.items() if r == 1]
         if best_strategies:
-            best_strategy = best_strategies[0]
-            best_strategy_counts[best_strategy] += 1
-            row_data["best_strategy"] = best_strategy
+            for s in best_strategies:
+                best_strategy_counts[s] += 1
+            if len(best_strategies) == 1:
+                row_data["best_strategy"] = best_strategies[0]
+            else:
+                row_data["best_strategy"] = ", ".join(best_strategies)
         else:
             row_data["best_strategy"] = "N/A"
         ranking_rows.append(row_data)
@@ -376,11 +391,11 @@ def create_ranking_table_from_pivot(
                 most_frequent = top_strategies[0]
                 avg_ranks["best_strategy"] = f"{most_frequent} ({max_count}x)"
             else:
-                best_by_avg_rank = min(
-                    top_strategies,
-                    key=lambda s: strategy_avg_ranks.get(s, float("inf")),
+                # Show all tied strategies and their counts
+                tie_str = ", ".join(
+                    f"{s}({best_strategy_counts[s]}x)" for s in top_strategies
                 )
-                avg_ranks["best_strategy"] = f"{best_by_avg_rank} ({max_count}x)(tie)"
+                avg_ranks["best_strategy"] = f"tie: {tie_str}"
         else:
             avg_ranks["best_strategy"] = "N/A"
         ranking_rows.append(avg_ranks)
