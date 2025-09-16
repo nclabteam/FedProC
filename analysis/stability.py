@@ -35,20 +35,18 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
     """
     if not loss_sequence or len(loss_sequence) < 2:
         return {
-            "last_improvement_round": None,
+            "lowest_loss_round": None,
             "longest_improvement_streak": 0,
             "most_frequent_improvement_streak": 0,
             "total_improvement_rounds": 0,
             "oscillation_count": 0,
             "improvement_ratio": 0.0,
-            "lowest_loss_round": None,
         }
 
     # Calculate improvements (negative means improvement since we want lower loss)
     improvements = []
     improvement_streaks = []
     current_streak = 0
-    last_improvement_round = None
     oscillation_count = 0
     total_improvement_rounds = 0
 
@@ -63,7 +61,6 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
         if improvement > improvement_threshold:
             # Meaningful improvement
             current_streak += 1
-            last_improvement_round = i
             total_improvement_rounds += 1
         else:
             # No improvement or degradation
@@ -99,13 +96,12 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
     )
 
     return {
-        "last_improvement_round": last_improvement_round,
+        "lowest_loss_round": lowest_loss_round,
         "longest_improvement_streak": longest_improvement_streak,
         "most_frequent_improvement_streak": most_frequent_improvement_streak,
         "total_improvement_rounds": total_improvement_rounds,
         "oscillation_count": oscillation_count,
         "improvement_ratio": improvement_ratio,
-        "lowest_loss_round": lowest_loss_round,
     }
 
 
@@ -231,12 +227,11 @@ def create_stability_tables(
 
             # Create pivot tables for different metrics
             metrics_to_pivot = [
-                "last_improvement_round",
+                "lowest_loss_round",
                 "longest_improvement_streak",
                 "most_frequent_improvement_streak",
                 "oscillation_count",
                 "improvement_ratio",
-                "lowest_loss_round",
             ]
 
             pivot_tables = {}
@@ -274,9 +269,9 @@ def display_stability_tables(
 ):
     """Display stability analysis tables with detailed explanations."""
     metric_descriptions = {
-        "last_improvement_round": {
-            "title": "Final round with meaningful improvement (convergence point)",
-            "explanation": f"Shows the last training round where loss decreased by more than {improvement_threshold} (threshold).\nLower values = Early convergence (faster but may underfit)\nHigher values = Late convergence (thorough learning but potentially inefficient)\nIndicates when the model stopped making progress and practical training endpoint.",
+        "lowest_loss_round": {
+            "title": "Round with the lowest loss achieved (best performance point)",
+            "explanation": "Shows the training round where the model achieved its lowest loss value.\nLower values = Model peaked early in training\nHigher values = Model continued improving throughout training\nIndicates the optimal stopping point for best model performance.",
         },
         "longest_improvement_streak": {
             "title": "Maximum consecutive rounds of improvement (stability measure)",
@@ -293,10 +288,6 @@ def display_stability_tables(
         "improvement_ratio": {
             "title": "Fraction of rounds with improvement (training efficiency: 0.0-1.0)",
             "explanation": f"Proportion of training rounds that resulted in loss reduction > {improvement_threshold} (threshold).\nLower values = Inefficient training, many wasted rounds\nHigher values = Efficient training, most rounds contributed to learning\nValues >0.5 indicate productive training; <0.3 suggests optimization problems.",
-        },
-        "lowest_loss_round": {
-            "title": "Round with the lowest loss achieved (best performance point)",
-            "explanation": "Shows the training round where the model achieved its lowest loss value.\nLower values = Model peaked early in training\nHigher values = Model continued improving throughout training\nCompare with last_improvement_round to see if model peaked before stopping improvement.",
         },
     }
 
