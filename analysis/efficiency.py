@@ -20,8 +20,20 @@ from utils.analysis import (
 )
 
 
+def convert_time_units(time_value, unit):
+    """Convert time from seconds to the specified unit."""
+    if unit == "seconds":
+        return time_value
+    elif unit == "minutes":
+        return time_value / 60.0
+    elif unit == "hours":
+        return time_value / 3600.0
+    else:
+        raise ValueError(f"Unsupported time unit: {unit}")
+
+
 def create_efficiency_tables(
-    experiment_paths, runs_dir="runs", decimal_places=3, std_multiplier=1.0
+    experiment_paths, runs_dir="runs", decimal_places=3, time_unit="seconds"
 ):
     all_experiments = []
     for exp_path in experiment_paths:
@@ -67,15 +79,80 @@ def create_efficiency_tables(
                 )
                 time_values = extract_loss_values(run, "time_per_iter")
                 if time_values is not None and run_name != "avg":
+                    # Try to get the full time sequence from the run data directly
+                    full_time_sequence = None
+                    if "time_per_iter" in run:
+                        full_time_sequence = run["time_per_iter"]
+
                     if (
-                        isinstance(time_values, (list, tuple, pl.Series))
-                        and len(time_values) > 0
+                        full_time_sequence is not None
+                        and isinstance(full_time_sequence, (list, tuple))
+                        and len(full_time_sequence) > 1
                     ):
-                        total_time = float(pl.Series(time_values).sum())
-                        avg_time = float(pl.Series(time_values).mean())
+                        # We have the full sequence of per-iteration times
+                        total_time = float(sum(full_time_sequence))
+                        num_rounds = len(full_time_sequence)
+                        avg_time = total_time / num_rounds
+
+                        # Convert to desired time unit
+                        total_time = convert_time_units(total_time, time_unit)
+                        avg_time = convert_time_units(avg_time, time_unit)
+                    elif (
+                        isinstance(time_values, (list, tuple)) and len(time_values) > 1
+                    ):
+                        # time_values is a sequence of per-iteration times
+                        total_time = float(sum(time_values))
+                        num_rounds = len(time_values)
+                        avg_time = total_time / num_rounds
+
+                        # Convert to desired time unit
+                        total_time = convert_time_units(total_time, time_unit)
+                        avg_time = convert_time_units(avg_time, time_unit)
                     else:
-                        total_time = float(time_values)
-                        avg_time = float(time_values)
+                        # Check if we can find the sequence in run data
+                        if "time_per_iter" in run and isinstance(
+                            run["time_per_iter"], (list, tuple)
+                        ):
+                            full_time_sequence = run["time_per_iter"]
+                            total_time = float(sum(full_time_sequence))
+                            num_rounds = len(full_time_sequence)
+                            avg_time = total_time / num_rounds
+
+                            # Convert to desired time unit
+                            total_time = convert_time_units(total_time, time_unit)
+                            avg_time = convert_time_units(avg_time, time_unit)
+                        else:
+                            # Fallback to old logic
+                            total_time = float(time_values)
+
+                            # Try to get number of rounds from loss data
+                            loss_keys_to_try = [
+                                "global_avg_train_loss",
+                                "personal_avg_train_loss",
+                                "global_avg_test_loss",
+                                "personal_avg_test_loss",
+                            ]
+
+                            num_rounds = None
+                            for loss_key in loss_keys_to_try:
+                                loss_data = extract_loss_values(run, loss_key)
+                                if (
+                                    loss_data is not None
+                                    and isinstance(loss_data, (list, tuple))
+                                    and len(loss_data) > 1
+                                ):
+                                    num_rounds = len(loss_data)
+                                    break
+
+                            if num_rounds is None:
+                                num_rounds = 50  # Fallback default
+
+                            avg_time = total_time / num_rounds
+
+                            # Convert to desired time unit
+                            total_time = convert_time_units(total_time, time_unit)
+                            avg_time = convert_time_units(avg_time, time_unit)
+
                     combination_data.setdefault(combination_key, []).append(
                         (total_time, avg_time)
                     )
@@ -107,7 +184,7 @@ def create_efficiency_tables(
                         if mean_avg is not None
                         else None
                     ),
-                    "avg_time_std": round(std_avg * std_multiplier, decimal_places),
+                    "avg_time_std": round(std_avg, decimal_places),
                     "n_runs": len(values),
                 }
             )
@@ -185,12 +262,13 @@ def display_efficiency_tables(
     metadata_table=None,
     show_metadata=True,
     decimal_places=3,
+    time_unit="seconds",
 ):
     for model_name, tables in model_tables.items():
         print(f"\n{'='*80}")
-        print(f"MODEL: {model_name.upper()} - TOTAL TIME (sum of time_per_iter)")
+        print(f"MODEL: {model_name.upper()} - TOTAL TIME in {time_unit}")
         print(f"{'='*80}")
-        # Combine mean and std for display, multiply std by std_multiplier before rounding
+        # Combine mean and std for display
         total_time = tables["total_time"]
         total_time_std = tables["total_time_std"]
         total_time_display = total_time.clone()
@@ -198,7 +276,6 @@ def display_efficiency_tables(
             if col in ["dataset", "in", "out"]:
                 continue
             if col in total_time_std.columns:
-                # Multiply std by std_multiplier before rounding and displaying
                 std_col = (total_time_std[col]).round(decimal_places)
                 mean_col = total_time[col].round(decimal_places)
                 total_time_display = total_time_display.with_columns(
@@ -222,7 +299,7 @@ def display_efficiency_tables(
             print(ranking_tables[model_name])
             print()
         print(f"\n{'='*80}")
-        print(f"MODEL: {model_name.upper()} - AVG TIME PER ITERATION")
+        print(f"MODEL: {model_name.upper()} - AVG TIME PER ITERATION in {time_unit}")
         print(f"{'='*80}")
         avg_time = tables["avg_time"]
         avg_time_std = tables["avg_time_std"]
@@ -268,11 +345,15 @@ def save_efficiency_tables(
     metadata_table=None,
     output_dir="analysis/tables",
     decimal_places=3,
+    time_unit="seconds",
 ):
     os.makedirs(output_dir, exist_ok=True)
     suffix = ""
     if decimal_places != 3:
         suffix += f"_dec{decimal_places}"
+    if time_unit != "seconds":
+        suffix += f"_{time_unit}"
+
     for model_name, tables in model_tables.items():
         total_time_path = os.path.join(
             output_dir, f"{model_name}_total_time{suffix}.csv"
@@ -299,12 +380,13 @@ def save_efficiency_tables(
 
 def main():
     global args
-    args = parse_args(
-        default_table_type="model-specific"
-    )  # or "comparison" if you want
+    args = parse_args(default_table_type="model-specific")
+
     if not args.quiet:
         print(f"Loading experiments from: {args.runs_dir}")
         print(f"Results will be displayed with {args.decimal_places} decimal places")
+        print(f"Time unit: {args.time_unit}")
+
     experiments = load_all_experiments(runs_dir=args.runs_dir)
     if not experiments:
         print(f"No valid experiments found in {args.runs_dir}")
@@ -337,7 +419,7 @@ def main():
         experiment_paths,
         runs_dir=args.runs_dir,
         decimal_places=args.decimal_places,
-        std_multiplier=args.std_multiplier,
+        time_unit=args.time_unit,
     )
     ranking_tables = create_efficiency_ranking_table(
         model_tables=model_tables,
@@ -354,6 +436,7 @@ def main():
             avg_time_ranking_tables,
             metadata_table if args.show_metadata else None,
             show_metadata=args.show_metadata,
+            time_unit=args.time_unit,
         )
 
     save_efficiency_tables(
@@ -362,6 +445,7 @@ def main():
         metadata_table,
         output_dir=args.output_dir,
         decimal_places=args.decimal_places,
+        time_unit=args.time_unit,
     )
     if not args.quiet:
         print(f"\nTables saved to: {args.output_dir}")
