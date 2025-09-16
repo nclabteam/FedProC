@@ -28,6 +28,7 @@ The following arguments are available for `results.py`, `efficiency.py`, and `st
 | --table-type     | -t    | choice | "model-specific"  | Type of tables: model-specific, comparison, both     |
 | --std-multiplier | -s    | float  | 10000             | Factor to multiply standard deviation for visibility |
 | --decimal-places | -d    | int    | 3                 | Number of decimal places to display                  |
+| --time-unit      |       | choice | "seconds"         | Time unit for efficiency analysis: seconds, minutes, hours |
 | --no-display     |       | flag   | False             | Don't display tables to console, only save files     |
 | --show-metadata  |       | flag   | False             | Display metadata table to console (always saved)     |
 | --quiet          | -q    | flag   | False             | Reduce output verbosity                              |
@@ -111,35 +112,52 @@ Generates tables and rankings for time efficiency (total and average time per it
 **Features:**
 - Generate tables for total time and average time per iteration for each strategy
 - Create ranking tables for both total time and average time per iteration
+- **Time Unit Conversion**: Convert time values from seconds to minutes or hours for better readability
 - All ranking logic and argument parsing is shared with `results.py` via `utils/analysis.py`
 - Filter experiments by models, strategies, datasets, output lengths, experiment names, or Excel file
 - Output precision and display options are fully configurable
 - All tables and rankings are sorted by `dataset`, `in`, `out` for consistency
 
+**Time Unit Options:**
+- `--time-unit seconds`: Display raw time values in seconds (default)
+- `--time-unit minutes`: Convert to minutes (time ÷ 60) for medium-duration experiments
+- `--time-unit hours`: Convert to hours (time ÷ 3600) for long-running experiments
+
 **Usage Examples:**
 
 ```bash
-# Basic usage
+# Basic usage with default seconds
 python analysis/efficiency.py
 
-# Show both total and average time rankings
-python analysis/efficiency.py --show-metadata
+# Display times in minutes for better readability
+python analysis/efficiency.py --time-unit minutes
 
-# Filter by model and dataset
-python analysis/efficiency.py --models=Linear --datasets=SolarEnergy
+# Display times in hours for very long experiments
+python analysis/efficiency.py --time-unit hours
 
-# Filter by output length
-python analysis/efficiency.py --output-lens 24 48
+# Show both total and average time rankings with metadata
+python analysis/efficiency.py --show-metadata --time-unit minutes
 
-# Save only, no console output
-python analysis/efficiency.py --no-display --quiet
+# Filter by model and dataset with time unit conversion
+python analysis/efficiency.py --models=Linear --datasets=SolarEnergy --time-unit hours
+
+# Filter by output length with minute display
+python analysis/efficiency.py --output-lens 24 48 --time-unit minutes
+
+# Save only, no console output, with time conversion
+python analysis/efficiency.py --no-display --quiet --time-unit hours
 ```
 
 **Output Tables:**
-- **Total Time Table**: Shows total time used per configuration and strategy
-- **Avg Time Table**: Shows average time per iteration per configuration and strategy
+- **Total Time Table**: Shows total time used per configuration and strategy (in specified unit)
+- **Avg Time Table**: Shows average time per iteration per configuration and strategy (in specified unit)
 - **Ranking Table (Total Time)**: Ranks strategies by total time (lower is better), ties broken by avg time
 - **Ranking Table (Avg Time)**: Ranks strategies by average time per iteration (lower is better)
+
+**Time Unit Display:**
+- Table headers include the time unit (e.g., "TOTAL TIME in minutes")
+- All time values are converted automatically
+- File names include time unit suffix when not using seconds (e.g., `linear_total_time_minutes.csv`)
 
 ---
 
@@ -238,6 +256,7 @@ Analysis tools save results to the `analysis/tables/` directory with descriptive
 **Filename Suffixes:**
 - `_stdx{value}`: Added when std_multiplier != 10000 (results.py, efficiency.py)
 - `_dec{value}`: Added when decimal_places != 3 (all tools)
+- `_{time_unit}`: Added when time_unit != "seconds" (efficiency.py only)
 - `_stability`: Added for stability analysis files
 - `_stability_dec{value}`: Added when decimal_places != 3 for stability analysis
 
