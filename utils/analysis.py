@@ -451,6 +451,12 @@ def parse_args(default_table_type="model-specific"):
         help="Number of decimal places to display in the results",
     )
     parser.add_argument(
+        "--time-unit",
+        choices=["seconds", "minutes", "hours"],
+        default="seconds",
+        help="Time unit for efficiency analysis (default: seconds)",
+    )
+    parser.add_argument(
         "--no-display",
         action="store_true",
         help="Don't display tables to console, only save to files",
