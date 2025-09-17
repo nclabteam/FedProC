@@ -12,6 +12,7 @@ pl.Config.set_tbl_rows(100)
 # Import utility functions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.analysis import (
+    _load_experiment_data,
     filter_experiments,
     get_experiment_config,
     get_experiment_names_from_excel,
@@ -34,8 +35,11 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
         dict: Dictionary containing stability metrics
     """
     if not loss_sequence or len(loss_sequence) < 2:
+        print(
+            f"Warning: Loss sequence too short ({len(loss_sequence) if loss_sequence else 0} values). Need at least 2 values for stability analysis."
+        )
         return {
-            "lowest_loss_round": None,
+            "lowest_loss_round": 0 if loss_sequence else None,
             "longest_improvement_streak": 0,
             "most_frequent_improvement_streak": 0,
             "total_improvement_rounds": 0,
@@ -106,7 +110,11 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
 
 
 def create_stability_tables(
-    experiment_paths, runs_dir="runs", decimal_places=3, improvement_threshold=1e-6
+    experiment_paths,
+    runs_dir="runs",
+    decimal_places=3,
+    improvement_threshold=1e-6,
+    max_lines=None,
 ):
     """
     Create stability analysis tables for experiments.
@@ -127,9 +135,7 @@ def create_stability_tables(
         if os.path.isdir(exp_dir) and os.path.exists(
             os.path.join(exp_dir, "results.csv")
         ):
-            from utils.analysis import _load_experiment_data
-
-            datum = _load_experiment_data(exp_dir)
+            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
             datum["experiment_name"] = exp_path
             all_experiments.append(datum)
 
@@ -390,8 +396,11 @@ def main():
         print(f"Loading experiments from: {args.runs_dir}")
         print(f"Results will be displayed with {args.decimal_places} decimal places")
         print(f"Using improvement threshold: {args.improvement_threshold}")
+        if args.max_lines:
+            print(f"Reading maximum {args.max_lines} lines from each CSV file")
 
-    experiments = load_all_experiments(runs_dir=args.runs_dir)
+    # Fix: Pass max_lines to load_all_experiments
+    experiments = load_all_experiments(runs_dir=args.runs_dir, max_lines=args.max_lines)
     if not experiments:
         print(f"No valid experiments found in {args.runs_dir}")
         return
@@ -431,7 +440,22 @@ def main():
         runs_dir=args.runs_dir,
         decimal_places=args.decimal_places,
         improvement_threshold=args.improvement_threshold,
+        max_lines=args.max_lines,
     )
+
+    # Debug: Check if we have any data
+    if not args.quiet:
+        print(f"Found {len(model_tables)} models to analyze")
+        for model_name, tables in model_tables.items():
+            print(f"  Model {model_name}: {len(tables.get('raw_data', []))} rows")
+
+    if not model_tables:
+        print("No stability data found. This could be because:")
+        print("1. No experiments match your filters")
+        print("2. The experiments don't have loss sequences")
+        print("3. With --max-lines=1, there's insufficient data for stability analysis")
+        print("Try increasing --max-lines to at least 10 for meaningful analysis")
+        return
 
     if not args.no_display:
         display_stability_tables(

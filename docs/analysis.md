@@ -28,6 +28,7 @@ The following arguments are available for `results.py`, `efficiency.py`, and `st
 | --table-type     | -t    | choice | "model-specific"  | Type of tables: model-specific, comparison, both     |
 | --std-multiplier | -s    | float  | 10000             | Factor to multiply standard deviation for visibility |
 | --decimal-places | -d    | int    | 3                 | Number of decimal places to display                  |
+| --max-lines      |       | int    | None              | Maximum number of lines to read from each CSV file (useful for testing) |
 | --time-unit      |       | choice | "seconds"         | Time unit for efficiency analysis: seconds, minutes, hours |
 | --no-display     |       | flag   | False             | Don't display tables to console, only save files     |
 | --show-metadata  |       | flag   | False             | Display metadata table to console (always saved)     |
@@ -57,6 +58,7 @@ Generates statistical analysis tables from federated learning experiment results
 - Handle multiple runs by calculating statistics across experimental repetitions
 - Flexible input/output with customizable source and destination directories
 - Automatic ranking with comprehensive tiebreaking logic
+- **Partial Data Processing**: Limit analysis to first N lines/epochs for quick testing with `--max-lines`
 
 **Usage Examples:**
 
@@ -87,6 +89,12 @@ python analysis/results.py --experiments exp76 exp77 exp78 --table-type both --s
 
 # Combine multiple filters: dataset, Excel, and quiet mode
 python analysis/results.py --datasets SolarEnergy ETDatasetHour --excel=scripts/default.xlsx --quiet
+
+# Quick testing with partial data (first 100 epochs only)
+python analysis/results.py --max-lines 100 --show-metadata
+
+# Fast analysis with limited data for development/debugging
+python analysis/results.py --max-lines 50 --models Linear --no-display --quiet
 ```
 
 **Output Tables:**
@@ -117,6 +125,7 @@ Generates tables and rankings for time efficiency (total and average time per it
 - Filter experiments by models, strategies, datasets, output lengths, experiment names, or Excel file
 - Output precision and display options are fully configurable
 - All tables and rankings are sorted by `dataset`, `in`, `out` for consistency
+- **Partial Data Processing**: Limit analysis to first N lines/epochs for quick testing with `--max-lines`
 
 **Time Unit Options:**
 - `--time-unit seconds`: Display raw time values in seconds (default)
@@ -146,6 +155,12 @@ python analysis/efficiency.py --output-lens 24 48 --time-unit minutes
 
 # Save only, no console output, with time conversion
 python analysis/efficiency.py --no-display --quiet --time-unit hours
+
+# Quick testing with partial data (first 100 epochs only)
+python analysis/efficiency.py --max-lines 100 --time-unit minutes
+
+# Fast development testing with limited data
+python analysis/efficiency.py --max-lines 25 --models Linear --no-display
 ```
 
 **Output Tables:**
@@ -173,6 +188,7 @@ Analyzes convergence patterns and training stability metrics from loss sequences
 - Configurable improvement threshold for determining meaningful progress
 - Detailed explanations for each stability metric
 - Save comprehensive stability analysis to CSV files
+- **Partial Data Processing**: Limit analysis to first N lines/epochs for quick testing with `--max-lines`
 
 **Stability Metrics:**
 - **Last Improvement Round**: Final round with meaningful improvement (convergence point)
@@ -204,6 +220,12 @@ python analysis/stability.py --no-display --quiet
 
 # Combine filters with Excel experiment list
 python analysis/stability.py --excel=scripts/selected_experiments.xlsx --datasets SolarEnergy
+
+# Quick testing with partial data (first 100 epochs only)
+python analysis/stability.py --max-lines 100 --show-metadata
+
+# Fast convergence analysis for development (first 50 epochs)
+python analysis/stability.py --max-lines 50 --models Linear --datasets SolarEnergy --no-display
 ```
 
 **Interpreting Stability Metrics:**
@@ -227,6 +249,30 @@ python analysis/stability.py --excel=scripts/selected_experiments.xlsx --dataset
 - **Improvement Ratio**:
   - Values >0.5 = Productive training, most rounds contributed to learning
   - Values <0.3 = Inefficient training, optimization problems
+
+---
+
+## Partial Data Processing
+
+All analysis tools now support the `--max-lines` argument for faster processing during development and testing:
+
+**Use Cases:**
+- **Quick Testing**: `--max-lines 50` - Analyze only first 50 epochs for rapid feedback
+- **Development**: `--max-lines 100` - Test analysis scripts with limited data
+- **Early Training Analysis**: `--max-lines 25` - Focus on initial convergence behavior
+- **Resource Constraints**: Limit memory usage when processing very large experiment files
+
+**Behavior:**
+- When `--max-lines` is specified, only the first N lines from each `server.csv` file are processed
+- When not specified, all available data is processed (default behavior)
+- Useful for experiments with hundreds or thousands of training rounds
+- Maintains all filtering and analysis functionality with reduced data
+
+**Performance Benefits:**
+- Significantly faster processing for large experiments
+- Reduced memory usage
+- Ideal for iterative development and testing
+- Enables quick parameter tuning and script validation
 
 ---
 
@@ -256,6 +302,7 @@ Analysis tools save results to the `analysis/tables/` directory with descriptive
 **Filename Suffixes:**
 - `_stdx{value}`: Added when std_multiplier != 10000 (results.py, efficiency.py)
 - `_dec{value}`: Added when decimal_places != 3 (all tools)
+- `_lines{value}`: Added when max_lines is specified (all tools)
 - `_{time_unit}`: Added when time_unit != "seconds" (efficiency.py only)
 - `_stability`: Added for stability analysis files
 - `_stability_dec{value}`: Added when decimal_places != 3 for stability analysis
@@ -305,10 +352,11 @@ All analysis tools support comprehensive filtering to focus on specific experime
 - **Output Length Filtering**: `--output-lens 24 48 96` - Filter by prediction horizon lengths
 - **Experiment Filtering**: `--experiments exp76 exp77` - Process only specific named experiments
 - **Excel-based Filtering**: `--excel=scripts/experiments.xlsx` - Use Excel file to specify experiment list
+- **Data Limiting**: `--max-lines 100` - Process only first N epochs/rounds for testing
 
 Filters can be combined to create precise analysis subsets. For example:
 ```bash
-python analysis/stability.py --models DLinear --strategies FedAWA --output-lens 96 --datasets ETDatasetHour
+python analysis/stability.py --models DLinear --strategies FedAWA --output-lens 96 --datasets ETDatasetHour --max-lines 50
 ```
 
 This flexibility allows researchers to perform targeted analysis on specific experimental conditions while maintaining consistent output formats and analysis methodologies across all tools.

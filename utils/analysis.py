@@ -8,12 +8,13 @@ import numpy as np
 import polars as pl
 
 
-def _load_experiment_data(experiment_dir):
+def _load_experiment_data(experiment_dir, max_lines=None):
     """
     Load experiment data from a single experiment directory.
 
     Args:
         experiment_dir (str): Path to experiment directory
+        max_lines (int, optional): Maximum number of lines to read from CSV files
 
     Returns:
         dict: Dictionary containing config, client info, and runs data
@@ -43,7 +44,13 @@ def _load_experiment_data(experiment_dir):
         pr = os.path.join(p, "results", "server.csv")
         if not os.path.exists(pr):
             continue
-        f = pl.read_csv(pr).to_dict(as_series=False)
+
+        # Read CSV with optional row limit
+        if max_lines is not None:
+            f = pl.read_csv(pr, n_rows=max_lines).to_dict(as_series=False)
+        else:
+            f = pl.read_csv(pr).to_dict(as_series=False)
+
         r = {"name": run_file, **f}
         runs.append(r)
 
@@ -129,12 +136,13 @@ def _calculate_average_run(runs):
     return avg_run
 
 
-def load_all_experiments(runs_dir="runs"):
+def load_all_experiments(runs_dir="runs", max_lines=None):
     """
     Load all valid experiments from the runs directory.
 
     Args:
         runs_dir (str): Directory containing experiment folders
+        max_lines (int, optional): Maximum number of lines to read from CSV files
 
     Returns:
         list: List of experiment data dictionaries
@@ -148,7 +156,7 @@ def load_all_experiments(runs_dir="runs"):
     for path in os.listdir(runs_dir):
         p = os.path.join(runs_dir, path)
         if os.path.isdir(p) and os.path.exists(os.path.join(p, "results.csv")):
-            datum = _load_experiment_data(p)
+            datum = _load_experiment_data(p, max_lines=max_lines)
             datum["experiment_name"] = path
             experiments.append(datum)
 
@@ -437,6 +445,13 @@ def parse_args(default_table_type="model-specific"):
         help="Type of tables to generate",
     )
     parser.add_argument(
+        "--excel",
+        type=str,
+        help="Excel file to filter experiments (column '--name=' should contain experiment names)",
+    )
+
+    # Display options
+    parser.add_argument(
         "--std-multiplier",
         "-s",
         type=float,
@@ -451,10 +466,9 @@ def parse_args(default_table_type="model-specific"):
         help="Number of decimal places to display in the results",
     )
     parser.add_argument(
-        "--time-unit",
-        choices=["seconds", "minutes", "hours"],
-        default="seconds",
-        help="Time unit for efficiency analysis (default: seconds)",
+        "--max-lines",
+        type=int,
+        help="Maximum number of lines to read from each CSV file (useful for testing with partial data)",
     )
     parser.add_argument(
         "--no-display",
@@ -469,6 +483,8 @@ def parse_args(default_table_type="model-specific"):
     parser.add_argument(
         "--quiet", "-q", action="store_true", help="Reduce output verbosity"
     )
+
+    # Filtering options
     parser.add_argument(
         "--models",
         type=str,
@@ -499,10 +515,13 @@ def parse_args(default_table_type="model-specific"):
         nargs="+",
         help="Process only specific experiments (e.g., --experiments exp76 exp77)",
     )
+
+    # Efficiency analysis options
     parser.add_argument(
-        "--excel",
-        type=str,
-        help="Excel file to filter experiments (column '--name=' should contain experiment names)",
+        "--time-unit",
+        choices=["seconds", "minutes", "hours"],
+        default="seconds",
+        help="Time unit for efficiency analysis (default: seconds)",
     )
     return parser.parse_args()
 
@@ -538,9 +557,13 @@ def filter_experiments(experiments, args):
 
 if __name__ == "__main__":
     # Simple utility test - load and display basic experiment info
-    experiments = load_all_experiments()
+    args = parse_args()
+    experiments = load_all_experiments(max_lines=args.max_lines)
 
     print("Scanning experiments...")
+    if args.max_lines:
+        print(f"Reading maximum {args.max_lines} lines from each CSV file")
+
     for exp in experiments:
         print(f"Experiment: {exp['experiment_name']}")
         print(f"Model: {exp.get('model', 'unknown')}")

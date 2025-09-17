@@ -11,6 +11,7 @@ pl.Config.set_tbl_rows(100)
 # Import utility functions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.analysis import (
+    _load_experiment_data,
     create_ranking_table_from_pivot,
     extract_loss_values,
     filter_experiments,
@@ -24,7 +25,11 @@ from utils.analysis import (
 
 
 def create_comparison_tables(
-    experiment_paths, runs_dir="runs", std_multiplier=1.0, decimal_places=4
+    experiment_paths,
+    runs_dir="runs",
+    std_multiplier=1.0,
+    decimal_places=4,
+    max_lines=None,
 ):
     """
     Create comparison tables showing test loss across different strategies, grouped by models.
@@ -47,9 +52,8 @@ def create_comparison_tables(
         if os.path.isdir(exp_dir) and os.path.exists(
             os.path.join(exp_dir, "results.csv")
         ):
-            from utils.analysis import _load_experiment_data
 
-            datum = _load_experiment_data(exp_dir)
+            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
             datum["experiment_name"] = exp_path
             all_experiments.append(datum)
 
@@ -168,7 +172,11 @@ def create_ranking_table(model_tables, decimal_places=4, std_multiplier=1.0):
 
 
 def create_model_specific_tables(
-    experiment_paths, runs_dir="runs", std_multiplier=1.0, decimal_places=4
+    experiment_paths,
+    runs_dir="runs",
+    std_multiplier=1.0,
+    decimal_places=4,
+    max_lines=None,
 ):
     """
     Create individual tables for each model showing mean±std across runs.
@@ -189,9 +197,8 @@ def create_model_specific_tables(
         if os.path.isdir(exp_dir) and os.path.exists(
             os.path.join(exp_dir, "results.csv")
         ):
-            from utils.analysis import _load_experiment_data
 
-            datum = _load_experiment_data(exp_dir)
+            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
             datum["experiment_name"] = exp_path
             all_experiments.append(datum)
 
@@ -571,10 +578,7 @@ def main():
         print(f"Standard deviation will be multiplied by: {args.std_multiplier}")
         print(f"Results will be displayed with {args.decimal_places} decimal places")
 
-    # Load experiments using the utils function with custom runs_dir
-    from utils.analysis import load_all_experiments
-
-    experiments = load_all_experiments(runs_dir=args.runs_dir)
+    experiments = load_all_experiments(runs_dir=args.runs_dir, max_lines=args.max_lines)
     if not experiments:
         print(f"No valid experiments found in {args.runs_dir}")
         return
@@ -618,6 +622,7 @@ def main():
             runs_dir=args.runs_dir,
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
+            max_lines=args.max_lines,
         )
 
         if not args.no_display:
@@ -649,6 +654,7 @@ def main():
             runs_dir=args.runs_dir,
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
+            max_lines=args.max_lines,
         )
 
         if not args.no_display:
