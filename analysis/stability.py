@@ -45,6 +45,8 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
             "total_improvement_rounds": 0,
             "oscillation_count": 0,
             "improvement_ratio": 0.0,
+            "peak_count": 0,
+            "peak_ratio": 0.0,  # New: peak count as percentage
         }
 
     # Calculate improvements (negative means improvement since we want lower loss)
@@ -53,30 +55,43 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
     current_streak = 0
     oscillation_count = 0
     total_improvement_rounds = 0
+    peak_count = 0  # Count how many times we achieve a new lowest loss
 
     # Find the round with the lowest loss
     lowest_loss_value = min(loss_sequence)
     lowest_loss_round = loss_sequence.index(lowest_loss_value)
 
-    for i in range(1, len(loss_sequence)):
-        improvement = loss_sequence[i - 1] - loss_sequence[i]  # Positive = improvement
-        improvements.append(improvement)
+    # Track peaks (new lowest loss achievements)
+    current_best_loss = float("inf")
 
-        if improvement > improvement_threshold:
-            # Meaningful improvement
-            current_streak += 1
-            total_improvement_rounds += 1
-        else:
-            # No improvement or degradation
-            if current_streak > 0:
-                improvement_streaks.append(current_streak)
-                current_streak = 0
+    for i, loss in enumerate(loss_sequence):
+        # Check if this is a new peak (new lowest loss)
+        if loss < current_best_loss:
+            current_best_loss = loss
+            peak_count += 1
 
-            # Count oscillations (when loss increases after previous decrease)
-            if improvement < -improvement_threshold and i > 1:
-                prev_improvement = improvements[i - 2] if i > 1 else 0
-                if prev_improvement > improvement_threshold:
-                    oscillation_count += 1
+        # Continue with existing improvement analysis
+        if i > 0:
+            improvement = (
+                loss_sequence[i - 1] - loss_sequence[i]
+            )  # Positive = improvement
+            improvements.append(improvement)
+
+            if improvement > improvement_threshold:
+                # Meaningful improvement
+                current_streak += 1
+                total_improvement_rounds += 1
+            else:
+                # No improvement or degradation
+                if current_streak > 0:
+                    improvement_streaks.append(current_streak)
+                    current_streak = 0
+
+                # Count oscillations (when loss increases after previous decrease)
+                if improvement < -improvement_threshold and i > 1:
+                    prev_improvement = improvements[i - 2] if i > 1 else 0
+                    if prev_improvement > improvement_threshold:
+                        oscillation_count += 1
 
     # Add final streak if training ended during improvement
     if current_streak > 0:
@@ -99,6 +114,9 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
         else 0.0
     )
 
+    # Peak ratio (percentage of rounds that achieved new record-low loss)
+    peak_ratio = peak_count / len(loss_sequence) if len(loss_sequence) > 0 else 0.0
+
     return {
         "lowest_loss_round": lowest_loss_round,
         "longest_improvement_streak": longest_improvement_streak,
@@ -106,6 +124,8 @@ def analyze_convergence_stability(loss_sequence, improvement_threshold=0.0):
         "total_improvement_rounds": total_improvement_rounds,
         "oscillation_count": oscillation_count,
         "improvement_ratio": improvement_ratio,
+        "peak_count": peak_count,
+        "peak_ratio": peak_ratio,
     }
 
 
@@ -238,6 +258,8 @@ def create_stability_tables(
                 "most_frequent_improvement_streak",
                 "oscillation_count",
                 "improvement_ratio",
+                "peak_count",
+                "peak_ratio",
             ]
 
             pivot_tables = {}
@@ -294,6 +316,14 @@ def display_stability_tables(
         "improvement_ratio": {
             "title": "Fraction of rounds with improvement (training efficiency: 0.0-1.0)",
             "explanation": f"Proportion of training rounds that resulted in loss reduction > {improvement_threshold} (threshold).\nLower values = Inefficient training, many wasted rounds\nHigher values = Efficient training, most rounds contributed to learning\nValues >0.5 indicate productive training; <0.3 suggests optimization problems.",
+        },
+        "peak_count": {
+            "title": "Number of times achieving new lowest loss (peak achievements)",
+            "explanation": "Counts how many times the model achieved a new record-low loss value.\nLower values = Few breakthrough moments, plateaued early\nHigher values = Consistent progress with multiple performance breakthroughs\nShows how often the model discovered genuinely better solutions during training.",
+        },
+        "peak_ratio": {
+            "title": "Percentage of rounds with new record-low loss (peak frequency: 0.0-1.0)",
+            "explanation": "Proportion of training rounds that achieved a new record-low loss value.\nLower values = Infrequent breakthroughs, training efficiency issues\nHigher values = Frequent discovery of better solutions, excellent optimization\nValues >0.1 (10%) indicate very productive training with regular improvements.",
         },
     }
 
