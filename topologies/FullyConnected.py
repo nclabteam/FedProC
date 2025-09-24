@@ -8,6 +8,3 @@ class FullyConnected(Topology):
             neighbors[node] = list(range(self.num_nodes))
             neighbors[node].remove(node)
         return neighbors
-
-    def get_neighbors(self, id):
-        return self.neighbors[id]
