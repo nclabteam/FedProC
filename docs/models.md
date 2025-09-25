@@ -38,6 +38,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | SegRNN | RNN | Univariate ||| SegRNN: Segment Recurrent Neural Network for Long-Term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2308.11200) |
 | Timer ||| ICML | 2024 | Timer: Generative Pre-trained Transformers Are Large Time Series Models | [Arxiv](https://arxiv.org/abs/2402.02368) |
 | PAttn ||| NeurIPS | 2024| Are Language Models Actually Useful for Time Series Forecasting?| [Arxiv](https://arxiv.org/abs/2406.16964) |
+| ModernTCN | CNN || ICLR | 2024 | ModernTCN: A Modern Pure Convolution Structure for General Time Series Analysis | [OpenReview](https://openreview.net/forum?id=vpJMJerXHU) |
 | TSMixer | MLP | Multivariate ||| TSMixer: An All-MLP Architecture for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.06053) |
 | TimeKAN ||| ICLR | 2025 | TimeKAN: KAN-based Frequency Decomposition Learning Architecture for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2502.06910) |
 | UMixer ||||| U-Mixer: An Unet-Mixer Architecture with Stationarity Correction for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2401.02236) |
