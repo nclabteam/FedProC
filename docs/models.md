@@ -32,6 +32,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | TexFilter ||| NeurIPS | 2024 | FilterNet: Harnessing Frequency Filters for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2411.01623) |
 | RDLinear ||||| RDLinear: A Novel Time Series Forecasting Model Based on Decomposition with RevIN | [IEEE](https://ieeexplore.ieee.org/document/10650961) |
 | RLinear ||||| Revisiting Long-term Time Series Forecasting: An Investigation on Linear Mapping | [Arxiv](https://arxiv.org/abs/2305.10721) |
+| DishLinear ||| AAAI | 2023 | Dish-TS: A General Paradigm for Alleviating Distribution Shift in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2302.14829) |
 | S3 ||||| Segment, Shuffle, and Stitch: A Simple Layer for Improving Time-Series Representations | [Arxiv](https://arxiv.org/abs/2405.20082) |
 | SCINet | CNN | Multivariate | NeurIPS | 2022 | SCINet: Time Series Modeling and Forecasting with Sample Convolution and Interaction | [Arxiv](https://arxiv.org/abs/2106.09305) |
 | SWIFT | MLP | Univariate ||| SWIFT: Mapping Sub-series with Wavelet Decomposition Improves Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2501.16178) |
