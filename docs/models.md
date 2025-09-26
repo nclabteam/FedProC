@@ -20,7 +20,8 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | FLinear |||||||
 | FiLM ||| NeurIPS | 2022 | FiLM: Frequency improved Legendre Memory Model for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2205.08897) |
 | FreTS | MLP | Multivariate | NeurIPS | 2023 | Frequency-domain MLPs are More Effective Learners in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2311.06184) |
-| LSTM ||| Neural Computation | 1997 | Long Short-Term Memory | [ACM](https://dl.acm.org/doi/10.1162/neco.1997.9.8.1735) |
+| LSTM | RNN || Neural Computation | 1997 | Long Short-Term Memory | [ACM](https://dl.acm.org/doi/10.1162/neco.1997.9.8.1735) |
+| GRU | RNN || EMNLP | 2014 | Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation | [Arxiv](https://arxiv.org/abs/1406.1078) |
 | Leddam ||| ICML | 2024 | Revitalizing Multivariate Time Series Forecasting: Learnable Decomposition with Inter-Series Dependencies and Intra-Series Variations Modeling | [Arxiv](https://arxiv.org/abs/2402.12694) | 
 | LightTS | MLP | Multivariate | || Less Is More: Fast Multivariate Time Series Forecasting with Light Sampling-oriented MLP Structures | [Arxiv](https://arxiv.org/abs/2207.01186) |
 | MLCNN | CNN | Multivariate | AAAI | 2020 | Towards Better Forecasting by Fusing Near and Distant Future Visions | [Arxiv](https://arxiv.org/abs/1912.05122) |
