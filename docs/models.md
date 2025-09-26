@@ -46,3 +46,4 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | xPatch | CNN | Univariate | AAAI | 2025 | xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend Decomposition | [Arxiv](https://arxiv.org/abs/2412.17323) |
 | TimePoint | | | ICML | 2025 | TimePoint: Accelerated Time Series Alignment via Self-Supervised Keypoint and Descriptor Learning | [OpenReview](https://openreview.net/forum?id=bUGdGaNFhi) [Arxiv](https://arxiv.org/abs/2505.23475) |
 | CrossLinear ||| KDD | 2025 | CrossLinear: Plug-and-Play Cross-Correlation Embedding for Time Series Forecasting with Exogenous Variables | [Arxiv](https://arxiv.org/abs/2505.23116) |
+| CALF | LLM | | AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) |
