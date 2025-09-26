@@ -17,14 +17,16 @@ class LSTM(nn.Module):
         super(LSTM, self).__init__()
         self.hidden_size = configs.hidden_size
         self.num_layers = configs.num_layers
-        self.pred_len = configs.input_len
+        self.pred_len = configs.output_len
         self.enc_in = configs.input_channels
 
         self.cells = nn.ModuleList(
             [
-                LSTMCell(self.enc_in, self.hidden_size)
-                if i == 0
-                else LSTMCell(self.hidden_size, self.hidden_size)
+                (
+                    LSTMCell(self.enc_in, self.hidden_size)
+                    if i == 0
+                    else LSTMCell(self.hidden_size, self.hidden_size)
+                )
                 for i in range(self.num_layers)
             ]
         )
@@ -53,10 +55,8 @@ class LSTM(nn.Module):
         # Use the final hidden state to predict all time steps at once
         last_hidden_state = h[-1]  # Shape: (batch_size, hidden_size)
         pred = self.fc_pred(last_hidden_state)  # Shape: (batch_size, pred_len * enc_in)
-        pred = pred.view(
-            batch_size, self.pred_len, self.enc_in
-        )  # Reshape to desired output
-
+        # Reshape to desired output
+        pred = pred.view(batch_size, self.pred_len, self.enc_in)
         return pred  # Shape: (batch_size, pred_len, enc_in)
 
 
