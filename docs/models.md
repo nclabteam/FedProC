@@ -50,3 +50,4 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | CrossLinear | MLP | Multivariate | KDD | 2025 | CrossLinear: Plug-and-Play Cross-Correlation Embedding for Time Series Forecasting with Exogenous Variables | [Arxiv](https://arxiv.org/abs/2505.23116) |
 | CALF | LLM | | AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) |
 | MMK | KAN | | | | Are KANsEffective for Multivariate Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2408.11306) | 
+| CARD | Trnasformer | | ICLR | 2024 | CARD: Channel Aligned Robust Blend Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2305.12095) | 
