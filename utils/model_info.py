@@ -331,18 +331,37 @@ class ModelSummarizer:
             m_key = "%s-%i" % (class_name, module_idx + 1)
             summary_dict[m_key] = OrderedDict()
 
-            # Handle input shape properly
-            if isinstance(input, tuple) and isinstance(input[0], torch.Tensor):
+            # Handle input shape properly - Fixed to check if tuple is not empty
+            if (
+                isinstance(input, tuple)
+                and len(input) > 0
+                and isinstance(input[0], torch.Tensor)
+            ):
                 summary_dict[m_key]["input_shape"] = list(input[0].size())
-            elif isinstance(input, tuple) and isinstance(input[0], (tuple, list)):
+            elif (
+                isinstance(input, tuple)
+                and len(input) > 0
+                and isinstance(input[0], (tuple, list))
+            ):
                 summary_dict[m_key]["input_shape"] = [
                     list(inp.size()) if isinstance(inp, torch.Tensor) else "Non-tensor"
                     for inp in input[0]
                 ]
+            elif isinstance(input, torch.Tensor):
+                # Handle case where input is directly a tensor (not in tuple)
+                summary_dict[m_key]["input_shape"] = list(input.size())
+            elif isinstance(input, tuple) and len(input) == 0:
+                # Handle empty tuple case
+                summary_dict[m_key]["input_shape"] = "Empty input tuple"
             else:
                 summary_dict[m_key]["input_shape"] = "Unknown input shape"
 
-            summary_dict[m_key]["input_shape"][0] = batch_size
+            # Safely handle batch_size assignment only if input_shape is a list
+            if (
+                isinstance(summary_dict[m_key]["input_shape"], list)
+                and len(summary_dict[m_key]["input_shape"]) > 0
+            ):
+                summary_dict[m_key]["input_shape"][0] = batch_size
 
             # Handle output shape properly
             if isinstance(output, (tuple, list)):
