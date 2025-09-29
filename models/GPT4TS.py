@@ -64,7 +64,6 @@ class GPT4TS(nn.Module):
                     param.requires_grad = False
 
         for layer in (self.gpt2, self.in_layer, self.out_layer):
-            layer.to(device=configs.device)
             layer.train()
 
         self.cnt = 0
