@@ -312,6 +312,95 @@ class ModelSummarizer:
         """
         return Text.from_markup(value).plain
 
+    def _extract_tensor_from_output(self, output):
+        """Extracts tensor information from various output types.
+
+        Args:
+            output: Output from a model layer (can be tensor, tuple, or special objects).
+
+        Returns:
+            torch.Tensor or None: Extracted tensor, or None if no tensor found.
+        """
+        if isinstance(output, torch.Tensor):
+            return output
+        elif hasattr(output, "last_hidden_state"):
+            # Handle transformers output objects
+            return output.last_hidden_state
+        elif hasattr(output, "hidden_states") and output.hidden_states is not None:
+            # Handle transformers output with hidden states
+            return (
+                output.hidden_states[-1]
+                if isinstance(output.hidden_states, (tuple, list))
+                else output.hidden_states
+            )
+        elif hasattr(output, "logits"):
+            # Handle output objects with logits
+            return output.logits
+        elif hasattr(output, "prediction_scores"):
+            # Handle output objects with prediction scores
+            return output.prediction_scores
+        elif isinstance(output, (tuple, list)) and len(output) > 0:
+            # Try to extract tensor from tuple/list
+            for item in output:
+                tensor = self._extract_tensor_from_output(item)
+                if tensor is not None:
+                    return tensor
+        return None
+
+    def _get_output_shape_info(self, output):
+        """Gets shape information from various output types.
+
+        Args:
+            output: Output from a model layer.
+
+        Returns:
+            str or list: Shape information as string or list.
+        """
+        if isinstance(output, torch.Tensor):
+            return list(output.size())
+        elif isinstance(output, (tuple, list)):
+            shapes = []
+            for o in output:
+                if isinstance(o, torch.Tensor):
+                    shape = [-1] + list(o.size())[1:]
+                    shapes.append(shape)
+                elif isinstance(o, (tuple, list)):
+                    sub_shapes = [
+                        (
+                            list(sub_o.size())
+                            if isinstance(sub_o, torch.Tensor)
+                            else "Non-tensor output"
+                        )
+                        for sub_o in o
+                    ]
+                    shapes.append(sub_shapes)
+                else:
+                    shapes.append("Non-tensor output")
+            return shapes
+        else:
+            # Handle special output objects (like transformers outputs)
+            tensor = self._extract_tensor_from_output(output)
+            if tensor is not None:
+                return list(tensor.size())
+            else:
+                # Fallback: try to get shape info from the object itself
+                if hasattr(output, "shape"):
+                    return list(output.shape)
+                elif hasattr(output, "__dict__"):
+                    # For complex objects, show available attributes
+                    attrs = [
+                        attr
+                        for attr in dir(output)
+                        if not attr.startswith("_")
+                        and hasattr(getattr(output, attr, None), "shape")
+                    ]
+                    if attrs:
+                        return f"Object with tensor attributes: {attrs[:3]}..."  # Show first 3 attrs
+                    else:
+                        return f"Complex output object: {type(output).__name__}"
+                else:
+                    return f"Unknown output type: {type(output).__name__}"
+
     def _register_hook(self, summary_dict, batch_size, hooks):
         """Registers a forward hook to the module to collect layer information.
 
@@ -363,27 +452,15 @@ class ModelSummarizer:
             ):
                 summary_dict[m_key]["input_shape"][0] = batch_size
 
-            # Handle output shape properly
-            if isinstance(output, (tuple, list)):
-                summary_dict[m_key]["output_shape"] = []
-                for o in output:
-                    if isinstance(o, torch.Tensor):
-                        shape = [-1] + list(o.size())[1:]
-                        summary_dict[m_key]["output_shape"].append(shape)
-                    elif isinstance(o, (tuple, list)):
-                        sub_shapes = [
-                            (
-                                list(sub_o.size())
-                                if isinstance(sub_o, torch.Tensor)
-                                else "Non-tensor output"
-                            )
-                            for sub_o in o
-                        ]
-                        summary_dict[m_key]["output_shape"].append(sub_shapes)
-                    else:
-                        summary_dict[m_key]["output_shape"].append("Non-tensor output")
-            else:
-                summary_dict[m_key]["output_shape"] = list(output.size())
+            # Handle output shape properly using the new method
+            summary_dict[m_key]["output_shape"] = self._get_output_shape_info(output)
+
+            # If output shape is a list and has elements, update batch size
+            if (
+                isinstance(summary_dict[m_key]["output_shape"], list)
+                and len(summary_dict[m_key]["output_shape"]) > 0
+                and isinstance(summary_dict[m_key]["output_shape"][0], int)
+            ):
                 summary_dict[m_key]["output_shape"][0] = batch_size
 
             # Count parameters
@@ -395,8 +472,19 @@ class ModelSummarizer:
                 params += torch.prod(torch.LongTensor(list(module.bias.size())))
 
             summary_dict[m_key]["nb_params"] = params
-            summary_dict[m_key]["macs"] = self._calculate_macs(module, output)
-            summary_dict[m_key]["flops"] = self._calculate_flops(module, output)
+
+            # Calculate MACs and FLOPs using extracted tensor
+            tensor_output = self._extract_tensor_from_output(output)
+            if tensor_output is not None:
+                summary_dict[m_key]["macs"] = self._calculate_macs(
+                    module, tensor_output
+                )
+                summary_dict[m_key]["flops"] = self._calculate_flops(
+                    module, tensor_output
+                )
+            else:
+                summary_dict[m_key]["macs"] = 0
+                summary_dict[m_key]["flops"] = 0
 
         def register_forward_hook(module):
             if not isinstance(module, nn.Sequential) and not isinstance(
@@ -416,25 +504,30 @@ class ModelSummarizer:
         Returns:
             int: Number of MACs for the module.
         """
+        if not isinstance(output, torch.Tensor):
+            return 0
+
         macs = 0
         if isinstance(module, nn.Conv2d):
             # MACs for convolution = kernel_width * kernel_height * in_channels * out_channels * output_width * output_height
             output_size = output.size()
-            macs = (
-                module.kernel_size[0]
-                * module.kernel_size[1]
-                * module.in_channels
-                * module.out_channels
-                * output_size[2]
-                * output_size[3]
-            )
+            if len(output_size) >= 4:
+                macs = (
+                    module.kernel_size[0]
+                    * module.kernel_size[1]
+                    * module.in_channels
+                    * module.out_channels
+                    * output_size[2]
+                    * output_size[3]
+                )
         elif isinstance(module, nn.Linear):
             # MACs for linear layer = in_features * out_features
             macs = module.in_features * module.out_features
         elif isinstance(module, nn.BatchNorm2d):
             # MACs for batch norm (approximation) = 2 * num_features * output_width * output_height
             output_size = output.size()
-            macs = 2 * module.num_features * output_size[2] * output_size[3]
+            if len(output_size) >= 4:
+                macs = 2 * module.num_features * output_size[2] * output_size[3]
         elif isinstance(
             module, (nn.ReLU, nn.MaxPool2d, nn.AvgPool2d, nn.AdaptiveAvgPool2d)
         ):
@@ -456,6 +549,9 @@ class ModelSummarizer:
         Returns:
             int: Number of FLOPs for the module.
         """
+        if not isinstance(output, torch.Tensor):
+            return 0
+
         flops = 0
         if isinstance(module, (nn.Linear, nn.Conv2d)):
             # FLOPs for convolution and linear = 2 * MACs
