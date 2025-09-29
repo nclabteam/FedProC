@@ -31,12 +31,15 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | SparseTSF | MLP | Univariate | ICML | 2024 | SparseTSF: Modeling Long-term Time Series Forecasting with 1k Parameters | [Arxiv](https://arxiv.org/abs/2405.00946) |
 | DishLinear | MLP || AAAI | 2023 | Dish-TS: A General Paradigm for Alleviating Distribution Shift in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2302.14829) |
 ||||||||
+||||||||
 | LSTM | RNN || Neural Computation | 1997 | Long Short-Term Memory | [ACM](https://dl.acm.org/doi/10.1162/neco.1997.9.8.1735) |
 | GRU | RNN || EMNLP | 2014 | Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation | [Arxiv](https://arxiv.org/abs/1406.1078) |
 | SegRNN | RNN | Univariate ||| SegRNN: Segment Recurrent Neural Network for Long-Term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2308.11200) |
 | RWKV4TS | RNN |||| RWKV-TS: Beyond Traditional Recurrent Neural Network for Time Series Tasks | [Arxiv](https://arxiv.org/abs/2401.09093) | 
 ||||||||
+||||||||
 | DSSRNN | SSM |||| DSSRNN: Decomposition-Enhanced State-Space Recurrent Neural Network for Time-Series Analysis | [Arxiv](https://arxiv.org/abs/2412.00994) |
+||||||||
 ||||||||
 | MLCNN | CNN | Multivariate | AAAI | 2020 | Towards Better Forecasting by Fusing Near and Distant Future Visions | [Arxiv](https://arxiv.org/abs/1912.05122) |
 | SCINet | CNN | Multivariate | NeurIPS | 2022 | SCINet: Time Series Modeling and Forecasting with Sample Convolution and Interaction | [Arxiv](https://arxiv.org/abs/2106.09305) |
@@ -44,14 +47,18 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | xPatch | CNN | Univariate | AAAI | 2025 | xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend Decomposition | [Arxiv](https://arxiv.org/abs/2412.17323) |
 | TimePoint | CNN | Multivariate | ICML | 2025 | TimePoint: Accelerated Time Series Alignment via Self-Supervised Keypoint and Descriptor Learning | [OpenReview](https://openreview.net/forum?id=bUGdGaNFhi) [Arxiv](https://arxiv.org/abs/2505.23475) |
 ||||||||
+||||||||
 | TimeKAN | KAN || ICLR | 2025 | TimeKAN: KAN-based Frequency Decomposition Learning Architecture for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2502.06910) |
 | MMK | KAN | | | | Are KANsEffective for Multivariate Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2408.11306) | 
 ||||||||
+||||||||
 | CARD | Transformer | | ICLR | 2024 | CARD: Channel Aligned Robust Blend Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2305.12095) | 
+||||||||
 ||||||||
 | Timer | Foundation || ICML | 2024 | Timer: Generative Pre-trained Transformers Are Large Time Series Models | [Arxiv](https://arxiv.org/abs/2402.02368) |
 | PAttn | LLM || NeurIPS | 2024| Are Language Models Actually Useful for Time Series Forecasting?| [Arxiv](https://arxiv.org/abs/2406.16964) |
 | CALF | LLM | | AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) |
+||||||||
 ||||||||
 | ConvRNN ||| | | Autoregressive Convolutional Recurrent Neural Network for Univariate and Multivariate Time Series Prediction | [Arxiv](https://arxiv.org/abs/1907.04155) |
 | S3 ||||| Segment, Shuffle, and Stitch: A Simple Layer for Improving Time-Series Representations | [Arxiv](https://arxiv.org/abs/2405.20082) |
