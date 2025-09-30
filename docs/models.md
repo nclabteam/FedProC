@@ -52,6 +52,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | MMK | KAN | | | | Are KANsEffective for Multivariate Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2408.11306) | 
 ||||||||
 ||||||||
+| PatchTST | Transformer | Univariate | ICLR | 2023 | A Time Series is Worth 64 Words: Long-term Forecasting with Transformers | [Arxiv](https://arxiv.org/abs/2211.14730) |
 | CARD | Transformer | | ICLR | 2024 | CARD: Channel Aligned Robust Blend Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2305.12095) | 
 ||||||||
 ||||||||
