@@ -9,6 +9,7 @@ xlsx2csv~=0.8.4
 numpy~=1.26.3
 ray~=2.48.0
 statsmodels~=0.14.4
+einops~=0.8.1
 
 # Code quality
 isort~=5.13.2
@@ -24,5 +25,11 @@ gdown~=5.2.0
 PyWavelets~=1.8.0
 pytorch_wavelets~=1.3.0
 
-# FedTrend (model)
+# FedTrend (strategy)
 higher~=0.2.1
+
+# CALF, GPT4TS (model)
+transformers~=4.52.4
+
+# CALF (model)
+peft~=0.17.1
