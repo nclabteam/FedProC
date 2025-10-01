@@ -59,6 +59,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 ||||||||
 | Timer | Foundation || ICML | 2024 | Timer: Generative Pre-trained Transformers Are Large Time Series Models | [Arxiv](https://arxiv.org/abs/2402.02368) |
 | GPT4TS | LLM || NeurIPS | 2023 | One Fits All:Power General Time Series Analysis by Pretrained LM | [Arxiv](https://arxiv.org/abs/2302.11939) |
+| T54TS | LLM | | ICLR | 2024| TEMPO: Prompt-based Generative Pre-trained Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/pdf/2310.04948) |
 | CALF | LLM | | AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) |
 ||||||||
 ||||||||
