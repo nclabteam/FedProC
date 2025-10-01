@@ -75,63 +75,8 @@ class Timer(nn.Module):
 
     def __init__(self, configs):
         super().__init__()
-        self.patch_len = configs.patch_len
-        self.stride = configs.patch_len
-        self.d_model = configs.d_model
-        self.d_ff = configs.d_ff
-        self.layers = configs.e_layers
-        self.n_heads = configs.n_heads
-        self.dropout = configs.dropout
+        num_patches = (configs.input_len + configs.patch_len - 1) // configs.patch_len
 
-        self.backbone = TimerBackbone(configs)
-        # Decoder
-        self.decoder = self.backbone.decoder
-        self.proj = self.backbone.proj
-        self.enc_embedding = self.backbone.patch_embedding
-
-    def forward(self, x_enc):
-        B, L, M = x_enc.shape
-
-        # Normalization from Non-stationary Transformer
-        means = x_enc.mean(1, keepdim=True).detach()
-        x_enc = x_enc - means
-        stdev = torch.sqrt(
-            torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x_enc /= stdev
-
-        # do patching and embedding
-        x_enc = x_enc.permute(0, 2, 1)  # [B, M, T]
-        dec_in, n_vars = self.enc_embedding(x_enc)  # [B * M, N, D]
-
-        # Transformer Blocks
-        dec_out, attns = self.decoder(dec_in)  # [B * M, N, D]
-        dec_out = self.proj(dec_out)  # [B * M, N, L]
-        dec_out = dec_out.reshape(B, M, -1).transpose(1, 2)  # [B, T, M]
-
-        # De-Normalization from Non-stationary Transformer
-        dec_out = dec_out * stdev + means
-        return dec_out
-
-
-class TimerBackbone(nn.Module):
-    def __init__(self, configs):
-        super().__init__()
-        self.patch_len = configs.patch_len
-        self.stride = configs.patch_len
-        self.d_model = configs.d_model
-        self.d_ff = configs.d_ff
-        self.layers = configs.e_layers
-        self.n_heads = configs.n_heads
-        self.dropout = configs.dropout
-        padding = 0
-
-        # patching and embedding
-        self.patch_embedding = PatchEmbedding(
-            self.d_model, self.patch_len, self.stride, padding, self.dropout
-        )
-
-        # Decoder-only Transformer: Refer to issue: https://github.com/thuml/Large-Time-Series-Model/issues/23
         self.decoder = Encoder(
             [
                 EncoderLayer(
@@ -154,9 +99,52 @@ class TimerBackbone(nn.Module):
             ],
             norm_layer=torch.nn.LayerNorm(configs.d_model),
         )
+        self.enc_embedding = PatchEmbedding(
+            d_model=configs.d_model,
+            patch_len=configs.patch_len,
+            stride=configs.patch_len,
+            padding=0,
+            dropout=configs.dropout,
+        )
+        self.proj = nn.Linear(
+            in_features=num_patches * configs.d_model,
+            out_features=configs.output_len,
+            bias=True,
+        )
 
-        # Prediction Head
-        self.proj = nn.Linear(self.d_model, configs.patch_len, bias=True)
+    def forward(self, x):
+        # Input: [batch_size, input_len, input_channels]
+        B, L, M = x.shape  # B=batch_size, L=input_len, M=input_channels
+
+        # Normalization from Non-stationary Transformer
+        means = x.mean(1, keepdim=True).detach()  # [B, 1, M]
+        x = x - means
+        var = torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5  # [B, 1, M]
+        stdev = torch.sqrt(var).detach()  # [B, 1, M]
+        x /= stdev  # [B, L, M]
+
+        # do patching and embedding
+        x = x.permute(0, 2, 1)  # [B, M, L] - permute to [batch, channels, length]
+        dec_in, n_vars = self.enc_embedding(x)
+        # dec_in=[B * M, N, D] where N=num_patches, D=d_model
+
+        # Transformer Blocks
+        dec_out, attns = self.decoder(dec_in)  # [B * M, N, D]
+
+        # Reshape to [B, M, N*D] to project all patch info per variable
+        dec_out = dec_out.reshape(B, M, -1)  # [B, M, N*D]
+
+        # Project to output length: [B, M, N*D] -> [B, M, output_len]
+        dec_out = self.proj(dec_out)  # [B, M, output_len]
+
+        # Transpose to get [batch_size, output_len, output_channels]
+        dec_out = dec_out.transpose(1, 2)  # [B, output_len, M]
+
+        # De-Normalization from Non-stationary Transformer
+        dec_out = dec_out * stdev + means  # [B, output_len, M]
+
+        # Output: [batch_size, output_len, output_channels]
+        return dec_out
 
 
 class PatchEmbedding(nn.Module):
