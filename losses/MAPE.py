@@ -9,6 +9,11 @@ class MAPE(Loss):
     """
 
     def forward(self, input, target):
-        return (
-            torch.mean(torch.abs(self.divide_no_nan(a=target - input, b=target))) * 100
+        return torch.mean(
+            input=torch.abs(
+                input=self._percentage_error(
+                    input=input,
+                    target=target,
+                )
+            )
         )

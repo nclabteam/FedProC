@@ -9,7 +9,11 @@ class MdAPE(Loss):
     """
 
     def forward(self, input, target):
-        return (
-            torch.median(torch.abs(self.divide_no_nan(a=target - input, b=target)))
-            * 100
+        return torch.median(
+            input=torch.abs(
+                self._percentage_error(
+                    input=input,
+                    target=target,
+                )
+            )
         )

@@ -3,14 +3,14 @@ import torch
 from .base import Loss
 
 
-class sMAPE(Loss):
+class sMdAPE(Loss):
     """
-    Symmetric Mean Absolute Percentage Error
+    Symmetric Median Absolute Percentage Error
     """
 
     def forward(self, input, target):
-        return torch.mean(
-            input=self._symmetric_absolute_percentage_error(
+        return torch.median(
+            input=self._symmetric_abosulute_percentage_error(
                 input=input,
                 target=target,
             )

@@ -23,5 +23,20 @@ class Loss(nn.Module):
     def _percentage_error(self, input, target):
         return self.divide_no_nan(a=target - input, b=target) * 100
 
+    def _symmetric_absolute_percentage_error(self, input, target):
+        return torch.div(
+            200 * torch.abs(target - input),
+            (torch.abs(target) + torch.abs(input)),
+        )
+
+    def _modified_symmetric_absolute_percentage_error(self, input, target):
+        return torch.div(
+            200 * torch.abs(target - input),
+            torch.max(
+                torch.abs(target) + torch.abs(input) + self.eps,
+                0.5 + self.eps,
+            ),
+        )
+
     def _log_error(self, x, y):
         return self.divide_no_nan(a=x, b=y)

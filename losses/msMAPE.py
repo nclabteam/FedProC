@@ -3,9 +3,9 @@ import torch
 from .base import Loss
 
 
-class sMAPE(Loss):
+class msMAPE(Loss):
     """
-    Symmetric Mean Absolute Percentage Error
+    Modified Symmetric Mean Absolute Percentage Error
     """
 
     def forward(self, input, target):
