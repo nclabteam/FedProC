@@ -13,6 +13,7 @@ TARGETS=(
     "utils"
     "main.py"
     "analysis"
+    "topologies"
     "hyper_tuning.py"
 )
 
