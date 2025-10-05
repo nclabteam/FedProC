@@ -39,4 +39,4 @@ class Loss(nn.Module):
         )
 
     def _log_error(self, x, y):
-        return self.divide_no_nan(a=x, b=y)
+        return self.divide_no_nan(a=torch.log(x), b=torch.log(y))
