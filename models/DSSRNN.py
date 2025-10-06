@@ -29,7 +29,6 @@ class DSSRNN(nn.Module):
             seq_len=configs.input_len,
             pred_len=configs.output_len,
             hidden_size=configs.hidden_size,
-            enc_in=configs.input_channels,
         )
         self.Linear_Trend = nn.Linear(configs.input_len, configs.output_len)
 
@@ -48,7 +47,7 @@ class DSSRNN(nn.Module):
 
 
 class SSRNN(nn.Module):
-    def __init__(self, seq_len, pred_len, hidden_size, enc_in):
+    def __init__(self, seq_len, pred_len, hidden_size):
         super().__init__()
         self.hidden_size = hidden_size
 
