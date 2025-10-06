@@ -34,7 +34,6 @@ class DSSRNN(nn.Module):
 
     def forward(self, x):
         # x: [Batch, Input length, Channel]
-        # print(f'x.shape: {x.shape}')
         seasonal_init, trend_init = self.decomposition(x)
         trend_init = trend_init.permute(0, 2, 1)
 
