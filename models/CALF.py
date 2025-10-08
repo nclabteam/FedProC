@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from peft import LoraConfig, TaskType, get_peft_model
+from transformers import GenerationMixin
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
@@ -111,19 +112,15 @@ class CALF(nn.Module):
 
         self.out_layer = nn.Linear(configs.d_model, configs.output_len)
 
-        # Move all components to device
-        if hasattr(configs, "device"):
-            device = configs.device
-            for layer in (
-                self.gpt2_text,
-                self.gpt2,
-                self.in_layer,
-                self.out_layer,
-                self.time_proj,
-                self.text_proj,
-            ):
-                layer.to(device=device)
-                layer.train()
+        for layer in (
+            self.gpt2_text,
+            self.gpt2,
+            self.in_layer,
+            self.out_layer,
+            self.time_proj,
+            self.text_proj,
+        ):
+            layer.train()
 
         self.cnt = 0
 
@@ -267,7 +264,7 @@ class Encoder_PCA(nn.Module):
         return x_time, x
 
 
-class AccustumGPT2Model(GPT2Model):
+class AccustumGPT2Model(GPT2Model, GenerationMixin):
     def __init__(self, config):
         super().__init__(config)
 
