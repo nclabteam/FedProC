@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
+from layers import Transpose
+
 optional = {
     "patch_len": 16,
     "stride": 8,
@@ -198,18 +200,6 @@ class CARDformer(nn.Module):
         z_out = self.W_out(outputs.reshape(b, c, -1))
         z = z_out * (z_std + 1e-4) + z_mean
         return z
-
-
-class Transpose(nn.Module):
-    def __init__(self, *dims, contiguous=False):
-        super().__init__()
-        self.dims, self.contiguous = dims, contiguous
-
-    def forward(self, x):
-        if self.contiguous:
-            return x.transpose(*self.dims).contiguous()
-        else:
-            return x.transpose(*self.dims)
 
 
 class Attention(nn.Module):

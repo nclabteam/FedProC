@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from layers import RevIN, SeriesDecompMA
+from layers import RevIN, SeriesDecompMA, Transpose
 
 optional = {
     "e_layers": 3,
@@ -886,15 +886,3 @@ def get_activation_fn(activation):
     raise ValueError(
         f'{activation} is not available. You can use "relu", "gelu", or a callable'
     )
-
-
-class Transpose(nn.Module):
-    def __init__(self, *dims, contiguous=False):
-        super().__init__()
-        self.dims, self.contiguous = dims, contiguous
-
-    def forward(self, x):
-        if self.contiguous:
-            return x.transpose(*self.dims).contiguous()
-        else:
-            return x.transpose(*self.dims)
