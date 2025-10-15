@@ -1,4 +1,5 @@
 import copy
+import gc
 import json
 import logging
 import multiprocessing
@@ -33,9 +34,9 @@ class SharedMethods:
         """
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
 
-        data = np.load(file)
-        x = data["x"]
-        y = data["y"]
+        with np.load(file) as data:
+            x = data["x"]
+            y = data["y"]
         x = scaler.transform(x)
         y = scaler.transform(y)
         x = torch.tensor(x, dtype=torch.float32)
@@ -218,7 +219,15 @@ class SharedMethods:
 
         # Clear existing handlers
         if self.logger.hasHandlers():
+            for h in list(self.logger.handlers):
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
             self.logger.handlers.clear()
+        # make sure logs don't propagate to root handler which might duplicate FDs
+        self.logger.propagate = False
 
         # Create file and stream handlers
         file_handler = logging.FileHandler(log_path)
@@ -237,6 +246,15 @@ class SharedMethods:
         self.logger.addHandler(stream_handler)
 
         self.logger.info(f"Logger created at {log_path}")
+
+    def close_logger(self):
+        for h in list(self.logger.handlers):
+            try:
+                h.flush()
+                h.close()
+            except Exception:
+                pass
+        self.logger.handlers.clear()
 
     def set_configs(self, configs, **kwargs):
         if isinstance(configs, Namespace):
@@ -602,16 +620,41 @@ class Server(SharedMethods):
 
     def get_model_info(self):
         if not self.exclude_server_model_processes:
-            self.summarize_model(dataloader=self.clients[0].load_train_data())
+            dl = self.clients[0].load_train_data()
+            self.summarize_model(dataloader=dl)
+            del dl
+            gc.collect()
         if self.save_local_model:
             for client in self.clients:
-                client.summarize_model(dataloader=client.load_train_data())
+                dl = client.load_train_data()
+                client.summarize_model(dataloader=dl)
+                del dl
+                gc.collect()
 
     def post_process(self):
         self.logger.info("")
         self.logger.info("-" * 50)
         self.save_models(save_type="last")
         self.save_results()
+
+        # close all client loggers + server logger
+        for c in self.clients:
+            try:
+                c.close_logger()
+            except Exception:
+                pass
+        try:
+            self.close_logger()
+        except Exception:
+            pass
+
+        # shutdown ray gracefully
+        try:
+            import ray
+
+            ray.shutdown()
+        except Exception:
+            pass
 
     def pre_train_clients(self):
         pass
@@ -680,7 +723,8 @@ class Client(SharedMethods):
         }
 
     def initialize_private_info(self):
-        self.private_data = json.load(fp=open(self.path_info))[self.id]
+        with open(self.path_info, "r") as f:
+            self.private_data = json.load(f)[self.id]
         if self.private_data["client"] != self.id:
             raise ValueError("Client ID mismatch")
         self.train_file = self.private_data["paths"]["train"]
