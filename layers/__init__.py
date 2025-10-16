@@ -21,7 +21,7 @@ for filename in os.listdir(current_dir):
         for name, obj in inspect.getmembers(module):
             # Check if the member is a class and is defined in this module
             if (
-                inspect.isclass(obj)
+                (inspect.isclass(obj) or inspect.isfunction(obj))
                 and obj.__module__ == module.__name__
                 and module_name == name
             ):
