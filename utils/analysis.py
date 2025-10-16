@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import sys
 from collections import Counter, defaultdict
@@ -306,7 +307,7 @@ def pivot_table(df, value_col, index_cols, on_col):
 
 
 def create_ranking_table_from_pivot(
-    main_df, tiebreak_df=None, decimal_places=3, sort_cols=None
+    main_df, tiebreak_df, decimal_places=3, sort_cols=None
 ):
     """
     Create a ranking table from a main DataFrame and an optional tiebreak DataFrame.
@@ -334,13 +335,32 @@ def create_ranking_table_from_pivot(
                 tiebreak_val = tiebreak_df[strategy][i]
             else:
                 tiebreak_val = main_val  # Use main_val as std if tiebreak_df is None
-            if main_val is not None and not np.isnan(main_val):
-                rounded_main = round(main_val, decimal_places)
+            # Be robust to non-numeric types (None, strings, polars types, etc.)
+            valid = False
+            if main_val is None:
+                valid = False
+            else:
+                try:
+                    # Try numpy isnan (works for numpy numbers)
+                    if not np.isnan(main_val):
+                        valid = True
+                except Exception:
+                    # Fallback: try to coerce to float then check
+                    try:
+                        mv = float(main_val)
+                        if not math.isnan(mv):
+                            main_val = mv
+                            valid = True
+                    except Exception:
+                        valid = False
+
+            if valid:
+                main_val_display = round(main_val, decimal_places)
                 rounded_tiebreak = round(
                     (tiebreak_val if tiebreak_val is not None else 0),
                     decimal_places,
                 )
-                strategy_scores.append((strategy, rounded_main, rounded_tiebreak))
+                strategy_scores.append((strategy, main_val_display, rounded_tiebreak))
         if not strategy_scores:
             continue
         # Sort by mean, then tiebreaker

@@ -38,6 +38,20 @@ def _pivot_mean_std(df, pivot_on, index_cols=["model", "dataset", "in", "out"]):
     return mean_pivot, std_pivot
 
 
+def _collect_experiments(experiment_paths, runs_dir="runs", max_lines=None):
+    """Load experiments (shared) and return list of experiment dicts with experiment_name set."""
+    all_experiments = []
+    for exp_path in experiment_paths:
+        exp_dir = os.path.join(runs_dir, exp_path)
+        if os.path.isdir(exp_dir) and os.path.exists(
+            os.path.join(exp_dir, "results.csv")
+        ):
+            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
+            datum["experiment_name"] = exp_path
+            all_experiments.append(datum)
+    return all_experiments
+
+
 def create_comparison_tables(
     experiment_paths,
     runs_dir="runs",
@@ -198,158 +212,279 @@ def create_model_specific_tables(
     Returns:
         tuple: (model_tables, metadata_table, ranking_tables) where each model gets its own table
     """
-    # Load experiment data
-    all_experiments = []
-    for exp_path in experiment_paths:
-        exp_dir = os.path.join(runs_dir, exp_path)
-        if os.path.isdir(exp_dir) and os.path.exists(
-            os.path.join(exp_dir, "results.csv")
-        ):
+    all_experiments = _collect_experiments(
+        experiment_paths, runs_dir=runs_dir, max_lines=max_lines
+    )
 
-            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
-            datum["experiment_name"] = exp_path
-            all_experiments.append(datum)
+    # If user wants original behavior (outer loop = model)
+    if pivot_by == "strategy":
+        # Group experiments by model
+        model_groups = {}
+        for exp in all_experiments:
+            model_name = exp.get("model", "unknown")
+            model_groups.setdefault(model_name, []).append(exp)
 
-    # Group experiments by model
-    model_groups = {}
-    for exp in all_experiments:
-        model_name = exp.get("model", "unknown")
-        model_groups.setdefault(model_name, []).append(exp)
+        # Create metadata and model tables
+        metadata_data = []
+        model_tables = {}
+        comparison_tables = {}  # Store mean/std tables for ranking
 
-    # Create metadata and model tables
-    metadata_data = []
-    model_tables = {}
-    comparison_tables = {}  # Store mean/std tables for ranking
+        for model_name, experiments in model_groups.items():
+            if not args.quiet:
+                print(f"\nProcessing model: {model_name}")
 
-    for model_name, experiments in model_groups.items():
-        if not args.quiet:
-            print(f"\nProcessing model: {model_name}")
+            combination_data = {}
 
-        combination_data = {}
+            for exp in experiments:
+                config = get_experiment_config(exp)
+                loss_metric = get_loss_metric_name(config["save_local_model"])
 
-        for exp in experiments:
-            config = get_experiment_config(exp)
-            loss_metric = get_loss_metric_name(config["save_local_model"])
+                combination_key = (
+                    config["strategy"],
+                    config["dataset"],
+                    config["input_len"],
+                    config["output_len"],
+                )
 
-            combination_key = (
-                config["strategy"],
-                config["dataset"],
-                config["input_len"],
-                config["output_len"],
-            )
+                for run in exp.get("runs", []):
+                    run_name = run["name"]
 
-            for run in exp.get("runs", []):
-                run_name = run["name"]
+                    # Add to metadata
+                    metadata_data.append(
+                        {
+                            "model": model_name,
+                            "dataset": config["dataset"],
+                            "in": config["input_len"],
+                            "out": config["output_len"],
+                            "strategy": config["strategy"],
+                            "run_name": run_name,
+                            "experiment": exp["experiment_name"],
+                            "save_local_model": config["save_local_model"],
+                            "loss_type": loss_metric,
+                        }
+                    )
 
-                # Add to metadata
-                metadata_data.append(
+                    # Collect loss values
+                    loss_value = extract_loss_values(run, loss_metric)
+                    if loss_value is not None and run_name != "avg":
+                        combination_data.setdefault(combination_key, []).append(
+                            loss_value
+                        )
+
+            # Create table rows for display
+            table_rows = []
+            config_groups = {}
+
+            # Data for ranking tables
+            table_data = []
+
+            for combination_key, values in combination_data.items():
+                strategy, dataset, input_len, output_len = combination_key
+                config_key = (dataset, input_len, output_len)
+
+                mean_value = pl.Series(values).mean() if values else None
+                std_value = pl.Series(values).std() if len(values) > 1 else 0.0
+                # Apply std multiplier for display only
+                std_value_display = std_value * std_multiplier
+
+                config_groups.setdefault(config_key, {})[strategy] = {
+                    "mean": mean_value,
+                    "std": std_value_display,
+                }
+
+                # Store raw data for ranking (without multiplier)
+                table_data.append(
                     {
                         "model": model_name,
-                        "dataset": config["dataset"],
-                        "in": config["input_len"],
-                        "out": config["output_len"],
-                        "strategy": config["strategy"],
-                        "run_name": run_name,
-                        "experiment": exp["experiment_name"],
-                        "save_local_model": config["save_local_model"],
-                        "loss_type": loss_metric,
+                        "strategy": strategy,
+                        "dataset": dataset,
+                        "in": input_len,
+                        "out": output_len,
+                        "loss_mean": mean_value,
+                        "loss_std": std_value_display,
+                        "n_runs": len(values),
                     }
                 )
 
-                # Collect loss values
-                loss_value = extract_loss_values(run, loss_metric)
-                if loss_value is not None and run_name != "avg":
-                    combination_data.setdefault(combination_key, []).append(loss_value)
+            # Build table rows for display
+            for config_key, strategies in config_groups.items():
+                dataset, input_len, output_len = config_key
 
-        # Create table rows for display
-        table_rows = []
-        config_groups = {}
+                row = {"dataset": dataset, "in": input_len, "out": output_len}
 
-        # Data for ranking tables
-        table_data = []
+                # Add strategy columns with mean±std format using specified decimal places
+                for strategy, stats in strategies.items():
+                    mean_val = stats["mean"]
+                    std_val = stats["std"]
 
-        for combination_key, values in combination_data.items():
-            strategy, dataset, input_len, output_len = combination_key
-            config_key = (dataset, input_len, output_len)
+                    # Multiply std by std_multiplier before rounding and displaying
+                    if mean_val is not None and std_val is not None:
+                        std_val_display = round(std_val, decimal_places)
+                        row[strategy] = (
+                            f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
+                        )
+                    else:
+                        row[strategy] = "N/A"
 
-            mean_value = pl.Series(values).mean() if values else None
-            std_value = pl.Series(values).std() if len(values) > 1 else 0.0
-            # Apply std multiplier for display only
-            std_value_display = std_value * std_multiplier
+                table_rows.append(row)
 
-            config_groups.setdefault(config_key, {})[strategy] = {
-                "mean": mean_value,
-                "std": std_value_display,
-            }
+            # Create comparison tables for ranking
+            if table_data:
+                df = pl.DataFrame(table_data)
+                mean_pivot, std_pivot = _pivot_mean_std(
+                    df,
+                    pivot_on="strategy",
+                    index_cols=["model", "dataset", "in", "out"],
+                )
+                comparison_tables[model_name] = {"mean": mean_pivot, "std": std_pivot}
 
-            # Store raw data for ranking (without multiplier)
-            table_data.append(
+            # Create DataFrame for display
+            if table_rows:
+                model_df = pl.DataFrame(table_rows)
+                # Sort by dataset, in, out
+                model_df = model_df.sort(["dataset", "in", "out"])
+                model_tables[model_name] = model_df
+                if not args.quiet:
+                    print(
+                        f"Created table for {model_name} with {len(table_rows)} configurations"
+                    )
+
+        # Create ranking tables
+        ranking_tables = create_ranking_table(
+            model_tables=comparison_tables,
+            decimal_places=decimal_places,
+            std_multiplier=std_multiplier,
+        )
+        # Sort ranking tables as well
+        for model_name, ranking_df in ranking_tables.items():
+            # Only sort rows that have a dataset value (not the AVG_RANK row)
+            data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
+            avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
+            data_rows = data_rows.sort(["dataset", "in", "out"])
+            ranking_tables[model_name] = pl.concat([data_rows, avg_row])
+
+        metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
+        return model_tables, metadata_table, ranking_tables
+
+    # Else pivot_by == "model": outer loop over strategy; reuse as much logic as possible
+    # Build unified table_data across all experiments
+    table_data = []
+    metadata_data = []
+    for exp in all_experiments:
+        config = get_experiment_config(exp)
+        loss_metric = get_loss_metric_name(config["save_local_model"])
+        model_name = exp.get("model", "unknown")
+        strategy = config["strategy"]
+
+        for run in exp.get("runs", []):
+            run_name = run["name"]
+            metadata_data.append(
                 {
                     "model": model_name,
+                    "dataset": config["dataset"],
+                    "in": config["input_len"],
+                    "out": config["output_len"],
                     "strategy": strategy,
-                    "dataset": dataset,
-                    "in": input_len,
-                    "out": output_len,
-                    "loss_mean": mean_value,
-                    "loss_std": std_value_display,
-                    "n_runs": len(values),
+                    "run_name": run_name,
+                    "experiment": exp["experiment_name"],
+                    "save_local_model": config["save_local_model"],
+                    "loss_type": loss_metric,
                 }
             )
+            loss_value = extract_loss_values(run, loss_metric)
+            if loss_value is not None and run_name != "avg":
+                table_data.append(
+                    {
+                        "model": model_name,
+                        "strategy": strategy,
+                        "dataset": config["dataset"],
+                        "in": config["input_len"],
+                        "out": config["output_len"],
+                        "loss": loss_value,
+                    }
+                )
 
-        # Build table rows for display
-        for config_key, strategies in config_groups.items():
-            dataset, input_len, output_len = config_key
+    # Group by strategy and then by (dataset,in,out) to create rows with model columns
+    strategy_groups = {}
+    for row in table_data:
+        strat = row["strategy"]
+        cfg = (row["dataset"], row["in"], row["out"])
+        strategy_groups.setdefault(strat, {}).setdefault(cfg, {}).setdefault(
+            row["model"], []
+        ).append(row["loss"])
 
+    model_tables = {}
+    comparison_tables = {}
+    for strat, cfgs in strategy_groups.items():
+        if not args.quiet:
+            print(f"\nProcessing strategy: {strat}")
+
+        table_rows = []
+        # prepare raw table_data for ranking creation
+        ranking_raw = []
+
+        for cfg, model_losses in cfgs.items():
+            dataset, input_len, output_len = cfg
             row = {"dataset": dataset, "in": input_len, "out": output_len}
 
-            # Add strategy columns with mean±std format using specified decimal places
-            for strategy, stats in strategies.items():
-                mean_val = stats["mean"]
-                std_val = stats["std"]
+            for model_name, losses in model_losses.items():
+                mean_value = pl.Series(losses).mean() if losses else None
+                std_value = pl.Series(losses).std() if len(losses) > 1 else 0.0
+                std_value_display = std_value * std_multiplier
 
-                # Multiply std by std_multiplier before rounding and displaying
-                if mean_val is not None and std_val is not None:
-                    std_val_display = round(std_val, decimal_places)
-                    row[strategy] = (
-                        f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
+                if mean_value is not None:
+                    row[model_name] = (
+                        f"{mean_value:.{decimal_places}f}±{round(std_value_display, decimal_places):.{decimal_places}f}"
                     )
                 else:
-                    row[strategy] = "N/A"
+                    row[model_name] = "N/A"
+
+                # for ranking
+                ranking_raw.append(
+                    {
+                        "model": model_name,
+                        "strategy": strat,
+                        "dataset": dataset,
+                        "in": input_len,
+                        "out": output_len,
+                        "loss_mean": mean_value,
+                        "loss_std": std_value_display,
+                        "n_runs": len(losses),
+                    }
+                )
 
             table_rows.append(row)
 
-        # Create comparison tables for ranking
-        if table_data:
-            df = pl.DataFrame(table_data)
-            mean_pivot, std_pivot = _pivot_mean_std(
-                df, pivot_on=pivot_by, index_cols=["model", "dataset", "in", "out"]
-            )
-            comparison_tables[model_name] = {"mean": mean_pivot, "std": std_pivot}
-
-        # Create DataFrame for display
+        # Create display table for this strategy
         if table_rows:
-            model_df = pl.DataFrame(table_rows)
-            # Sort by dataset, in, out
-            model_df = model_df.sort(["dataset", "in", "out"])
-            model_tables[model_name] = model_df
+            strat_df = pl.DataFrame(table_rows).sort(["dataset", "in", "out"])
+            model_tables[strat] = strat_df
             if not args.quiet:
                 print(
-                    f"Created table for {model_name} with {len(table_rows)} configurations"
+                    f"Created table for strategy {strat} with {len(table_rows)} configurations"
                 )
 
-    # Create ranking tables
+        # Create comparison pivot for ranking (columns = model)
+        if ranking_raw:
+            df = pl.DataFrame(ranking_raw)
+            mean_pivot, std_pivot = _pivot_mean_std(
+                df, pivot_on="model", index_cols=["strategy", "dataset", "in", "out"]
+            )
+            comparison_tables[strat] = {"mean": mean_pivot, "std": std_pivot}
+
+    # Create ranking tables (keys are strategies)
     ranking_tables = create_ranking_table(
         model_tables=comparison_tables,
         decimal_places=decimal_places,
         std_multiplier=std_multiplier,
     )
-    # Sort ranking tables as well
-    for model_name, ranking_df in ranking_tables.items():
-        # Only sort rows that have a dataset value (not the AVG_RANK row)
+
+    # Sort ranking tables
+    for strat, ranking_df in ranking_tables.items():
         data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
         avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
         data_rows = data_rows.sort(["dataset", "in", "out"])
-        ranking_tables[model_name] = pl.concat([data_rows, avg_row])
+        ranking_tables[strat] = pl.concat([data_rows, avg_row])
 
     metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
     return model_tables, metadata_table, ranking_tables
