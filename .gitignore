@@ -1,6 +1,7 @@
 __pycache__
 datasets
 temp
+ckpt
 
 runs*
 
