@@ -323,7 +323,7 @@ def display_stability_tables(
         },
         "peak_ratio": {
             "title": "Percentage of rounds with new record-low loss (peak frequency: 0.0-1.0)",
-            "explanation": "Proportion of training rounds that achieved a new record-low loss value.\nLower values = Infrequent breakthroughs, training efficiency issues\nHigher values = Frequent discovery of better solutions, excellent optimization\nValues >0.1 (10%) indicate very productive training with regular improvements.",
+            "explanation": "Proportion of training rounds that achieved a new record-low loss value.\nLower values = Plateaued early, few breakthroughs\nHigher values = Continuous improvement, frequent optimization breakthroughs\nTypical good training shows steady decline in this ratio as training progresses.",
         },
     }
 
