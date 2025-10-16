@@ -523,6 +523,12 @@ def parse_args(default_table_type="model-specific"):
         default="seconds",
         help="Time unit for efficiency analysis (default: seconds)",
     )
+    parser.add_argument(
+        "--pivot-by",
+        choices=["strategy", "model"],
+        default="strategy",
+        help="Which field to use as columns in pivot tables (default: strategy).",
+    )
     return parser.parse_args()
 
 

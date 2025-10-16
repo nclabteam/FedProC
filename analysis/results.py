@@ -24,12 +24,27 @@ from utils.analysis import (
 )
 
 
+def _pivot_mean_std(df, pivot_on, index_cols=["model", "dataset", "in", "out"]):
+    """
+    Helper to create mean/std pivot tables where columns are values of `pivot_on`
+    (either 'strategy' or 'model').
+    """
+    mean_pivot = df.pivot(values="loss_mean", index=index_cols, on=pivot_on).sort(
+        index_cols
+    )
+    std_pivot = df.pivot(values="loss_std", index=index_cols, on=pivot_on).sort(
+        index_cols
+    )
+    return mean_pivot, std_pivot
+
+
 def create_comparison_tables(
     experiment_paths,
     runs_dir="runs",
     std_multiplier=1.0,
     decimal_places=4,
     max_lines=None,
+    pivot_by="strategy",
 ):
     """
     Create comparison tables showing test loss across different strategies, grouped by models.
@@ -120,17 +135,9 @@ def create_comparison_tables(
         if table_data:
             df = pl.DataFrame(table_data)
 
-            mean_pivot = df.pivot(
-                values="loss_mean",
-                index=["model", "dataset", "in", "out"],
-                on="strategy",
-            ).sort(["model", "dataset", "in", "out"])
-
-            std_pivot = df.pivot(
-                values="loss_std",
-                index=["model", "dataset", "in", "out"],
-                on="strategy",
-            ).sort(["model", "dataset", "in", "out"])
+            mean_pivot, std_pivot = _pivot_mean_std(
+                df, pivot_on=pivot_by, index_cols=["model", "dataset", "in", "out"]
+            )
 
             model_tables[model_name] = {
                 "mean": mean_pivot,
@@ -177,6 +184,7 @@ def create_model_specific_tables(
     std_multiplier=1.0,
     decimal_places=4,
     max_lines=None,
+    pivot_by="strategy",
 ):
     """
     Create individual tables for each model showing mean±std across runs.
@@ -313,23 +321,10 @@ def create_model_specific_tables(
         # Create comparison tables for ranking
         if table_data:
             df = pl.DataFrame(table_data)
-
-            mean_pivot = df.pivot(
-                values="loss_mean",
-                index=["model", "dataset", "in", "out"],
-                on="strategy",
+            mean_pivot, std_pivot = _pivot_mean_std(
+                df, pivot_on=pivot_by, index_cols=["model", "dataset", "in", "out"]
             )
-
-            std_pivot = df.pivot(
-                values="loss_std",
-                index=["model", "dataset", "in", "out"],
-                on="strategy",
-            )
-
-            comparison_tables[model_name] = {
-                "mean": mean_pivot,
-                "std": std_pivot,
-            }
+            comparison_tables[model_name] = {"mean": mean_pivot, "std": std_pivot}
 
         # Create DataFrame for display
         if table_rows:
@@ -572,6 +567,7 @@ def main():
     """Main function with command line argument handling."""
     global args
     args = parse_args(default_table_type="model-specific")
+    pivot_by = getattr(args, "pivot_by", "strategy")
 
     if not args.quiet:
         print(f"Loading experiments from: {args.runs_dir}")
@@ -623,6 +619,7 @@ def main():
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
             max_lines=args.max_lines,
+            pivot_by=pivot_by,
         )
 
         if not args.no_display:
@@ -655,6 +652,7 @@ def main():
             std_multiplier=args.std_multiplier,
             decimal_places=args.decimal_places,
             max_lines=args.max_lines,
+            pivot_by=pivot_by,
         )
 
         if not args.no_display:
