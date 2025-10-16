@@ -2,6 +2,7 @@
 
 # List of directories and files to format
 TARGETS=(
+    "analysis"
     "data_factory"
     "layers"
     "losses"
@@ -9,12 +10,11 @@ TARGETS=(
     "optimizers"
     "scalers"
     "schedulers"
+    "scripts"
     "strategies"
     "utils"
-    "main.py"
-    "analysis"
     "topologies"
-    "hyper_tuning.py"
+    "main.py"
 )
 
 # Iterate over each target and apply isort and black

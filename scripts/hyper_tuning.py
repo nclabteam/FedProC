@@ -5,37 +5,33 @@ import sys
 # ----------- USER CONFIGURATION ------------
 
 base_args = [
-    "--iterations=2",
+    "--iterations=500",
     "--epochs=1",
     "--times=1",
-    "--model=Linear",
     "--scaler=StandardScaler",
     "--project=runs_test",
+    "--patience=20",
+    "--output_len=720",
 ]
 
 hyperparams = {
     "strategy": [
-        "Centralized",
-        "DFL",
-        "Elastic",
-        "FedAdam",
-        "FedALA",
         "FedAvg",
-        "FedAvgM",
         "FedAWA",
-        "FedCAC",
-        "FedDyn",
-        "FedMedian",
-        "FedProx",
-        "FedTrend",
-        "FedTrimmedAvg",
-        "FedYogi",
+        "FedTSC",
         "FML",
-        "Krum",
         "LocalOnly",
     ],
     "join_ratio": ["0.1", "1"],
-    "device_id": ["0,1", "0"],
+    "learning_rate": [0.0001, 0.0005, 0.001, 0.005, 0.01],
+    "iterations": [100, 200, 300, 400, 500],
+    "model": [
+        "Linear",
+        "DLinear",
+        "TSMixer",
+        "LinearIC",
+        "SCINet",
+    ],
 }
 
 # ----------- SCRIPT START ------------------
