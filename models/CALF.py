@@ -143,15 +143,13 @@ class CALF(nn.Module):
                 wte_pca = torch.randn(500, wte.shape[0]).numpy()
 
             # Convert to tensor and move to device
-            device = getattr(configs, "device", "cpu")
-            word_embedding = torch.tensor(wte_pca).to(device=device)
+            word_embedding = torch.tensor(wte_pca)
 
             return word_embedding
 
         except Exception as e:
             # Fallback to random embeddings
-            device = getattr(configs, "device", "cpu")
-            return torch.randn(configs.d_model, 500).to(device=device)
+            return torch.randn(configs.d_model, 500)
 
     def forward(self, x):
         # x: [B, L, M] where B=batch, L=seq_len, M=features
@@ -246,6 +244,9 @@ class Encoder_PCA(nn.Module):
 
     def forward(self, x):
         B = x.shape[0]
+
+        self.word_embedding = self.word_embedding.to(x.device)
+
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
         elif self.word_embedding.shape[0] != B:
