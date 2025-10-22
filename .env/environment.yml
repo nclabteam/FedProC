@@ -106,3 +106,4 @@ dependencies:
       - typing-extensions==4.15.0
       - tzdata==2025.2
       - urllib3==2.5.0
+      - torch-dct==0.1.6
