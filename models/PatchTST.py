@@ -228,10 +228,8 @@ class PatchTST_backbone(nn.Module):
 
         # Backbone
         self.backbone = TSTiEncoder(
-            c_in,
             patch_num=patch_num,
             patch_len=patch_len,
-            max_seq_len=max_seq_len,
             n_layers=n_layers,
             d_model=d_model,
             n_heads=n_heads,
@@ -241,16 +239,11 @@ class PatchTST_backbone(nn.Module):
             attn_dropout=attn_dropout,
             dropout=dropout,
             act=act,
-            key_padding_mask=key_padding_mask,
-            padding_var=padding_var,
-            attn_mask=attn_mask,
             res_attention=res_attention,
             pre_norm=pre_norm,
             store_attn=store_attn,
             pe=pe,
             learn_pe=learn_pe,
-            verbose=verbose,
-            **kwargs,
         )
 
         # Head
