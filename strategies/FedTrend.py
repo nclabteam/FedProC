@@ -309,6 +309,7 @@ class FedTrend(Server):
         # --- FedTrend: Store Global Trajectory & Refine Model ---
         self.T_gt.append(copy.deepcopy(self.model.to(self.device)))
         self._refine_global_model()
+        self.model.to("cpu")
 
         # --- FedTrend: Update Synthetic Data ---
         if self.current_iter > 0 and self.current_iter % self.L_ct == 0:
