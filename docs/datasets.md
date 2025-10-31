@@ -2,36 +2,37 @@
 
 ## Available Datasets
 
-| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples      | 
-|--------------------------|---------------|--------------|----------|---------------|--------------|
-| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 4_192-15_927 |
-| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            |              |
-| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |              |
-| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |              |
-| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |              |
-| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |              |
-| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |              |
-| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400       | 
-| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400       | 
-| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400       | 
-| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600       |
-| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600       |
-| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600       |
-| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304       |
-| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256      |
-| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272       |
-| MekongSalinity           | Environment   |              |          |               |              |
-| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208       |
-| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992       |
-| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224       |
-| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856       |
-| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116       |
-| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345       |
-| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560       |
-| StatesILI                | Healthcare    | 1 week       | 1        | 37            |              |
-| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416       |
-| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544       |
-| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |              |
+| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples       | URL |
+|--------------------------|---------------|--------------|----------|---------------|-------------- | --- |
+| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 4_192-15_927  | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
+| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            |               | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
+| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |               | [Github](https://github.com/ashfarhangi/COVID-19) |
+| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
+| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
+| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
+| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256       | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
+| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272        | [Github](https://github.com/liyaguang/DCRNN) |
+| MekongSalinity           | Environment   |              |          |               |               | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
+| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116        | [Github](https://github.com/liyaguang/DCRNN) |
+| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345        | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
+| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| StatesILI                | Healthcare    | 1 week       | 1        | 37            |               | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416        | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
+| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |               | [Github](https://github.com/taohan10200/WEATHER-5K) |
+| WindCSGREGFC             | Energy        | 15 minutes   | 10       | 6             | 69_999-70_176 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
 
 **Note**: Number of clients will be decided after splitting the data since clients with insufficient data (cannot form at least 10 samples) will be discarded. `Clients (max)` is the maximum number of clients possible.
 
