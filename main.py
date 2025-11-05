@@ -27,7 +27,7 @@ if __name__ == "__main__":
     dataset.execute()
     options.update_args(
         {
-            "granularity": dataset.info[0]["granularity"],
+            "path_info": dataset.path_info,
             "granularity_unit": dataset.info[0]["granularity_unit"],
             "num_clients": len(dataset.info),
         }
