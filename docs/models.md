@@ -63,6 +63,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | GPT4TS | LLM || NeurIPS | 2023 | One Fits All:Power General Time Series Analysis by Pretrained LM | [Arxiv](https://arxiv.org/abs/2302.11939) |
 | T54TS | LLM | | ICLR | 2024| TEMPO: Prompt-based Generative Pre-trained Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/pdf/2310.04948) |
 | CALF | LLM | | AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) |
+| VisionTS | Foundation | | ICML | 2025 | VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series Forecasters | [Arxiv](https://arxiv.org/abs/2408.17253) |
 ||||||||
 ||||||||
 | ConvRNN ||| | | Autoregressive Convolutional Recurrent Neural Network for Univariate and Multivariate Time Series Prediction | [Arxiv](https://arxiv.org/abs/1907.04155) |
