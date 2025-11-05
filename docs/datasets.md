@@ -27,6 +27,7 @@
 | PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
 | PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116        | [Github](https://github.com/liyaguang/DCRNN) |
 | PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345        | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
+| SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 20_352-70_176 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
 | SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
 | StatesILI                | Healthcare    | 1 week       | 1        | 37            |               | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
 | TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416        | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
