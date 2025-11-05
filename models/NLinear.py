@@ -24,4 +24,4 @@ class NLinear(nn.Module):
         # x: [batch_size, output_len, in_channels]
         x = x + seq_last
         # x: [batch_size, output_len, in_channels]
-        return x  
+        return x
