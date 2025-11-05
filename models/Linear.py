@@ -19,4 +19,4 @@ class Linear(nn.Module):
         # x: [batch_size, in_channels, output_len]
         x = x.permute(0, 2, 1)
         # x: [batch_size, output_len, in_channels]
-        return x  
+        return x
