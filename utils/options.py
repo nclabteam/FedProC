@@ -33,6 +33,13 @@ class Options:
 
     def parse_options(self):
         parser = argparse.ArgumentParser(formatter_class=CustomHelpFormatter)
+        # allow loading defaults from a JSON config file (CLI overrides file)
+        parser.add_argument(
+            "--config_file",
+            type=str,
+            default=None,
+            help="path to a JSON config file with options (CLI flags override file values)",
+        )
         # general
         parser.add_argument("--seed", type=int, default=941, help="random seed")
         parser.add_argument(
@@ -190,7 +197,32 @@ class Options:
             default=False,
             help="Return the difference between the local model and the global model",
         )
+
+        # first parse to capture --config_file (and minimal early flags)
         temp = parser.parse_known_args()[0]
+
+        # If a config file was provided, load it and apply as parser defaults.
+        # CLI flags still override these defaults because we call parse_args() later.
+        cfg_path = getattr(temp, "config_file", None)
+        if cfg_path:
+            cfg_path = os.path.expanduser(cfg_path)
+            if not os.path.exists(cfg_path):
+                raise FileNotFoundError(f"Config file not found: {cfg_path}")
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                try:
+                    cfg = json.load(f)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to parse config file {cfg_path}: {e}")
+
+            # Keep only keys that the parser understands
+            valid_keys = {action.dest for action in parser._actions}
+            defaults = {k: v for k, v in cfg.items() if k in valid_keys}
+            if defaults:
+                parser.set_defaults(**defaults)
+
+            # re-parse to refresh temp (so module-specific arg updates use config values)
+            temp = parser.parse_known_args()[0]
+
         for key, value in {
             "strategies": temp.strategy,
             "schedulers": temp.scheduler,
