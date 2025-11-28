@@ -1051,9 +1051,19 @@ class BaseDataset:
                     os.path.getsize(file_path) / 1024 / 1024
                 )
 
-            self.info.append(client_info)
-            print(json.dumps(self.info[-1], indent=4))
-            print(f"Time elapsed: {time.time() - start_time:.2f} seconds\n{'='*50}")
+            # check if client_info["samples"] has (0, x, x) or not, if yes, skip this client
+            if any(
+                int(client_info["samples"][split_name]["x"].split(",")[0][1:]) == 0
+                for split_name in client_info["samples"]
+            ):
+                print(
+                    f"Skipping client {client_id} due to zero samples in one of the splits."
+                )
+                continue
+            else:
+                self.info.append(client_info)
+                print(json.dumps(self.info[-1], indent=4))
+                print(f"Time elapsed: {time.time() - start_time:.2f} seconds\n{'='*50}")
 
     def download(self):
         pass
