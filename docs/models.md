@@ -31,6 +31,8 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | SparseTSF | MLP | Univariate | ICML | 2024 | SparseTSF: Modeling Long-term Time Series Forecasting with 1k Parameters | [Arxiv](https://arxiv.org/abs/2405.00946) |
 | DishLinear | MLP || AAAI | 2023 | Dish-TS: A General Paradigm for Alleviating Distribution Shift in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2302.14829) |
 | FSMLP | MLP |||| FSMLP: Frequency Simplex MLP for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2412.01654) |
+| FITS | MLP | Univariate | ICLR | 2024 | FITS: Modeling Time Series with 10k Parameters| [Arxiv](https://arxiv.org/abs/2307.03756) |
+| RFITS | MLP | Univariate | ICLR | 2024 | FITS: Modeling Time Series with 10k Parameters| [Arxiv](https://arxiv.org/abs/2307.03756) |
 ||||||||
 ||||||||
 | LSTM | RNN || Neural Computation | 1997 | Long Short-Term Memory | [ACM](https://dl.acm.org/doi/10.1162/neco.1997.9.8.1735) |
