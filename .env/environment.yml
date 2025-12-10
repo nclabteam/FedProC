@@ -107,3 +107,4 @@ dependencies:
       - tzdata==2025.2
       - urllib3==2.5.0
       - torch-dct==0.1.6
+      - autoflake==2.3.1
