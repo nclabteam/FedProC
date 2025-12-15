@@ -19,7 +19,7 @@ TARGETS=(
 
 for TARGET in "${TARGETS[@]}"; do
     echo "Formatting $TARGET..."
-    autoflake --remove-all-unused-imports --in-place --recursive "$TARGET"
+    autoflake --remove-all-unused-imports --ignore-init-module-imports --in-place --recursive "$TARGET"
     isort --profile=black "$TARGET"
     black "$TARGET"
     echo "=========================================="
