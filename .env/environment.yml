@@ -108,3 +108,4 @@ dependencies:
       - urllib3==2.5.0
       - torch-dct==0.1.6
       - autoflake==2.3.1
+      - timm==1.0.20

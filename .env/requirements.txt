@@ -37,3 +37,6 @@ peft~=0.17.1
 
 # FSMLP (model)
 torch-dct~=0.1.6
+
+# VisionTS (model)
+timm~=1.0.20
