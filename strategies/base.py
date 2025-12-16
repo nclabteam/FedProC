@@ -2,13 +2,11 @@ import copy
 import gc
 import json
 import logging
-import multiprocessing
 import os
 import sys
 import time
 from argparse import Namespace
 from collections import deque
-from functools import partial
 
 import numpy as np
 import polars as pl
@@ -18,19 +16,33 @@ from torch.utils.data import DataLoader, Subset, TensorDataset
 
 
 class SharedMethods:
+    """
+    Collection of small reusable utilities used by Server and Client classes.
+
+    Methods are mostly stateless and operate on models, dataloaders and tensors.
+    They are implemented as @staticmethod so they can be invoked without creating
+    an instance when needed (e.g., utility scripts or tests).
+    """
+
     default_value = 9_999_999.0
 
     @staticmethod
     def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
         """
-        General method to load and subsample data.
+        Load data from a numpy .npz file and construct a PyTorch DataLoader.
+
+        Expects the file to contain arrays 'x' and 'y'. Applies `scaler.transform`
+        to both x and y, converts to torch.float32 tensors and returns a DataLoader.
 
         Args:
-            file (str): Path to the data file.
-            sample_ratio (float): Ratio of data to load (between 0 and 1).
-            shuffle (bool): Whether to shuffle the data (True for training, False otherwise).
-            batch_size (int): Batch size for the DataLoader.
-            scaler
+            file (str): Path to a .npz file containing arrays 'x' and 'y'.
+            sample_ratio (float): fraction of dataset to use (0..1), default 1.0.
+            batch_size (int): DataLoader batch size.
+            shuffle (bool): whether to shuffle the dataset.
+            scaler: object exposing .transform(array) used to normalize data.
+
+        Returns:
+            torch.utils.data.DataLoader
         """
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
 
@@ -281,6 +293,60 @@ class SharedMethods:
                 os.makedirs(dir)
 
 
+# --- Ray Remote Function for Generalization Loss ---
+# This function must be defined outside the Server class for Ray to pick it up.
+@ray.remote
+def ray_compute_generalization_loss(client, dataset_type, model, criterion, device):
+    """
+    Ray remote worker that evaluates the provided model on one client's data.
+
+    Important notes:
+    - Must be defined at module level (Ray requirement).
+    - Receives `client` (lightweight client object), `model` (picklable), and `criterion`.
+    - Returns a scalar mean loss to keep transfer size small.
+
+    Args:
+        client: client object with load_{dataset_type}_data() method.
+        dataset_type: 'train'|'valid'|'test'
+        model: torch.nn.Module (pickled and sent to remote worker)
+        criterion: loss function (callable)
+        device: device string, e.g. 'cpu' or 'cuda:0'
+    Returns:
+        float: mean loss value across client's data
+    """
+    # Move model to target device for evaluation
+    model = model.to(device)
+    dataloader = getattr(client, f"load_{dataset_type}_data")()
+
+    losses = []
+    model.eval()
+    with torch.no_grad():
+        for batch_x, batch_y in dataloader:
+            batch_x = batch_x.float().to(device)
+            batch_y = batch_y.float().to(device)
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            losses.append(loss.item())
+
+    # Return mean loss (float)
+    return float(np.mean(losses))
+
+
+# --- Ray Remote Function for Personalization Loss ---
+@ray.remote
+def ray_compute_personalization_loss(client, dataset_type):
+    """
+    Ray remote wrapper that calls client's get_{dataset_type}_loss method.
+
+    Args:
+        client: client object with get_{dataset_type}_loss method.
+        dataset_type: 'train' or 'test'
+    Returns:
+        float: personalization loss or return value of the client's method.
+    """
+    return getattr(client, f"get_{dataset_type}_loss")()
+
+
 class Server(SharedMethods):
     def __init__(self, configs, times):
         super().__init__()
@@ -292,7 +358,7 @@ class Server(SharedMethods):
 
         self.devices = [f"{self.device}:{i}" for i in self.device_id.split(",")]
         self.num_gpus = len(self.devices)
-        configs.parallel = True if self.num_gpus > 1 else False
+        configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
         self.parallel = configs.parallel
         ray.init(
             num_gpus=self.num_gpus,
@@ -339,7 +405,6 @@ class Server(SharedMethods):
         b = 0
         to_be_sent = self.variables_to_be_sent()
         for idx, client in enumerate(self.clients):
-            s = time.time()
             c = {}
             for key, value in to_be_sent.items():
                 if isinstance(value, list) and len(value) == len(self.clients):
@@ -456,95 +521,84 @@ class Server(SharedMethods):
 
         return False
 
-    def _compute_generalization_loss(self, client, dataset_type, model, device):
-        """
-        Compute the loss for a single client. This will be executed in parallel.
-
-        Parameters:
-        - client: Client object
-        - dataset_type: str, type of dataset ('train', 'valid', 'test')
-        - model: model being evaluated
-        """
-        model = model.to(device)
-        dataloader = getattr(client, f"load_{dataset_type}_data")()
-        loss = self.calculate_loss(
-            model=model,
-            dataloader=dataloader,
-            criterion=client.loss,
-            device=device,
-        )
-        model = model.to("cpu")  # Move model back to CPU after evaluation
-        return np.mean(loss)
-
     def evaluate_generalization_loss(self, dataset_type):
         """
-        Generalized function to evaluate loss for a given dataset type and loss method.
+        Evaluate the global (generalization) loss of the server model across clients.
 
-        Parameters:
-        - dataset_type: str, type of dataset ('train', 'valid', 'test')
+        If server is configured for parallel execution (self.parallel), this dispatches
+        Ray remote tasks that evaluate the server model on each client's dataset in
+        parallel. Otherwise runs serially on the current process.
+
+        The aggregated mean loss is appended to self.metrics under
+        "global_avg_{dataset_type}_loss" and logged.
         """
-        if 1 < self.num_workers < self.num_clients:
-            # Create (client, device, dataset_type, model) tuples
-            tasks = [
-                (client, dataset_type, self.model, self.devices[i % len(self.devices)])
-                for i, client in enumerate(self.clients)
-            ]
+        # Parallel execution using Ray
+        if self.parallel:
+            client_tasks = []
+            for i, client in enumerate(self.clients):
+                # rotate devices among available devices
+                device = self.devices[i % len(self.devices)]
+                num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
 
-            with multiprocessing.Pool(processes=self.num_workers) as pool:
-                losses = pool.starmap(self._compute_generalization_loss, tasks)
+                # Submit remote evaluation job; keep returned objects small (float)
+                future = ray_compute_generalization_loss.options(
+                    num_gpus=num_gpus
+                ).remote(
+                    client=client,
+                    dataset_type=dataset_type,
+                    model=self.model,
+                    criterion=client.loss,
+                    device=device,
+                )
+                client_tasks.append(future)
 
+            # collect results
+            losses = ray.get(client_tasks)
         else:
+            # serial fallback (keeps backward compatibility)
             losses = [
-                np.mean(
-                    self.calculate_loss(
-                        model=self.model,
-                        dataloader=getattr(client, f"load_{dataset_type}_data")(),
-                        criterion=client.loss,
-                        device=client.device,
+                float(
+                    np.mean(
+                        self.calculate_loss(
+                            model=self.model,
+                            dataloader=getattr(client, f"load_{dataset_type}_data")(),
+                            criterion=client.loss,
+                            device=client.device,
+                        )
                     )
                 )
                 for client in self.clients
             ]
 
         metric_name = f"global_avg_{dataset_type}_loss"
-        self.metrics[metric_name].append(np.mean(losses))
+        self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
             f"Generalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
 
-    def _compute_personalization_loss(self, client, dataset_type):
-        """
-        Compute the loss for a single client.
-
-        Parameters:
-        - client: Client object
-        - dataset_type: str, type of dataset ('train', 'test')
-        """
-        return getattr(client, f"get_{dataset_type}_loss")()
-
     def evaluate_personalization_loss(self, dataset_type):
         """
-        Generalized function to evaluate personalization loss for a given dataset type using multiprocessing.
+        Compute personalization loss (each client's loss on their local model).
 
-        Parameters:
-        - dataset_type: str, type of dataset ('train', 'test')
+        When running in parallel mode this uses Ray remote calls to execute the
+        client's get_{dataset_type}_loss method remotely; otherwise runs locally.
+        Results are averaged, stored in metrics under "personal_avg_{dataset_type}_loss"
+        and logged.
         """
-        if 1 < self.num_workers < self.num_clients:
-            # Use multiprocessing Pool to parallelize the loss computation
-            with multiprocessing.Pool(processes=self.num_workers) as pool:
-                losses = pool.starmap(
-                    self._compute_personalization_loss,
-                    [(client, dataset_type) for client in self.clients],
-                )
+        if self.parallel:
+            client_tasks = [
+                ray_compute_personalization_loss.remote(client, dataset_type)
+                for client in self.clients
+            ]
+            losses = ray.get(client_tasks)
         else:
-            # Non-parallel version
             losses = [
-                getattr(client, f"get_{dataset_type}_loss")() for client in self.clients
+                float(getattr(client, f"get_{dataset_type}_loss")())
+                for client in self.clients
             ]
 
-        # Calculate and log the average personalization loss
         metric_name = f"personal_avg_{dataset_type}_loss"
-        self.metrics[metric_name].append(np.mean(losses))
+        self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
             f"Personalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
         )
