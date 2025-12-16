@@ -293,58 +293,49 @@ class SharedMethods:
                 os.makedirs(dir)
 
 
-# --- Ray Remote Function for Generalization Loss ---
-# This function must be defined outside the Server class for Ray to pick it up.
+# --- Ray Remote Function: unified client-side loss worker ---
 @ray.remote
-def ray_compute_generalization_loss(client, dataset_type, model, criterion, device):
+def ray_compute_client_loss(
+    client, mode, dataset_type, model=None, criterion=None, device="cpu"
+):
     """
-    Ray remote worker that evaluates the provided model on one client's data.
-
-    Important notes:
-    - Must be defined at module level (Ray requirement).
-    - Receives `client` (lightweight client object), `model` (picklable), and `criterion`.
-    - Returns a scalar mean loss to keep transfer size small.
+    Unified Ray remote worker to compute either:
+      - generalization loss: evaluate provided model on client's dataset
+      - personalization loss: call client's get_{dataset_type}_loss()
 
     Args:
-        client: client object with load_{dataset_type}_data() method.
-        dataset_type: 'train'|'valid'|'test'
-        model: torch.nn.Module (pickled and sent to remote worker)
-        criterion: loss function (callable)
-        device: device string, e.g. 'cpu' or 'cuda:0'
+        client: client object (must expose load_{dataset_type}_data or get_{dataset_type}_loss).
+        mode: "generalization" or "personalization"
+        dataset_type: "train" | "test" | "valid"
+        model: torch.nn.Module (required for mode="generalization")
+        criterion: loss function (required for mode="generalization")
+        device: device string passed to model / client (e.g. "cpu" or "cuda:0")
     Returns:
-        float: mean loss value across client's data
+        float: scalar loss
     """
-    # Move model to target device for evaluation
-    model = model.to(device)
-    dataloader = getattr(client, f"load_{dataset_type}_data")()
+    if mode == "generalization":
+        # evaluate the provided model on the client's data
+        model = model.to(device)
+        dataloader = getattr(client, f"load_{dataset_type}_data")()
+        losses = []
+        model.eval()
+        with torch.no_grad():
+            for batch_x, batch_y in dataloader:
+                batch_x = batch_x.float().to(device)
+                batch_y = batch_y.float().to(device)
+                outputs = model(batch_x)
+                loss = criterion(outputs, batch_y)
+                # ensure scalar
+                losses.append(float(loss.item()))
+        return float(np.mean(losses))
 
-    losses = []
-    model.eval()
-    with torch.no_grad():
-        for batch_x, batch_y in dataloader:
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
-            loss = criterion(outputs, batch_y)
-            losses.append(loss.item())
+    elif mode == "personalization":
+        # let the client compute its own loss on its local model
+        client.device = device
+        return float(getattr(client, f"get_{dataset_type}_loss")())
 
-    # Return mean loss (float)
-    return float(np.mean(losses))
-
-
-# --- Ray Remote Function for Personalization Loss ---
-@ray.remote
-def ray_compute_personalization_loss(client, dataset_type):
-    """
-    Ray remote wrapper that calls client's get_{dataset_type}_loss method.
-
-    Args:
-        client: client object with get_{dataset_type}_loss method.
-        dataset_type: 'train' or 'test'
-    Returns:
-        float: personalization loss or return value of the client's method.
-    """
-    return getattr(client, f"get_{dataset_type}_loss")()
+    else:
+        raise ValueError(f"Unsupported mode for ray_compute_client_loss: {mode}")
 
 
 class Server(SharedMethods):
@@ -356,8 +347,7 @@ class Server(SharedMethods):
         self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
-        self.devices = [f"{self.device}:{i}" for i in self.device_id.split(",")]
-        self.num_gpus = len(self.devices)
+        self.num_gpus = len(self.device_id.split(","))
         configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
         self.parallel = configs.parallel
         ray.init(
@@ -537,20 +527,19 @@ class Server(SharedMethods):
             client_tasks = []
             for i, client in enumerate(self.clients):
                 # rotate devices among available devices
-                device = self.devices[i % len(self.devices)]
+                device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
 
-                # Submit remote evaluation job; keep returned objects small (float)
-                future = ray_compute_generalization_loss.options(
-                    num_gpus=num_gpus
-                ).remote(
-                    client=client,
-                    dataset_type=dataset_type,
-                    model=self.model,
-                    criterion=client.loss,
-                    device=device,
+                # Submit remote evaluation job using unified worker
+                fut = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                    client,
+                    "generalization",
+                    dataset_type,
+                    self.model,
+                    client.loss,
+                    device,
                 )
-                client_tasks.append(future)
+                client_tasks.append(fut)
 
             # collect results
             losses = ray.get(client_tasks)
@@ -586,10 +575,14 @@ class Server(SharedMethods):
         and logged.
         """
         if self.parallel:
-            client_tasks = [
-                ray_compute_personalization_loss.remote(client, dataset_type)
-                for client in self.clients
-            ]
+            client_tasks = []
+            for i, client in enumerate(self.clients):
+                device = "cuda" if self.num_gpus > 0 else "cpu"
+                num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
+                fut = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                    client, "personalization", dataset_type, None, None, device
+                )
+                client_tasks.append(fut)
             losses = ray.get(client_tasks)
         else:
             losses = [
