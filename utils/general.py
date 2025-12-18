@@ -1,7 +1,5 @@
 import os
 
-import numpy as np
-
 
 def increment_path(path, exist_ok=False, sep=""):
     """

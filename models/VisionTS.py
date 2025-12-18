@@ -1,7 +1,6 @@
 import inspect
 import os
 from functools import partial
-from pathlib import Path
 
 import einops
 import numpy as np
@@ -10,7 +9,6 @@ import requests
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from huggingface_hub import snapshot_download
 from PIL import Image
 from timm.models.vision_transformer import Block, PatchEmbed
 from torch import nn

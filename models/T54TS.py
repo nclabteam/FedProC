@@ -1,9 +1,7 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange
-from torch import optim
-from transformers import T5Config, T5ForConditionalGeneration, T5Tokenizer
+from transformers import T5Config, T5ForConditionalGeneration
 
 optional = {
     "is_gpt": True,

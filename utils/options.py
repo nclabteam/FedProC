@@ -5,7 +5,6 @@ import os
 from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich.terminal_theme import MONOKAI
 
 from data_factory import DATASETS
 from losses import LOSSES

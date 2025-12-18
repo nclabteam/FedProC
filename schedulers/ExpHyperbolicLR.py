@@ -4,7 +4,20 @@ import warnings
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 
-from .HyperbolicLR import args_update, optional
+optional = {
+    "upper_bound": 10,
+    "infimum_lr": 1e-6,
+}
+
+
+def args_update(parser):
+    parser.add_argument("--upper_bound", type=int, default=None)
+    parser.add_argument(
+        "--infimum_lr",
+        type=float,
+        default=None,
+        help=f"HyperbolicLR: Minimum learning rate",
+    )
 
 
 class ExpHyperbolicLR(_LRScheduler):
