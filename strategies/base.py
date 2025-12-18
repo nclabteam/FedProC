@@ -512,39 +512,40 @@ class Server(SharedMethods):
         return False
 
     def evaluate_generalization_loss(self, dataset_type):
-        """
-        Evaluate the global (generalization) loss of the server model across clients.
-
-        If server is configured for parallel execution (self.parallel), this dispatches
-        Ray remote tasks that evaluate the server model on each client's dataset in
-        parallel. Otherwise runs serially on the current process.
-
-        The aggregated mean loss is appended to self.metrics under
-        "global_avg_{dataset_type}_loss" and logged.
-        """
-        # Parallel execution using Ray
         if self.parallel:
-            client_tasks = []
-            for i, client in enumerate(self.clients):
-                # rotate devices among available devices
+            futures = []
+            for client in self.clients:
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
 
-                # Submit remote evaluation job using unified worker
-                fut = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                future = ray.remote(num_gpus=num_gpus)(
+                    lambda cl, model, criterion, dtype, dev: (
+                        lambda: (
+                            model.to(dev),
+                            model.eval(),
+                            float(
+                                np.mean(
+                                    [
+                                        criterion(
+                                            model(x.float().to(dev)), y.float().to(dev)
+                                        ).item()
+                                        for x, y in getattr(cl, f"load_{dtype}_data")()
+                                    ]
+                                )
+                            ),
+                        )
+                    )()[2]
+                ).remote(
                     client,
-                    "generalization",
-                    dataset_type,
                     self.model,
                     client.loss,
+                    dataset_type,
                     device,
                 )
-                client_tasks.append(fut)
+                futures.append(future)
+            losses = ray.get(futures)
 
-            # collect results
-            losses = ray.get(client_tasks)
         else:
-            # serial fallback (keeps backward compatibility)
             losses = [
                 float(
                     np.mean(
@@ -558,42 +559,42 @@ class Server(SharedMethods):
                 )
                 for client in self.clients
             ]
-
         metric_name = f"global_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
-            f"Generalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
+            f"Generalization {dataset_type.capitalize()} Loss: "
+            f"{self.metrics[metric_name][-1]:.4f}"
         )
 
     def evaluate_personalization_loss(self, dataset_type):
-        """
-        Compute personalization loss (each client's loss on their local model).
-
-        When running in parallel mode this uses Ray remote calls to execute the
-        client's get_{dataset_type}_loss method remotely; otherwise runs locally.
-        Results are averaged, stored in metrics under "personal_avg_{dataset_type}_loss"
-        and logged.
-        """
         if self.parallel:
-            client_tasks = []
-            for i, client in enumerate(self.clients):
+            futures = []
+            for client in self.clients:
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
-                fut = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
-                    client, "personalization", dataset_type, None, None, device
+
+                future = ray.remote(num_gpus=num_gpus)(
+                    lambda cl, dtype, dev: (
+                        setattr(cl, "device", dev),
+                        float(getattr(cl, f"get_{dtype}_loss")()),
+                    )[1]
+                ).remote(
+                    client,
+                    dataset_type,
+                    device,
                 )
-                client_tasks.append(fut)
-            losses = ray.get(client_tasks)
+                futures.append(future)
+            losses = ray.get(futures)
         else:
             losses = [
                 float(getattr(client, f"get_{dataset_type}_loss")())
                 for client in self.clients
             ]
-
         metric_name = f"personal_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
-            f"Personalization {dataset_type.capitalize()} Loss: {self.metrics[metric_name][-1]:.4f}"
+            f"Personalization {dataset_type.capitalize()} Loss: "
+            f"{self.metrics[metric_name][-1]:.4f}"
         )
 
     def train_clients(self):
