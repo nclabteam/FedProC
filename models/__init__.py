@@ -23,13 +23,19 @@ for filename in os.listdir(current_dir):
             models[class_name] = class_obj
 
             # Import optional dictionary
-            optional[class_name] = getattr(module, "optional") if hasattr(module, "optional") else {}
+            optional[class_name] = (
+                getattr(module, "optional") if hasattr(module, "optional") else {}
+            )
 
             # Import compulsory dictionary
-            compulsory[class_name] = getattr(module, "compulsory") if hasattr(module, "compulsory") else {}
+            compulsory[class_name] = (
+                getattr(module, "compulsory") if hasattr(module, "compulsory") else {}
+            )
 
             # Import args_update function
-            args_update_functions[class_name] = getattr(module, "args_update") if hasattr(module, "args_update") else {}
+            args_update_functions[class_name] = (
+                getattr(module, "args_update") if hasattr(module, "args_update") else {}
+            )
 
 # Add the imported classes to the module's namespace
 globals().update(models)
