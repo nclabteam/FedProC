@@ -1,814 +1,1731 @@
+"""
+Analysis module for aggregating federated learning experiment results.
+
+This module provides functionality to:
+- Load experiment configurations and results from a runs directory
+- Compute bandwidth statistics (downlink, uplink, total) per experiment
+- Aggregate metrics across multiple runs using various aggregation modes
+- Filter experiments by model, strategy, dataset, output length, or name
+- Convert time and size units for display
+- Display results in formatted polars tables
+"""
+
 import argparse
+import json
+import logging
 import os
 import sys
+from collections import Counter
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import numpy as np
 import polars as pl
 
-# Configure Polars display settings
-pl.Config.set_tbl_cols(100)
-pl.Config.set_tbl_rows(100)
-
-# Import utility functions
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.analysis import (
-    _load_experiment_data,
-    create_ranking_table_from_pivot,
-    extract_loss_values,
-    filter_experiments,
-    get_experiment_config,
-    get_experiment_names_from_excel,
-    get_experiment_paths,
-    get_loss_metric_name,
-    load_all_experiments,
-    parse_args,
+from strategies.base import SharedMethods
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Polars Display Configuration
+# =============================================================================
+pl.Config.set_tbl_cols(100)  # Maximum number of columns to display
+pl.Config.set_tbl_rows(100)  # Maximum number of rows to display
+
+# =============================================================================
+# Type Definitions and Constants
+# =============================================================================
+
+# Aggregation modes for per-run statistics
+AGG_MODES: Tuple[str, ...] = ("min", "max", "mean", "last", "median")
+AggMode = Literal["min", "max", "mean", "last", "median"]
+
+# Time unit options (base unit: seconds)
+TIME_UNITS: Tuple[str, ...] = ("s", "ms", "m", "h")
+TimeUnit = Literal["s", "ms", "m", "h"]
+
+# Size unit options (base unit: MB)
+SIZE_UNITS: Tuple[str, ...] = ("b", "kb", "mb", "gb", "tb")
+SizeUnit = Literal["b", "kb", "mb", "gb", "tb"]
+
+# Pivot options for table display
+PIVOT_OPTIONS: Tuple[str, ...] = ("model", "strategy")
+PivotOption = Literal["model", "strategy"]
+
+# Output value when no valid data exists
+MISSING_VALUE: float = 0.0
+
+# Time columns that should be converted
+TIME_COLUMNS: Tuple[str, ...] = ("efficiency",)
+
+# Size columns that should be converted
+SIZE_COLUMNS: Tuple[str, ...] = ("downlink", "uplink", "communication")
+
+# Available metrics for display
+METRICS: Tuple[str, ...] = (
+    "all",
+    "loss",
+    "efficiency",
+    "communication",
+    "last_improvement_round",
+    "longest_improvement_streak",
+    "most_frequent_improvement_streak",
+    "oscillation_count",
+    "improvement_ratio",
 )
 
+# Metric descriptions for display
+METRIC_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
+    "loss": {
+        "title": "Test loss (model performance)",
+        "explanation": "Average test loss across all clients or global model performance.\n"
+        "Lower values = Better model performance\n"
+        "Higher values = Worse model performance\n"
+        "Primary metric for evaluating model quality and convergence.",
+    },
+    "efficiency": {
+        "title": "Time per training round (computational efficiency)",
+        "explanation": "Average time taken to complete one federated learning round.\n"
+        "Lower values = Faster training, more efficient system\n"
+        "Higher values = Slower training, resource bottlenecks\n"
+        "Critical for assessing practical deployment feasibility.",
+    },
+    "communication": {
+        "title": "Total communication cost (bandwidth usage)",
+        "explanation": "Combined uplink and downlink data transfer per round.\n"
+        "Lower values = Less bandwidth usage, lower cost\n"
+        "Higher values = Higher bandwidth requirements and costs\n"
+        "Key metric for federated learning scalability and deployment cost.",
+    },
+    "last_improvement_round": {
+        "title": "Round with the last improvement (convergence indicator)",
+        "explanation": "The last training round where the model achieved better loss than before.\n"
+        "Lower values = Model peaked early, may need more training\n"
+        "Higher values = Model continued improving throughout training\n"
+        "Indicates when the model stopped making progress (convergence point).",
+    },
+    "longest_improvement_streak": {
+        "title": "Maximum consecutive rounds of improvement (stability measure)",
+        "explanation": "The longest sequence of consecutive rounds with meaningful loss reduction.\n"
+        "Lower values = Erratic training with frequent plateaus or oscillations\n"
+        "Higher values = Stable, consistent optimization progress\n"
+        "Reflects training smoothness and optimization algorithm effectiveness.",
+    },
+    "most_frequent_improvement_streak": {
+        "title": "Most common improvement streak length (training pattern)",
+        "explanation": "The streak length that occurred most often during training.\n"
+        "Lower values = Training progresses in short bursts with frequent stagnation\n"
+        "Higher values = Sustained improvement patterns dominate the training\n"
+        "Reveals the typical learning rhythm and optimization behavior.",
+    },
+    "oscillation_count": {
+        "title": "Number of loss direction changes (instability measure)",
+        "explanation": "Counts how many times loss direction changed (up/down transitions).\n"
+        "Lower values = Stable, monotonic improvement (ideal)\n"
+        "Higher values = Unstable training, possible learning rate or optimization issues\n"
+        "High oscillations suggest need for learning rate adjustment or different optimizer.",
+    },
+    "improvement_ratio": {
+        "title": "Fraction of rounds with improvement (training efficiency: 0.0-1.0)",
+        "explanation": "Proportion of training rounds that resulted in loss reduction.\n"
+        "Lower values = Inefficient training, many wasted rounds\n"
+        "Higher values = Efficient training, most rounds contributed to learning\n"
+        "Values >0.5 indicate productive training; <0.3 suggests optimization problems.",
+    },
+}
 
-def _pivot_mean_std(df, pivot_on, index_cols=["model", "dataset", "in", "out"]):
+
+class Analysis:
     """
-    Helper to create mean/std pivot tables where columns are values of `pivot_on`
-    (either 'strategy' or 'model').
+    Analyze federated learning experiment results.
+
+    This class reads experiment data from a runs directory structure:
+        runs_dir/
+            experiment_name/
+                run_0/
+                    results/
+                        server.csv
+                        client_000.csv
+                        client_001.csv
+                        ...
+                run_1/
+                    ...
+                config.json
+                results.csv
+
+    Attributes:
+        runs_dir: Path to the runs directory.
+        max_lines: Maximum number of lines to read from CSV files (None for all).
+        std_multiplier: Factor to multiply standard deviation values.
+        decimal_places: Number of decimal places to round output values.
+        agg_mode: Aggregation mode for per-run statistics.
+        time_unit: Output unit for time values.
+        size_unit: Output unit for size values.
+        input_sentinel: Value indicating invalid/missing input data.
+        output_sentinel: Value to use in output when no valid data exists.
     """
-    mean_pivot = df.pivot(values="loss_mean", index=index_cols, on=pivot_on).sort(
-        index_cols
-    )
-    std_pivot = df.pivot(values="loss_std", index=index_cols, on=pivot_on).sort(
-        index_cols
-    )
-    return mean_pivot, std_pivot
 
+    # =========================================================================
+    # Unit conversion (static methods)
+    # =========================================================================
 
-def _collect_experiments(experiment_paths, runs_dir="runs", max_lines=None):
-    """Load experiments (shared) and return list of experiment dicts with experiment_name set."""
-    all_experiments = []
-    for exp_path in experiment_paths:
-        exp_dir = os.path.join(runs_dir, exp_path)
-        if os.path.isdir(exp_dir) and os.path.exists(
-            os.path.join(exp_dir, "results.csv")
-        ):
-            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
-            datum["experiment_name"] = exp_path
+    @staticmethod
+    def convert_time(value: float, from_unit: str = "s", to_unit: str = "s") -> float:
+        """
+        Convert time value between units.
+
+        Args:
+            value: Time value to convert.
+            from_unit: Source unit ('s', 'ms', 'm', 'h').
+            to_unit: Target unit ('s', 'ms', 'm', 'h').
+
+        Returns:
+            Converted time value.
+        """
+        to_seconds: Dict[str, float] = {
+            "ms": 0.001,
+            "s": 1.0,
+            "m": 60.0,
+            "h": 3600.0,
+        }
+        from_seconds: Dict[str, float] = {
+            "ms": 1000.0,
+            "s": 1.0,
+            "m": 1.0 / 60.0,
+            "h": 1.0 / 3600.0,
+        }
+
+        from_unit = from_unit.lower()
+        to_unit = to_unit.lower()
+
+        if from_unit not in to_seconds:
+            raise ValueError(f"Unknown time unit: {from_unit}")
+        if to_unit not in from_seconds:
+            raise ValueError(f"Unknown time unit: {to_unit}")
+
+        seconds = value * to_seconds[from_unit]
+        return seconds * from_seconds[to_unit]
+
+    @staticmethod
+    def convert_size(value: float, from_unit: str = "mb", to_unit: str = "mb") -> float:
+        """
+        Convert size value between units.
+
+        Args:
+            value: Size value to convert.
+            from_unit: Source unit ('b', 'kb', 'mb', 'gb', 'tb').
+            to_unit: Target unit ('b', 'kb', 'mb', 'gb', 'tb').
+
+        Returns:
+            Converted size value.
+        """
+        to_bytes: Dict[str, float] = {
+            "b": 1.0,
+            "kb": 1024.0,
+            "mb": 1024.0**2,
+            "gb": 1024.0**3,
+            "tb": 1024.0**4,
+        }
+        from_bytes: Dict[str, float] = {
+            "b": 1.0,
+            "kb": 1.0 / 1024.0,
+            "mb": 1.0 / (1024.0**2),
+            "gb": 1.0 / (1024.0**3),
+            "tb": 1.0 / (1024.0**4),
+        }
+
+        from_unit = from_unit.lower()
+        to_unit = to_unit.lower()
+
+        if from_unit not in to_bytes:
+            raise ValueError(f"Unknown size unit: {from_unit}")
+        if to_unit not in from_bytes:
+            raise ValueError(f"Unknown size unit: {to_unit}")
+
+        bytes_val = value * to_bytes[from_unit]
+        return bytes_val * from_bytes[to_unit]
+
+    @staticmethod
+    def resolve_loss_metric(save_local_model: bool) -> str:
+        """
+        Resolve the loss metric name based on save_local_model flag.
+
+        Args:
+            save_local_model: Whether local models are saved.
+
+        Returns:
+            'personal_avg_test_loss' if save_local_model else 'global_avg_test_loss'.
+        """
+        return "personal_avg_test_loss" if save_local_model else "global_avg_test_loss"
+
+    def __init__(
+        self,
+        runs_dir: str | Path = "runs",
+        output_dir: str | Path = "analysis/tables",
+        max_lines: Optional[int] = None,
+        std_multiplier: float = 1.0,
+        decimal_places: int = 4,
+        agg_mode: AggMode = "min",
+        time_unit: TimeUnit = "s",
+        size_unit: SizeUnit = "mb",
+    ) -> None:
+        """
+        Initialize the Analysis class.
+
+        Args:
+            runs_dir: Path to the runs directory.
+            output_dir: Path to the output directory for tables.
+            max_lines: Maximum number of lines to read from CSV files.
+            std_multiplier: Factor to multiply standard deviation values.
+            decimal_places: Number of decimal places to round output values.
+            agg_mode: Aggregation mode ('min', 'max', 'mean', 'last', 'median').
+            time_unit: Output unit for time values ('s', 'ms', 'm', 'h').
+            size_unit: Output unit for size values ('b', 'kb', 'mb', 'gb', 'tb').
+
+        Raises:
+            ValueError: If agg_mode, time_unit, or size_unit is not valid.
+        """
+        if agg_mode not in AGG_MODES:
+            raise ValueError(f"agg_mode must be one of {AGG_MODES}, got '{agg_mode}'")
+        if time_unit.lower() not in TIME_UNITS:
+            raise ValueError(
+                f"time_unit must be one of {TIME_UNITS}, got '{time_unit}'"
+            )
+        if size_unit.lower() not in SIZE_UNITS:
+            raise ValueError(
+                f"size_unit must be one of {SIZE_UNITS}, got '{size_unit}'"
+            )
+
+        self.runs_dir: Path = Path(runs_dir)
+        self.output_dir: Path = Path(output_dir)
+        self.max_lines: Optional[int] = max_lines
+        self.std_multiplier: float = std_multiplier
+        self.decimal_places: int = decimal_places
+        self.agg_mode: AggMode = agg_mode
+        self.time_unit: TimeUnit = time_unit.lower()  # type: ignore
+        self.size_unit: SizeUnit = size_unit.lower()  # type: ignore
+        self.input_sentinel: float = SharedMethods.default_value
+        self.output_sentinel: float = MISSING_VALUE
+
+        logger.debug(
+            "Analysis initialized: runs_dir=%s, agg_mode=%s, time_unit=%s, size_unit=%s",
+            self.runs_dir,
+            self.agg_mode,
+            self.time_unit,
+            self.size_unit,
+        )
+
+    # =========================================================================
+    # Path helpers
+    # =========================================================================
+
+    def _config_path(self, experiment_name: str) -> Path:
+        """Get the path to an experiment's config.json file."""
+        return self.runs_dir / experiment_name / "config.json"
+
+    def _results_path(self, experiment_name: str) -> Path:
+        """Get the path to an experiment's results.csv file."""
+        return self.runs_dir / experiment_name / "results.csv"
+
+    # =========================================================================
+    # File I/O
+    # =========================================================================
+
+    def _read_json(self, path: Path) -> Optional[Dict]:
+        """
+        Read a JSON file and return its contents as a dictionary.
+
+        Args:
+            path: Path to the JSON file.
+
+        Returns:
+            Dictionary containing the JSON data, or None if reading fails.
+        """
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            logger.debug("Failed to load JSON: %s", path)
+            return None
+
+    def _read_csv(self, path: Path) -> Optional[Dict[str, List]]:
+        """
+        Read a CSV file and return its contents as a dictionary of lists.
+
+        Args:
+            path: Path to the CSV file.
+
+        Returns:
+            Dictionary mapping column names to lists of values, or None if reading fails.
+        """
+        if not path.exists():
+            return None
+        try:
+            df = (
+                pl.read_csv(path, n_rows=self.max_lines)
+                if self.max_lines
+                else pl.read_csv(path)
+            )
+            return df.to_dict(as_series=False)
+        except Exception as e:
+            logger.warning("Failed to read CSV %s: %s", path, e)
+            return None
+
+    def _read_server_csv(self, run_dir: Path) -> Optional[Dict[str, List]]:
+        """Read the server.csv file from a run directory."""
+        return self._read_csv(run_dir / "results" / "server.csv")
+
+    def _read_client_csvs(self, run_dir: Path) -> List[Dict[str, List]]:
+        """
+        Read all client CSV files from a run directory.
+
+        Client files are expected to be named client_000.csv, client_001.csv, etc.
+
+        Args:
+            run_dir: Path to the run directory.
+
+        Returns:
+            List of dictionaries, one per client CSV file.
+        """
+        results_dir = run_dir / "results"
+        if not results_dir.exists():
+            return []
+
+        clients: List[Dict[str, List]] = []
+        for f in sorted(results_dir.glob("client_*.csv")):
+            data = self._read_csv(f)
+            if data is not None:
+                clients.append(data)
+        return clients
+
+    # =========================================================================
+    # Data parsing and validation
+    # =========================================================================
+
+    def _is_valid_input(self, value: float) -> bool:
+        """Check if a value is valid (not the input sentinel)."""
+        return value != self.input_sentinel
+
+    def _parse_numeric_list(self, seq: List, exclude_zero: bool = False) -> List[float]:
+        """
+        Parse a list to extract valid numeric values.
+
+        Args:
+            seq: List of values to parse.
+            exclude_zero: If True, exclude zero values from the result.
+
+        Returns:
+            List of valid numeric values.
+        """
+        vals: List[float] = []
+        for x in seq:
+            try:
+                xv = float(x)
+            except (ValueError, TypeError):
+                continue
+            if xv == self.input_sentinel:
+                continue
+            if exclude_zero and xv == 0:
+                continue
+            vals.append(xv)
+        return vals
+
+    # =========================================================================
+    # Instance unit conversion helpers
+    # =========================================================================
+
+    def _convert_time_value(self, value: float) -> float:
+        """Convert time value from seconds to configured time unit."""
+        return self.convert_time(value, from_unit="s", to_unit=self.time_unit)
+
+    def _convert_size_value(self, value: float) -> float:
+        """Convert size value from MB to configured size unit."""
+        return self.convert_size(value, from_unit="mb", to_unit=self.size_unit)
+
+    def _is_time_column(self, col_name: str) -> bool:
+        """Check if a column should be treated as a time value."""
+        return col_name in TIME_COLUMNS
+
+    def _is_size_column(self, col_name: str) -> bool:
+        """Check if a column should be treated as a size value."""
+        return col_name in SIZE_COLUMNS
+
+    # =========================================================================
+    # Formatting
+    # =========================================================================
+
+    def _format_mean(self, value: float) -> float:
+        """Round a mean value to the configured decimal places."""
+        return round(value, self.decimal_places)
+
+    def _format_std(self, value: float) -> float:
+        """Scale and round a standard deviation value."""
+        return round(value * self.std_multiplier, self.decimal_places)
+
+    def _format_mean_std_str(self, mean: float, std: float) -> str:
+        """
+        Format mean and std as a display string.
+
+        Args:
+            mean: Mean value (already rounded via _format_mean).
+            std: Std value (already scaled and rounded via _format_std).
+
+        Returns:
+            String in format "mean±std".
+        """
+        return f"{mean}±{std}"
+
+    # =========================================================================
+    # Aggregation
+    # =========================================================================
+
+    def _compute_per_run_agg(self, vals: List[float]) -> Optional[float]:
+        """
+        Compute a single aggregate value from a list of values.
+
+        Args:
+            vals: List of numeric values.
+
+        Returns:
+            The aggregated value based on agg_mode, or None if vals is empty.
+        """
+        if not vals:
+            return None
+
+        if self.agg_mode == "min":
+            return min(vals)
+        elif self.agg_mode == "max":
+            return max(vals)
+        elif self.agg_mode == "mean":
+            return float(np.mean(vals))
+        elif self.agg_mode == "last":
+            return vals[-1]
+        elif self.agg_mode == "median":
+            return float(np.median(vals))
+        return None
+
+    def _compute_aggregates(
+        self,
+        per_run_values: List[float],
+        key_prefix: str,
+        is_time: bool = False,
+        is_size: bool = False,
+    ) -> Dict[str, float]:
+        """
+        Compute mean and standard deviation across runs.
+
+        Args:
+            per_run_values: List of per-run aggregate values.
+            key_prefix: Prefix for the output keys.
+            is_time: If True, convert values from seconds to time_unit.
+            is_size: If True, convert values from MB to size_unit.
+
+        Returns:
+            Dictionary with keys '{prefix}_{agg_mode}_mean' and '{prefix}_{agg_mode}_std'.
+        """
+        result: Dict[str, float] = {}
+        mean_key = f"{key_prefix}_{self.agg_mode}_mean"
+        std_key = f"{key_prefix}_{self.agg_mode}_std"
+
+        if per_run_values:
+            mean_val = float(np.mean(per_run_values))
+            std_val = float(np.std(per_run_values, ddof=0))
+
+            if is_time:
+                mean_val = self._convert_time_value(mean_val)
+                std_val = self._convert_time_value(std_val)
+            elif is_size:
+                mean_val = self._convert_size_value(mean_val)
+                std_val = self._convert_size_value(std_val)
+
+            result[mean_key] = self._format_mean(mean_val)
+            result[std_key] = self._format_std(std_val)
+        else:
+            result[mean_key] = self.output_sentinel
+            result[std_key] = self.output_sentinel
+
+        return result
+
+    # =========================================================================
+    # Bandwidth statistics
+    # =========================================================================
+
+    def _compute_bandwidth_stats(self, run_dir: Path) -> Dict[str, List[float]]:
+        """
+        Compute per-round bandwidth statistics for a single run.
+
+        Bandwidth is computed as:
+        - downlink: Server's send_mb (server -> clients)
+        - uplink: Sum of all clients' send_mb (clients -> server)
+        - total: downlink + uplink
+
+        Args:
+            run_dir: Path to the run directory.
+
+        Returns:
+            Dictionary with 'downlink', 'uplink', and 'total' lists.
+            Each list contains valid per-round values (sentinel values excluded).
+            Values are in MB (conversion happens during aggregation).
+        """
+        server_data = self._read_server_csv(run_dir)
+        client_datas = self._read_client_csvs(run_dir)
+
+        downlink_vals: List[float] = []
+        if server_data and "send_mb" in server_data:
+            downlink_vals = self._parse_numeric_list(
+                server_data["send_mb"], exclude_zero=True
+            )
+
+        num_rounds = 0
+        if server_data and "send_mb" in server_data:
+            num_rounds = len(server_data["send_mb"])
+        for cd in client_datas:
+            if "send_mb" in cd:
+                num_rounds = max(num_rounds, len(cd["send_mb"]))
+
+        uplink_per_round: List[float] = []
+        for i in range(num_rounds):
+            round_sum = 0.0
+            has_valid = False
+
+            for cd in client_datas:
+                if "send_mb" not in cd or i >= len(cd["send_mb"]):
+                    continue
+                try:
+                    xv = float(cd["send_mb"][i])
+                    if xv != self.input_sentinel:
+                        round_sum += xv
+                        has_valid = True
+                except (ValueError, TypeError):
+                    continue
+
+            if has_valid and round_sum > 0:
+                uplink_per_round.append(round_sum)
+
+        total_per_round: List[float] = []
+        if server_data and "send_mb" in server_data:
+            for i in range(num_rounds):
+                downlink_i: Optional[float] = None
+                if i < len(server_data["send_mb"]):
+                    try:
+                        dv = float(server_data["send_mb"][i])
+                        if dv != self.input_sentinel and dv > 0:
+                            downlink_i = dv
+                    except (ValueError, TypeError):
+                        pass
+
+                uplink_i = 0.0
+                uplink_valid = False
+                for cd in client_datas:
+                    if "send_mb" not in cd or i >= len(cd["send_mb"]):
+                        continue
+                    try:
+                        uv = float(cd["send_mb"][i])
+                        if uv != self.input_sentinel:
+                            uplink_i += uv
+                            uplink_valid = True
+                    except (ValueError, TypeError):
+                        continue
+
+                if downlink_i is not None and uplink_valid and uplink_i > 0:
+                    total_per_round.append(downlink_i + uplink_i)
+
+        return {
+            "downlink": downlink_vals,
+            "uplink": uplink_per_round,
+            "total": total_per_round,
+        }
+
+    # =========================================================================
+    # Stability metrics
+    # =========================================================================
+
+    def _compute_stability_from_sequence(
+        self, seq: List[float], lower_is_better: bool = True
+    ) -> Dict[str, float]:
+        """
+        Compute stability statistics from a per-round metric sequence.
+
+        Args:
+            seq: List of per-round metric values.
+            lower_is_better: If True, lower values are considered better.
+
+        Returns:
+            Dictionary with stability metrics:
+            - last_improvement_round: Last round with improvement
+            - longest_improvement_streak: Maximum consecutive improvements
+            - most_frequent_improvement_streak: Most common improvement pattern
+            - oscillation_count: Number of direction changes
+            - improvement_ratio: Fraction of improving rounds
+        """
+        stability_keys = (
+            "last_improvement_round",
+            "longest_improvement_streak",
+            "most_frequent_improvement_streak",
+            "oscillation_count",
+            "improvement_ratio",
+        )
+
+        out = {k: self.output_sentinel for k in stability_keys}
+        vals = [
+            v for v in seq if isinstance(v, (int, float)) and v != self.input_sentinel
+        ]
+        n = len(vals)
+        if n < 2:
+            return out
+
+        # Define comparison and sign functions based on optimization direction
+        def is_better(new: float, best: float) -> bool:
+            """Check if new value is better than current best."""
+            return new < best if lower_is_better else new > best
+
+        def sign(delta: float) -> int:
+            """Return sign of delta: -1, 0, or 1."""
+            return 0 if delta == 0 else (1 if delta > 0 else -1)
+
+        best_so_far = vals[0]
+        improvements: List[bool] = []  # Boolean per round (starting from round 2)
+        deltas: List[float] = []  # val[i] - val[i-1]
+
+        for i in range(1, n):
+            cur = vals[i]
+            deltas.append(cur - vals[i - 1])
+            if is_better(cur, best_so_far):
+                improvements.append(True)
+                best_so_far = cur
+            else:
+                improvements.append(False)
+
+        # Last Improvement Round (1-based round index)
+        last_imp_idx = 0
+        for i, imp in enumerate(improvements, start=2):
+            if imp:
+                last_imp_idx = i
+        out["last_improvement_round"] = float(last_imp_idx) if last_imp_idx > 0 else 0.0
+
+        # Longest Improvement Streak: maximum consecutive True values
+        max_streak = 0
+        cur_streak = 0
+        streaks: List[int] = []
+
+        for imp in improvements:
+            if imp:
+                cur_streak += 1
+            else:
+                if cur_streak > 0:
+                    streaks.append(cur_streak)
+                max_streak = max(max_streak, cur_streak)
+                cur_streak = 0
+
+        # Don't forget the final streak if it exists
+        if cur_streak > 0:
+            streaks.append(cur_streak)
+            max_streak = max(max_streak, cur_streak)
+
+        out["longest_improvement_streak"] = float(max_streak)
+
+        # Most Frequent Improvement Streak: mode of streak lengths
+        if streaks:
+            cnt = Counter(streaks)
+            most_common = cnt.most_common()
+            max_freq = most_common[0][1]
+            # Handle ties by selecting the larger streak
+            candidates = [length for length, freq in most_common if freq == max_freq]
+            most_freq_streak = max(candidates)
+            out["most_frequent_improvement_streak"] = float(most_freq_streak)
+        else:
+            out["most_frequent_improvement_streak"] = 0.0
+
+        # Oscillation Count: count sign changes in deltas (ignoring zeros)
+        signs = [sign(d) for d in deltas if d != 0]
+        oscillations = sum(1 for i in range(1, len(signs)) if signs[i] != signs[i - 1])
+        out["oscillation_count"] = float(oscillations)
+
+        # Improvement Ratio: fraction of rounds with improvement
+        imp_count = sum(1 for imp in improvements if imp)
+        out["improvement_ratio"] = float(imp_count) / float(max(1, n - 1))
+
+        return out
+
+    # =========================================================================
+    # Loading data
+    # =========================================================================
+
+    def load_configs(self, experiment_name: str) -> Dict:
+        """
+        Load the configuration for an experiment.
+
+        Args:
+            experiment_name: Name of the experiment.
+
+        Returns:
+            Dictionary containing the configuration, or empty dict if not found.
+        """
+        cfg = self._read_json(self._config_path(experiment_name))
+        return dict(cfg) if isinstance(cfg, dict) else {}
+
+    def load_runs_stats(self, experiment_name: str) -> Dict[str, Dict[str, float]]:
+        """
+        Load and aggregate statistics for all runs of an experiment.
+
+        For each metric column in the server CSV files, computes:
+        - Per-run aggregate (based on agg_mode)
+        - Mean and std across all runs
+
+        Also computes bandwidth statistics (downlink, uplink, total) and stability metrics
+        (derived from the chosen loss time-series).
+
+        Time values are converted from seconds to the configured time_unit.
+        Size values are converted from MB to the configured size_unit.
+
+        Args:
+            experiment_name: Name of the experiment.
+
+        Returns:
+            Dictionary with 'aggregates' key containing all computed statistics.
+        """
+        base = self.runs_dir / experiment_name
+        if not base.exists():
+            logger.warning("Experiment folder not found: %s", base)
+            return {"aggregates": {}}
+
+        # load experiment config to resolve 'loss' -> personal/global
+        cfg = self.load_configs(experiment_name)
+        loss_metric_name = self.resolve_loss_metric(cfg.get("save_local_model", False))
+
+        runs: List[Dict] = []
+        numeric_cols: set[str] = set()
+        bandwidth_per_run: Dict[str, List[float]] = {
+            "downlink": [],
+            "uplink": [],
+            "total": [],
+        }
+
+        for entry in sorted(base.iterdir()):
+            if not entry.is_dir():
+                continue
+
+            data = self._read_server_csv(entry)
+            if data is None:
+                logger.debug("Skipping run (no server.csv): %s", entry)
+                continue
+
+            for k, v in data.items():
+                if isinstance(v, list) and k != "send_mb":
+                    numeric_cols.add(k)
+
+            runs.append({"name": entry.name, **data})
+
+            bw = self._compute_bandwidth_stats(entry)
+            for key in ["downlink", "uplink", "total"]:
+                agg_val = self._compute_per_run_agg(bw[key])
+                if agg_val is not None:
+                    bandwidth_per_run[key].append(agg_val)
+
+        aggregates: Dict[str, float] = {}
+
+        for col in sorted(numeric_cols):
+            per_run_agg: List[float] = []
+            for r in runs:
+                seq = r.get(col, [])
+                vals = self._parse_numeric_list(seq, exclude_zero=False)
+                agg_val = self._compute_per_run_agg(vals)
+                if agg_val is not None:
+                    per_run_agg.append(agg_val)
+
+            # Rename time_per_iter to efficiency
+            agg_col = "efficiency" if col == "time_per_iter" else col
+            is_time = self._is_time_column(agg_col)
+            aggregates.update(
+                self._compute_aggregates(per_run_agg, agg_col, is_time=is_time)
+            )
+
+        for bw_key in ["downlink", "uplink", "total"]:
+            # Rename total to communication
+            agg_key = "communication" if bw_key == "total" else bw_key
+            aggregates.update(
+                self._compute_aggregates(
+                    bandwidth_per_run[bw_key], agg_key, is_size=True
+                )
+            )
+
+        # =====================================================================
+        # Stability metrics (derived from loss time-series per run)
+        # =====================================================================
+        stability_keys = (
+            "last_improvement_round",
+            "longest_improvement_streak",
+            "most_frequent_improvement_streak",
+            "oscillation_count",
+            "improvement_ratio",
+        )
+        stability_per_run: Dict[str, List[float]] = {k: [] for k in stability_keys}
+        for r in runs:
+            seq = r.get(loss_metric_name, [])
+            vals = self._parse_numeric_list(seq, exclude_zero=False)
+            if not vals:
+                continue
+            stab = self._compute_stability_from_sequence(vals, lower_is_better=True)
+            for k, v in stab.items():
+                if v is not None:
+                    stability_per_run[k].append(v)
+
+        for sub in stability_keys:
+            aggregates.update(self._compute_aggregates(stability_per_run[sub], sub))
+
+        return {"aggregates": aggregates}
+
+    # =========================================================================
+    # Filtering
+    # =========================================================================
+
+    def _matches_filter(
+        self,
+        experiment: Dict,
+        models: Optional[List[str]] = None,
+        strategies: Optional[List[str]] = None,
+        datasets: Optional[List[str]] = None,
+        output_lens: Optional[List[int]] = None,
+        experiments: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        Check if an experiment matches all provided filters.
+
+        Args:
+            experiment: Experiment metadata dictionary.
+            models: List of model names to include (case-insensitive).
+            strategies: List of strategy names to include (case-insensitive).
+            datasets: List of dataset names to include (case-insensitive).
+            output_lens: List of output lengths to include.
+            experiments: List of experiment name patterns to include.
+
+        Returns:
+            True if the experiment matches all non-None filters.
+        """
+        exp_name = experiment.get("exp", "").lower()
+
+        if experiments is not None:
+            if not any(e.lower() in exp_name for e in experiments):
+                return False
+
+        if models is not None:
+            exp_model = experiment.get("model", "").lower()
+            if not any(m.lower() == exp_model for m in models):
+                return False
+
+        if strategies is not None:
+            exp_strategy = experiment.get("strategy", "").lower()
+            if not any(s.lower() == exp_strategy for s in strategies):
+                return False
+
+        if datasets is not None:
+            exp_dataset = experiment.get("dataset", "").lower()
+            if not any(d.lower() == exp_dataset for d in datasets):
+                return False
+
+        if output_lens is not None:
+            exp_output_len = experiment.get("output_len")
+            if exp_output_len is None or int(exp_output_len) not in output_lens:
+                return False
+
+        return True
+
+    def load_all_experiments(
+        self,
+        models: Optional[List[str]] = None,
+        strategies: Optional[List[str]] = None,
+        datasets: Optional[List[str]] = None,
+        output_lens: Optional[List[int]] = None,
+        experiments: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Load all experiments from the runs directory with optional filtering.
+
+        Args:
+            models: Filter to specific models.
+            strategies: Filter to specific strategies.
+            datasets: Filter to specific datasets.
+            output_lens: Filter to specific output lengths.
+            experiments: Filter to specific experiment name patterns.
+
+        Returns:
+            List of experiment dictionaries containing config and aggregated stats.
+        """
+        all_experiments: List[Dict] = []
+
+        if not self.runs_dir.exists():
+            logger.warning("Runs directory '%s' not found", self.runs_dir)
+            return all_experiments
+
+        for child in sorted(self.runs_dir.iterdir()):
+            if not child.is_dir():
+                continue
+
+            if not self._results_path(child.name).exists():
+                logger.debug("Skipping experiment (no results.csv): %s", child)
+                continue
+
+            datum: Dict = {"exp": child.name}
+            datum.update(self.load_configs(child.name))
+
+            if not self._matches_filter(
+                experiment=datum,
+                models=models,
+                strategies=strategies,
+                datasets=datasets,
+                output_lens=output_lens,
+                experiments=experiments,
+            ):
+                logger.debug("Skipping experiment (filtered out): %s", child.name)
+                continue
+
+            stats = self.load_runs_stats(child.name)
+            datum.update(stats)
             all_experiments.append(datum)
-    return all_experiments
 
+        logger.info("Loaded %d experiments (after filtering)", len(all_experiments))
+        return all_experiments
 
-def create_comparison_tables(
-    experiment_paths,
-    runs_dir="runs",
-    std_multiplier=1.0,
-    decimal_places=4,
-    max_lines=None,
-    pivot_by="strategy",
-):
-    """
-    Create comparison tables showing test loss across different strategies, grouped by models.
+    # =========================================================================
+    # Display methods
+    # =========================================================================
 
-    Args:
-        experiment_paths (list): List of experiment directory names
-        runs_dir (str): Directory containing experiment folders
-        std_multiplier (float): Factor to multiply standard deviation for better visibility
-        decimal_places (int): Number of decimal places to display
+    def _resolve_metric(self, metric: str, experiment: Dict) -> str:
+        """
+        Resolve metric name, handling special metrics.
 
-    Returns:
-        tuple: (model_tables, metadata_table) where:
-            - model_tables: Dictionary with model names as keys and Polars DataFrames as values
-            - metadata_table: DataFrame with dataset, in, out, run_name, experiment info
-    """
-    # Load experiment data
-    all_experiments = []
-    for exp_path in experiment_paths:
-        exp_dir = os.path.join(runs_dir, exp_path)
-        if os.path.isdir(exp_dir) and os.path.exists(
-            os.path.join(exp_dir, "results.csv")
-        ):
+        Args:
+            metric: Metric name (can be 'loss' or actual metric name).
+            experiment: Experiment dictionary with config.
 
-            datum = _load_experiment_data(experiment_dir=exp_dir, max_lines=max_lines)
-            datum["experiment_name"] = exp_path
-            all_experiments.append(datum)
+        Returns:
+            Resolved metric name.
+        """
+        if metric == "loss":
+            save_local_model = experiment.get("save_local_model", False)
+            return self.resolve_loss_metric(save_local_model)
+        return metric
 
-    # Group experiments by model
-    model_groups = {}
-    for exp in all_experiments:
-        model_name = exp.get("model", "unknown")
-        model_groups.setdefault(model_name, []).append(exp)
+    def _get_metric_value_str(self, experiment: Dict, metric: str) -> Optional[str]:
+        """
+        Get formatted mean±std string for a metric from an experiment.
 
-    metadata_data = []
-    model_tables = {}
+        Args:
+            experiment: Experiment dictionary with aggregates.
+            metric: Base metric name (e.g., 'loss', 'global_avg_test_loss').
 
-    for model_name, experiments in model_groups.items():
-        combination_data = {}
+        Returns:
+            Formatted string "mean±std" or None if not available.
+        """
+        resolved_metric = self._resolve_metric(metric, experiment)
+        aggregates = experiment.get("aggregates", {})
+        mean_key = f"{resolved_metric}_{self.agg_mode}_mean"
+        std_key = f"{resolved_metric}_{self.agg_mode}_std"
+
+        mean_val = aggregates.get(mean_key)
+        std_val = aggregates.get(std_key)
+
+        if mean_val is None or std_val is None:
+            return None
+        if mean_val == self.output_sentinel and std_val == self.output_sentinel:
+            return None
+
+        return self._format_mean_std_str(mean_val, std_val)
+
+    def _get_pivot_config(self, pivot: PivotOption) -> Tuple[str, str, Tuple[str, ...]]:
+        """
+        Get configuration for pivot mode.
+
+        Args:
+            pivot: Pivot option ('model' or 'strategy').
+
+        Returns:
+            Tuple of (group_by_field, pivot_by_field, group_by_tuple).
+            - group_by_field: Field to group tables by (iterate over unique values)
+            - pivot_by_field: Field to pivot columns by
+            - group_by_tuple: Fields for row grouping
+        """
+        if pivot == "model":
+            # Group tables by model, pivot columns by strategy
+            return "model", "strategy", ("dataset", "input_len", "output_len")
+        else:  # strategy
+            # Group tables by strategy, pivot columns by model
+            return "strategy", "model", ("dataset", "input_len", "output_len")
+
+    def create_table(
+        self,
+        experiments: List[Dict],
+        metric: str = "loss",
+        group_by: Tuple[str, ...] = ("dataset", "input_len", "output_len"),
+        pivot_by: str = "strategy",
+    ) -> pl.DataFrame:
+        """
+        Create a pivot table displaying metric values grouped by configuration.
+
+        Args:
+            experiments: List of experiment dictionaries.
+            metric: Metric to display (e.g., 'loss', 'downlink').
+            group_by: Tuple of fields to group rows by.
+            pivot_by: Field to pivot columns by.
+
+        Returns:
+            Polars DataFrame with the pivot table.
+        """
+        # Build rows
+        rows: List[Dict[str, Any]] = []
         for exp in experiments:
-            config = get_experiment_config(exp)
-            loss_metric = get_loss_metric_name(config["save_local_model"])
-            combination_key = (
-                model_name,
-                config["strategy"],
-                config["dataset"],
-                config["input_len"],
-                config["output_len"],
-            )
-            for run in exp.get("runs", []):
-                run_name = run["name"]
-                metadata_data.append(
-                    {
-                        "model": model_name,
-                        "dataset": config["dataset"],
-                        "in": config["input_len"],
-                        "out": config["output_len"],
-                        "strategy": config["strategy"],
-                        "run_name": run_name,
-                        "experiment": exp["experiment_name"],
-                        "save_local_model": config["save_local_model"],
-                        "loss_type": loss_metric,
-                    }
-                )
-                loss_value = extract_loss_values(run, loss_metric)
-                if loss_value is not None and run_name != "avg":
-                    combination_data.setdefault(combination_key, []).append(loss_value)
+            row: Dict[str, Any] = {}
 
-        table_data = []
-        for combination_key, values in combination_data.items():
-            model_name, strategy, dataset, input_len, output_len = combination_key
-            mean_value = pl.Series(values).mean() if values else None
-            std_value = pl.Series(values).std() if len(values) > 1 else 0.0
-            std_value *= std_multiplier
-            table_data.append(
-                {
-                    "model": model_name,
-                    "strategy": strategy,
-                    "dataset": dataset,
-                    "in": input_len,
-                    "out": output_len,
-                    "loss_mean": mean_value,
-                    "loss_std": std_value,
-                    "n_runs": len(values),
-                }
-            )
+            # Add group_by fields
+            for field in group_by:
+                row[field] = exp.get(field)
 
-        # Create pivot tables
-        if table_data:
-            df = pl.DataFrame(table_data)
+            # Add pivot field
+            row[pivot_by] = exp.get(pivot_by)
 
-            mean_pivot, std_pivot = _pivot_mean_std(
-                df, pivot_on=pivot_by, index_cols=["model", "dataset", "in", "out"]
-            )
+            # Add metric value
+            row["value"] = self._get_metric_value_str(exp, metric)
 
-            model_tables[model_name] = {
-                "mean": mean_pivot,
-                "std": std_pivot,
-                "raw_data": df,
-            }
+            rows.append(row)
 
-    metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
-    return model_tables, metadata_table
+        if not rows:
+            logger.warning("No data to display")
+            return pl.DataFrame()
 
+        # Create DataFrame
+        df = pl.DataFrame(rows)
 
-def create_ranking_table(model_tables, decimal_places=4, std_multiplier=1.0):
-    """
-    Create ranking tables for each model based on rounded mean performance and rounded std as tiebreaker.
+        # Get unique pivot values for column ordering
+        pivot_values = df.select(pivot_by).unique().sort(pivot_by).to_series().to_list()
 
-    Args:
-        model_tables (dict): Dictionary with model names as keys and tables as values
-        decimal_places (int): Number of decimal places to round before ranking
-
-    Returns:
-        dict: Dictionary with model names as keys and ranking DataFrames as values
-    """
-    ranking_tables = {}
-
-    for model_name, tables in model_tables.items():
-        if "mean" not in tables or "std" not in tables:
-            continue
-
-        ranking_df = create_ranking_table_from_pivot(
-            main_df=tables["mean"],
-            tiebreak_df=tables["std"],
-            decimal_places=decimal_places,
-            sort_cols=["dataset", "in", "out"],
+        # Pivot the table
+        df_pivot = df.pivot(
+            on=pivot_by,
+            index=list(group_by),
+            values="value",
+            aggregate_function="first",
         )
-        if ranking_df is not None:
-            ranking_tables[model_name] = ranking_df
 
-    return ranking_tables
+        # Reorder columns: group_by fields first, then pivot values in sorted order
+        col_order = list(group_by) + [
+            col for col in pivot_values if col in df_pivot.columns
+        ]
+        df_pivot = df_pivot.select(col_order)
 
+        # Sort by group_by fields
+        df_pivot = df_pivot.sort(list(group_by))
 
-def create_model_specific_tables(
-    experiment_paths,
-    runs_dir="runs",
-    std_multiplier=1.0,
-    decimal_places=4,
-    max_lines=None,
-    pivot_by="strategy",
-):
-    """
-    Create individual tables for each model showing mean±std across runs.
+        return df_pivot
 
-    Args:
-        experiment_paths (list): List of experiment directory names
-        runs_dir (str): Directory containing experiment folders
-        std_multiplier (float): Factor to multiply standard deviation for better visibility
-        decimal_places (int): Number of decimal places to display
+    def _get_table_header(
+        self,
+        group_value: str,
+        metric: str,
+        pivot: PivotOption,
+    ) -> str:
+        """
+        Generate header text for a table.
 
-    Returns:
-        tuple: (model_tables, metadata_table, ranking_tables) where each model gets its own table
-    """
-    all_experiments = _collect_experiments(
-        experiment_paths, runs_dir=runs_dir, max_lines=max_lines
-    )
+        Args:
+            group_value: Value of the grouping field (model or strategy name).
+            metric: Metric name.
+            pivot: Pivot mode ('model' or 'strategy').
 
-    # If user wants original behavior (outer loop = model)
-    if pivot_by == "strategy":
-        # Group experiments by model
-        model_groups = {}
-        for exp in all_experiments:
-            model_name = exp.get("model", "unknown")
-            model_groups.setdefault(model_name, []).append(exp)
+        Returns:
+            Formatted header string.
+        """
+        # Resolve metric for display
+        resolved_metric = metric
 
-        # Create metadata and model tables
-        metadata_data = []
-        model_tables = {}
-        comparison_tables = {}  # Store mean/std tables for ranking
+        if pivot == "model":
+            group_label = "MODEL"
+            pivot_label = "strategy"
+        else:
+            group_label = "STRATEGY"
+            pivot_label = "model"
 
-        for model_name, experiments in model_groups.items():
-            if not args.quiet:
-                print(f"\nProcessing model: {model_name}")
+        lines = [
+            "=" * 80,
+            f"{group_label}: {group_value.upper()}",
+            f"METRIC: {metric}",
+        ]
 
-            combination_data = {}
+        # Add metric description if available
+        if metric in METRIC_DESCRIPTIONS:
+            desc = METRIC_DESCRIPTIONS[metric]
+            lines.append(f"  {desc['title']}")
+            lines.append("")
+            for line in desc["explanation"].split("\n"):
+                if line.strip():
+                    lines.append(f"  {line}")
+            lines.append("")
 
-            for exp in experiments:
-                config = get_experiment_config(exp)
-                loss_metric = get_loss_metric_name(config["save_local_model"])
-
-                combination_key = (
-                    config["strategy"],
-                    config["dataset"],
-                    config["input_len"],
-                    config["output_len"],
-                )
-
-                for run in exp.get("runs", []):
-                    run_name = run["name"]
-
-                    # Add to metadata
-                    metadata_data.append(
-                        {
-                            "model": model_name,
-                            "dataset": config["dataset"],
-                            "in": config["input_len"],
-                            "out": config["output_len"],
-                            "strategy": config["strategy"],
-                            "run_name": run_name,
-                            "experiment": exp["experiment_name"],
-                            "save_local_model": config["save_local_model"],
-                            "loss_type": loss_metric,
-                        }
-                    )
-
-                    # Collect loss values
-                    loss_value = extract_loss_values(run, loss_metric)
-                    if loss_value is not None and run_name != "avg":
-                        combination_data.setdefault(combination_key, []).append(
-                            loss_value
-                        )
-
-            # Create table rows for display
-            table_rows = []
-            config_groups = {}
-
-            # Data for ranking tables
-            table_data = []
-
-            for combination_key, values in combination_data.items():
-                strategy, dataset, input_len, output_len = combination_key
-                config_key = (dataset, input_len, output_len)
-
-                mean_value = pl.Series(values).mean() if values else None
-                std_value = pl.Series(values).std() if len(values) > 1 else 0.0
-                # Apply std multiplier for display only
-                std_value_display = std_value * std_multiplier
-
-                config_groups.setdefault(config_key, {})[strategy] = {
-                    "mean": mean_value,
-                    "std": std_value_display,
-                }
-
-                # Store raw data for ranking (without multiplier)
-                table_data.append(
-                    {
-                        "model": model_name,
-                        "strategy": strategy,
-                        "dataset": dataset,
-                        "in": input_len,
-                        "out": output_len,
-                        "loss_mean": mean_value,
-                        "loss_std": std_value_display,
-                        "n_runs": len(values),
-                    }
-                )
-
-            # Build table rows for display
-            for config_key, strategies in config_groups.items():
-                dataset, input_len, output_len = config_key
-
-                row = {"dataset": dataset, "in": input_len, "out": output_len}
-
-                # Add strategy columns with mean±std format using specified decimal places
-                for strategy, stats in strategies.items():
-                    mean_val = stats["mean"]
-                    std_val = stats["std"]
-
-                    # Multiply std by std_multiplier before rounding and displaying
-                    if mean_val is not None and std_val is not None:
-                        std_val_display = round(std_val, decimal_places)
-                        row[strategy] = (
-                            f"{mean_val:.{decimal_places}f}±{std_val_display:.{decimal_places}f}"
-                        )
-                    else:
-                        row[strategy] = "N/A"
-
-                table_rows.append(row)
-
-            # Create comparison tables for ranking
-            if table_data:
-                df = pl.DataFrame(table_data)
-                mean_pivot, std_pivot = _pivot_mean_std(
-                    df,
-                    pivot_on="strategy",
-                    index_cols=["model", "dataset", "in", "out"],
-                )
-                comparison_tables[model_name] = {"mean": mean_pivot, "std": std_pivot}
-
-            # Create DataFrame for display
-            if table_rows:
-                model_df = pl.DataFrame(table_rows)
-                # Sort by dataset, in, out
-                model_df = model_df.sort(["dataset", "in", "out"])
-                model_tables[model_name] = model_df
-                if not args.quiet:
-                    print(
-                        f"Created table for {model_name} with {len(table_rows)} configurations"
-                    )
-
-        # Create ranking tables
-        ranking_tables = create_ranking_table(
-            model_tables=comparison_tables,
-            decimal_places=decimal_places,
-            std_multiplier=std_multiplier,
+        lines.extend(
+            [
+                f"(Standard deviation multiplied by {self.std_multiplier})",
+                f"(Displayed with {self.decimal_places} decimal places)",
+                f"(Aggregation mode: {self.agg_mode})",
+            ]
         )
-        # Sort ranking tables as well
-        for model_name, ranking_df in ranking_tables.items():
-            # Only sort rows that have a dataset value (not the AVG_RANK row)
-            data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
-            avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
-            data_rows = data_rows.sort(["dataset", "in", "out"])
-            ranking_tables[model_name] = pl.concat([data_rows, avg_row])
+        if resolved_metric in TIME_COLUMNS:
+            lines.append(f"(Time unit: {self.time_unit})")
+        if resolved_metric in SIZE_COLUMNS:
+            lines.append(f"(Size unit: {self.size_unit})")
+        lines.extend(
+            [
+                "=" * 80,
+                "Each row shows a unique configuration (dataset, in, out)",
+                f"Columns show mean±std across multiple runs for each {pivot_label}",
+                "-" * 80,
+            ]
+        )
+        return "\n".join(lines)
 
-        metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
-        return model_tables, metadata_table, ranking_tables
+    def _get_ranking_table_header(
+        self,
+        group_value: str,
+        metric: str,
+        pivot: PivotOption,
+    ) -> str:
+        """
+        Generate header text for a ranking table.
 
-    # Else pivot_by == "model": outer loop over strategy; reuse as much logic as possible
-    # Build unified table_data across all experiments
-    table_data = []
-    metadata_data = []
-    for exp in all_experiments:
-        config = get_experiment_config(exp)
-        loss_metric = get_loss_metric_name(config["save_local_model"])
-        model_name = exp.get("model", "unknown")
-        strategy = config["strategy"]
+        Args:
+            group_value: Value of the grouping field (model or strategy name).
+            metric: Metric name.
+            pivot: Pivot mode ('model' or 'strategy').
 
-        for run in exp.get("runs", []):
-            run_name = run["name"]
-            metadata_data.append(
-                {
-                    "model": model_name,
-                    "dataset": config["dataset"],
-                    "in": config["input_len"],
-                    "out": config["output_len"],
-                    "strategy": strategy,
-                    "run_name": run_name,
-                    "experiment": exp["experiment_name"],
-                    "save_local_model": config["save_local_model"],
-                    "loss_type": loss_metric,
-                }
+        Returns:
+            Formatted header string.
+        """
+        if pivot == "model":
+            group_label = "MODEL"
+            pivot_label = "strategy"
+            best_label = "best_strategy"
+        else:
+            group_label = "STRATEGY"
+            pivot_label = "model"
+            best_label = "best_model"
+
+        lines = [
+            "=" * 80,
+            f"RANKING TABLE FOR {group_label}: {group_value.upper()}",
+            f"METRIC: {metric}",
+        ]
+
+        # Add metric description if available
+        if metric in METRIC_DESCRIPTIONS:
+            desc = METRIC_DESCRIPTIONS[metric]
+            lines.append(f"  {desc['title']}")
+            lines.append("")
+            for line in desc["explanation"].split("\n"):
+                if line.strip():
+                    lines.append(f"  {line}")
+            lines.append("")
+
+        lines.extend(
+            [
+                "=" * 80,
+                f"{pivot_label.capitalize()}s ranked by mean performance (1=best, lower is better)",
+                "Ties broken by standard deviation (lower std is better)",
+                "Last row shows average rank across all configurations",
+                f"Last column shows which {pivot_label} wins most often",
+                "-" * 80,
+            ]
+        )
+        return "\n".join(lines)
+
+    def _get_metric_mean_std(
+        self, experiment: Dict, metric: str
+    ) -> Optional[Tuple[float, float]]:
+        """
+        Get mean and std values for a metric from an experiment.
+
+        Args:
+            experiment: Experiment dictionary with aggregates.
+            metric: Base metric name.
+
+        Returns:
+            Tuple of (mean, std) or None if not available.
+        """
+        resolved_metric = self._resolve_metric(metric, experiment)
+        aggregates = experiment.get("aggregates", {})
+        mean_key = f"{resolved_metric}_{self.agg_mode}_mean"
+        std_key = f"{resolved_metric}_{self.agg_mode}_std"
+
+        mean_val = aggregates.get(mean_key)
+        std_val = aggregates.get(std_key)
+
+        if mean_val is None or std_val is None:
+            return None
+        if mean_val == self.output_sentinel and std_val == self.output_sentinel:
+            return None
+
+        return (mean_val, std_val)
+
+    def create_ranking_table(
+        self,
+        experiments: List[Dict],
+        metric: str = "loss",
+        group_by: Tuple[str, ...] = ("dataset", "input_len", "output_len"),
+        pivot_by: str = "strategy",
+        lower_is_better: bool = True,
+    ) -> pl.DataFrame:
+        """
+        Create a ranking table displaying strategy rankings grouped by configuration.
+
+        Ranking rules:
+        - Strategies are ranked by mean performance (1=best)
+        - When means are equal, lower standard deviation wins
+        - N/A for strategies with no data for a configuration
+
+        Args:
+            experiments: List of experiment dictionaries.
+            metric: Metric to rank by.
+            group_by: Tuple of fields to group rows by.
+            pivot_by: Field to pivot columns by (strategies or models).
+            lower_is_better: If True, lower metric values get better ranks.
+
+        Returns:
+            Polars DataFrame with ranking table including:
+            - Pivot columns with ranks (1, 2, 3, ... or N/A)
+            - best_{pivot_by} column showing winner for each row
+            - AVG_RANK row showing average ranks
+            - Most frequent winner in bottom-right cell
+        """
+        # Build data structure: {config_key: {pivot_value: (mean, std)}}
+        config_data: Dict[Tuple, Dict[str, Tuple[float, float]]] = {}
+        all_pivot_values: set[str] = set()
+
+        for exp in experiments:
+            # Build config key
+            config_key = tuple(exp.get(field) for field in group_by)
+            pivot_value = exp.get(pivot_by)
+
+            if pivot_value is None:
+                continue
+
+            all_pivot_values.add(pivot_value)
+
+            # Get mean and std
+            mean_std = self._get_metric_mean_std(exp, metric)
+            if mean_std is None:
+                continue
+
+            if config_key not in config_data:
+                config_data[config_key] = {}
+            config_data[config_key][pivot_value] = mean_std
+
+        if not config_data:
+            logger.warning("No data to rank")
+            return pl.DataFrame()
+
+        # Sort pivot values for consistent column ordering
+        pivot_values = sorted(all_pivot_values)
+
+        # Best column name
+        best_col = f"best_{pivot_by}"
+
+        # Compute ranks for each configuration
+        rows: List[Dict[str, Any]] = []
+        pivot_ranks: Dict[str, List[float]] = {pv: [] for pv in pivot_values}
+        win_counts: Dict[str, int] = {pv: 0 for pv in pivot_values}
+
+        for config_key in sorted(config_data.keys()):
+            row: Dict[str, Any] = {}
+
+            # Add group_by fields
+            for i, field in enumerate(group_by):
+                row[field] = config_key[i]
+
+            # Get pivot values with data for this config
+            config_pivot_values = config_data[config_key]
+
+            # Sort pivot values by (mean, std) - lower is better if lower_is_better
+            sorted_pivot_values = sorted(
+                config_pivot_values.items(),
+                key=lambda x: (x[1][0], x[1][1]),
+                reverse=not lower_is_better,
             )
-            loss_value = extract_loss_values(run, loss_metric)
-            if loss_value is not None and run_name != "avg":
-                table_data.append(
-                    {
-                        "model": model_name,
-                        "strategy": strategy,
-                        "dataset": config["dataset"],
-                        "in": config["input_len"],
-                        "out": config["output_len"],
-                        "loss": loss_value,
-                    }
-                )
 
-    # Group by strategy and then by (dataset,in,out) to create rows with model columns
-    strategy_groups = {}
-    for row in table_data:
-        strat = row["strategy"]
-        cfg = (row["dataset"], row["in"], row["out"])
-        strategy_groups.setdefault(strat, {}).setdefault(cfg, {}).setdefault(
-            row["model"], []
-        ).append(row["loss"])
+            # Assign ranks (handle ties)
+            ranks: Dict[str, int] = {}
+            current_rank = 1
+            prev_mean_std: Optional[Tuple[float, float]] = None
 
-    model_tables = {}
-    comparison_tables = {}
-    for strat, cfgs in strategy_groups.items():
-        if not args.quiet:
-            print(f"\nProcessing strategy: {strat}")
-
-        table_rows = []
-        # prepare raw table_data for ranking creation
-        ranking_raw = []
-
-        for cfg, model_losses in cfgs.items():
-            dataset, input_len, output_len = cfg
-            row = {"dataset": dataset, "in": input_len, "out": output_len}
-
-            for model_name, losses in model_losses.items():
-                mean_value = pl.Series(losses).mean() if losses else None
-                std_value = pl.Series(losses).std() if len(losses) > 1 else 0.0
-                std_value_display = std_value * std_multiplier
-
-                if mean_value is not None:
-                    row[model_name] = (
-                        f"{mean_value:.{decimal_places}f}±{round(std_value_display, decimal_places):.{decimal_places}f}"
-                    )
+            for i, (pv, mean_std) in enumerate(sorted_pivot_values):
+                if prev_mean_std is not None and mean_std == prev_mean_std:
+                    # Tie - same rank as previous
+                    ranks[pv] = ranks[sorted_pivot_values[i - 1][0]]
                 else:
-                    row[model_name] = "N/A"
+                    ranks[pv] = current_rank
+                prev_mean_std = mean_std
+                current_rank = i + 2  # Next rank after this position
 
-                # for ranking
-                ranking_raw.append(
-                    {
-                        "model": model_name,
-                        "strategy": strat,
-                        "dataset": dataset,
-                        "in": input_len,
-                        "out": output_len,
-                        "loss_mean": mean_value,
-                        "loss_std": std_value_display,
-                        "n_runs": len(losses),
-                    }
-                )
+            # Fill in ranks for all pivot values
+            best_pivot: Optional[str] = None
+            best_rank = float("inf")
 
-            table_rows.append(row)
+            for pv in pivot_values:
+                if pv in ranks:
+                    rank = ranks[pv]
+                    row[pv] = str(rank)
+                    pivot_ranks[pv].append(float(rank))
+                    if rank < best_rank:
+                        best_rank = rank
+                        best_pivot = pv
+                else:
+                    row[pv] = "N/A"
 
-        # Create display table for this strategy
-        if table_rows:
-            strat_df = pl.DataFrame(table_rows).sort(["dataset", "in", "out"])
-            model_tables[strat] = strat_df
-            if not args.quiet:
-                print(
-                    f"Created table for strategy {strat} with {len(table_rows)} configurations"
-                )
+            # Track winner
+            if best_pivot:
+                win_counts[best_pivot] += 1
+                row[best_col] = best_pivot
+            else:
+                row[best_col] = "N/A"
 
-        # Create comparison pivot for ranking (columns = model)
-        if ranking_raw:
-            df = pl.DataFrame(ranking_raw)
-            mean_pivot, std_pivot = _pivot_mean_std(
-                df, pivot_on="model", index_cols=["strategy", "dataset", "in", "out"]
+            rows.append(row)
+
+        # Compute average ranks
+        avg_rank_row: Dict[str, Any] = {}
+        for i, field in enumerate(group_by):
+            if i == 0:
+                avg_rank_row[field] = "AVG_RANK"
+            else:
+                avg_rank_row[field] = ""
+
+        for pv in pivot_values:
+            if pivot_ranks[pv]:
+                avg = np.mean(pivot_ranks[pv])
+                avg_rank_row[pv] = f"{avg:.2f}"
+            else:
+                avg_rank_row[pv] = "N/A"
+
+        # Determine most frequent winner with tiebreaking
+        max_wins = max(win_counts.values()) if win_counts else 0
+        winners = [
+            pv for pv, count in win_counts.items() if count == max_wins and count > 0
+        ]
+
+        if len(winners) == 1:
+            most_frequent = f"{winners[0]} ({max_wins}x)"
+        elif len(winners) > 1:
+            # Tiebreak by average rank (lower is better)
+            winner_avg_ranks = []
+            for w in winners:
+                if pivot_ranks[w]:
+                    winner_avg_ranks.append((w, np.mean(pivot_ranks[w])))
+                else:
+                    winner_avg_ranks.append((w, float("inf")))
+            winner_avg_ranks.sort(key=lambda x: x[1])
+
+            # Check if still tied after avg rank
+            best_avg = winner_avg_ranks[0][1]
+            final_winners = [w for w, avg in winner_avg_ranks if avg == best_avg]
+
+            if len(final_winners) == 1:
+                most_frequent = f"{final_winners[0]} ({max_wins}x)"
+            else:
+                # Still tied - show all
+                tie_str = ", ".join(f"{w} ({max_wins}x)" for w in final_winners)
+                most_frequent = f"tie: {tie_str}"
+        else:
+            most_frequent = "N/A"
+
+        avg_rank_row[best_col] = most_frequent
+        rows.append(avg_rank_row)
+
+        # Create DataFrame
+        df = pl.DataFrame(rows)
+
+        # Reorder columns
+        col_order = list(group_by) + pivot_values + [best_col]
+        df = df.select([c for c in col_order if c in df.columns])
+
+        return df
+
+    def save_tables(
+        self,
+        experiments: List[Dict],
+        metric: str = "loss",
+        pivot: PivotOption = "model",
+        include_ranking: bool = True,
+        lower_is_better: bool = True,
+    ) -> None:
+        """
+        Save tables grouped by the specified pivot field to the output directory.
+
+        Creates one CSV file per unique value of the grouping field.
+        Optionally also creates ranking tables.
+        Also prints the tables to stdout.
+
+        Args:
+            experiments: List of experiment dictionaries.
+            metric: Metric to display.
+            pivot: Pivot mode - 'model' groups by model and pivots by strategy,
+                   'strategy' groups by strategy and pivots by model.
+            include_ranking: If True, also generate ranking tables.
+            lower_is_better: If True, lower metric values get better ranks (for ranking).
+        """
+        # Create output directory if it doesn't exist
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get pivot configuration
+        group_by_field, pivot_by_field, row_group_by = self._get_pivot_config(pivot)
+
+        # Get unique values of the grouping field
+        group_values = sorted(
+            set(exp.get(group_by_field, "unknown") for exp in experiments)
+        )
+
+        for group_value in group_values:
+            # Filter experiments for this group
+            group_exps = [
+                exp for exp in experiments if exp.get(group_by_field) == group_value
+            ]
+
+            if not group_exps:
+                continue
+
+            # Create and save value table
+            df = self.create_table(
+                experiments=group_exps,
+                metric=metric,
+                group_by=row_group_by,
+                pivot_by=pivot_by_field,
             )
-            comparison_tables[strat] = {"mean": mean_pivot, "std": std_pivot}
 
-    # Create ranking tables (keys are strategies)
-    ranking_tables = create_ranking_table(
-        model_tables=comparison_tables,
-        decimal_places=decimal_places,
-        std_multiplier=std_multiplier,
-    )
+            if df.is_empty():
+                logger.warning("No data for %s: %s", group_by_field, group_value)
+                continue
 
-    # Sort ranking tables
-    for strat, ranking_df in ranking_tables.items():
-        data_rows = ranking_df.filter(pl.col("dataset") != "AVG_RANK")
-        avg_row = ranking_df.filter(pl.col("dataset") == "AVG_RANK")
-        data_rows = data_rows.sort(["dataset", "in", "out"])
-        ranking_tables[strat] = pl.concat([data_rows, avg_row])
-
-    metadata_table = pl.DataFrame(metadata_data) if metadata_data else None
-    return model_tables, metadata_table, ranking_tables
-
-
-def display_comparison_tables(
-    model_tables, metadata_table=None, std_multiplier=1.0, decimal_places=4
-):
-    """Display comparison tables with mean and std."""
-    for model_name, tables in model_tables.items():
-        print(f"\n{'='*50}")
-        print(f"MODEL: {model_name.upper()} - MEAN VALUES")
-        print(f"{'='*50}")
-        print(tables["mean"])
-
-        print(f"\n{'='*50}")
-        print(f"MODEL: {model_name.upper()} - STANDARD DEVIATION")
-        print(f"(multiplied by {std_multiplier})")
-        print(f"{'='*50}")
-        print(tables["std"])
-        print()
-
-    if metadata_table is not None:
-        print(f"\n{'='*60}")
-        print("METADATA TABLE (Experiment Details)")
-        print(f"{'='*60}")
-        print(metadata_table)
-
-
-def display_model_tables(
-    model_tables,
-    ranking_tables=None,
-    metadata_table=None,
-    show_metadata=True,
-    std_multiplier=1.0,
-    decimal_places=4,
-):
-    """Display individual model tables with rankings."""
-    for model_name, table in model_tables.items():
-        print(f"\n{'='*80}")
-        print(f"MODEL: {model_name.upper()}")
-        print(f"(Standard deviation multiplied by {std_multiplier})")
-        print(f"(Displayed with {decimal_places} decimal places)")
-        print(f"{'='*80}")
-        print("Each row shows a unique configuration (dataset, in, out)")
-        print("Columns show mean±std across multiple runs for each strategy")
-        print("-" * 80)
-        print(table)
-        print()
-
-        # Display ranking table
-        if ranking_tables and model_name in ranking_tables:
-            print(f"\n{'='*80}")
-            print(f"RANKING TABLE FOR {model_name.upper()}")
-            print(f"{'='*80}")
-            print(
-                "Strategies ranked by mean performance (1=best, lower loss is better)"
-            )
-            print("Ties broken by standard deviation (lower std is better)")
-            print("Last row shows average rank across all configurations")
-            print("Last column shows which strategy wins most often")
-            print("-" * 80)
-            print(ranking_tables[model_name])
+            # Print header and table
+            header = self._get_table_header(group_value, metric, pivot)
+            print(header)
+            print(df)
             print()
 
-    if metadata_table is not None and show_metadata:
-        print(f"\n{'='*80}")
-        print("METADATA TABLE (All Runs and Experiments)")
-        print(f"{'='*80}")
-        print(metadata_table)
+            # Save to CSV
+            filename = f"{group_value}_{metric}_{self.agg_mode}.csv"
+            output_path = self.output_dir / filename
+            df.write_csv(output_path)
+            logger.info("Saved table to: %s", output_path)
 
-
-def save_comparison_tables(
-    model_tables,
-    metadata_table=None,
-    output_dir="analysis/tables",
-    std_multiplier=1.0,
-    decimal_places=4,
-):
-    """Save comparison tables to CSV files."""
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Add std_multiplier and decimal_places info to filenames if not default
-    suffix = ""
-    if std_multiplier != 10000:
-        suffix += f"_stdx{std_multiplier}"
-    if decimal_places != 3:
-        suffix += f"_dec{decimal_places}"
-
-    for model_name, tables in model_tables.items():
-        # Save mean table
-        mean_filepath = os.path.join(
-            output_dir, f"{model_name}_mean_comparison{suffix}.csv"
-        )
-        tables["mean"].write_csv(mean_filepath)
-        print(f"Saved mean table for {model_name} to {mean_filepath}")
-
-        # Save std table
-        std_filepath = os.path.join(
-            output_dir, f"{model_name}_std_comparison{suffix}.csv"
-        )
-        tables["std"].write_csv(std_filepath)
-        print(f"Saved std table for {model_name} to {std_filepath}")
-
-        # Save raw data
-        raw_filepath = os.path.join(output_dir, f"{model_name}_raw_data{suffix}.csv")
-        tables["raw_data"].write_csv(raw_filepath)
-        print(f"Saved raw data for {model_name} to {raw_filepath}")
-
-    if metadata_table is not None:
-        metadata_filepath = os.path.join(output_dir, f"experiment_metadata{suffix}.csv")
-        metadata_table.write_csv(metadata_filepath)
-        print(f"Saved metadata table to {metadata_filepath}")
-
-
-def save_model_tables(
-    model_tables,
-    ranking_tables=None,
-    metadata_table=None,
-    output_dir="analysis/tables",
-    std_multiplier=1.0,
-    decimal_places=4,
-):
-    """Save individual model tables and ranking tables to CSV files."""
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Add std_multiplier and decimal_places info to filenames if not default
-    suffix = ""
-    if std_multiplier != 10000:
-        suffix += f"_stdx{std_multiplier}"
-    if decimal_places != 3:
-        suffix += f"_dec{decimal_places}"
-
-    for model_name, table in model_tables.items():
-        # Save analysis table
-        filename = f"{model_name}_analysis{suffix}.csv"
-        filepath = os.path.join(output_dir, filename)
-        table.write_csv(filepath)
-        print(f"Saved analysis table for {model_name} to {filepath}")
-
-        # Save ranking table
-        if ranking_tables and model_name in ranking_tables:
-            ranking_filename = f"{model_name}_ranking{suffix}.csv"
-            ranking_filepath = os.path.join(output_dir, ranking_filename)
-            ranking_tables[model_name].write_csv(ranking_filepath)
-            print(f"Saved ranking table for {model_name} to {ranking_filepath}")
-
-    if metadata_table is not None:
-        metadata_filepath = os.path.join(output_dir, f"experiment_metadata{suffix}.csv")
-        metadata_table.write_csv(metadata_filepath)
-        print(f"Saved metadata table to {metadata_filepath}")
-
-
-def create_summary_table(model_tables, decimal_places=4):
-    """Create summary tables showing average performance across all models."""
-    mean_summary_data = []
-    std_summary_data = []
-
-    for model_name, tables in model_tables.items():
-        strategy_columns = [
-            col
-            for col in tables["mean"].columns
-            if col not in ["model", "dataset", "in", "out"]
-        ]
-
-        mean_summary_row = {"model": model_name}
-        std_summary_row = {"model": model_name}
-
-        for strategy in strategy_columns:
-            mean_value = tables["mean"].select(pl.col(strategy).mean()).item()
-            std_value = tables["std"].select(pl.col(strategy).mean()).item()
-
-            mean_summary_row[strategy] = mean_value
-            std_summary_row[strategy] = std_value
-
-        mean_summary_data.append(mean_summary_row)
-        std_summary_data.append(std_summary_row)
-
-    mean_summary = pl.DataFrame(mean_summary_data) if mean_summary_data else None
-    std_summary = pl.DataFrame(std_summary_data) if std_summary_data else None
-
-    return mean_summary, std_summary
-
-
-def create_combined_summary_table(model_tables, decimal_places=4):
-    """Create combined summary table with mean±std format."""
-    summary_data = []
-
-    for model_name, tables in model_tables.items():
-        strategy_columns = [
-            col
-            for col in tables["mean"].columns
-            if col not in ["model", "dataset", "in", "out"]
-        ]
-
-        summary_row = {"model": model_name}
-
-        for strategy in strategy_columns:
-            mean_value = tables["mean"].select(pl.col(strategy).mean()).item()
-            std_value = tables["std"].select(pl.col(strategy).mean()).item()
-
-            if mean_value is not None and std_value is not None:
-                summary_row[strategy] = (
-                    f"{mean_value:.{decimal_places}f}±{std_value:.{decimal_places}f}"
+            # Create and save ranking table if requested
+            if include_ranking:
+                df_rank = self.create_ranking_table(
+                    experiments=group_exps,
+                    metric=metric,
+                    group_by=row_group_by,
+                    pivot_by=pivot_by_field,
+                    lower_is_better=lower_is_better,
                 )
-            else:
-                summary_row[strategy] = "N/A"
 
-        summary_data.append(summary_row)
+                if not df_rank.is_empty():
+                    # Print ranking table
+                    rank_header = self._get_ranking_table_header(
+                        group_value, metric, pivot
+                    )
+                    print(rank_header)
+                    print(df_rank)
+                    print()
 
-    return pl.DataFrame(summary_data) if summary_data else None
+                    # Save ranking table
+                    rank_filename = (
+                        f"{group_value}_{metric}_{self.agg_mode}_ranking.csv"
+                    )
+                    rank_output_path = self.output_dir / rank_filename
+                    df_rank.write_csv(rank_output_path)
+                    logger.info("Saved ranking table to: %s", rank_output_path)
 
 
-def main():
-    """Main function with command line argument handling."""
-    global args
-    args = parse_args(default_table_type="model-specific")
-    pivot_by = getattr(args, "pivot_by", "strategy")
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Analyze and aggregate federated learning experiment results.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    if not args.quiet:
-        print(f"Loading experiments from: {args.runs_dir}")
-        print(f"Standard deviation will be multiplied by: {args.std_multiplier}")
-        print(f"Results will be displayed with {args.decimal_places} decimal places")
+    parser.add_argument(
+        "--runs-dir",
+        "-r",
+        type=str,
+        default="runs",
+        help="Path to the runs directory",
+    )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        type=str,
+        default="analysis/tables",
+        help="Output directory for generated tables",
+    )
+    parser.add_argument(
+        "--std-multiplier",
+        "-s",
+        type=float,
+        default=1e3,
+        help="Factor to multiply standard deviation values",
+    )
+    parser.add_argument(
+        "--decimal-places",
+        "-d",
+        type=int,
+        default=3,
+        help="Number of decimal places to round output values",
+    )
+    parser.add_argument(
+        "--agg-mode",
+        "-a",
+        type=str,
+        choices=AGG_MODES,
+        default="min",
+        help="Per-run aggregation mode",
+    )
+    parser.add_argument(
+        "--time-unit",
+        "-t",
+        type=str,
+        choices=TIME_UNITS,
+        default="s",
+        help="Output unit for time values (s=seconds, ms=milliseconds, m=minutes, h=hours)",
+    )
+    parser.add_argument(
+        "--size-unit",
+        "-z",
+        type=str,
+        choices=SIZE_UNITS,
+        default="mb",
+        help="Output unit for size values (b=bytes, kb=kilobytes, mb=megabytes, gb=gigabytes, tb=terabytes)",
+    )
+    parser.add_argument(
+        "--metric",
+        "-m",
+        type=str,
+        choices=METRICS,
+        default="loss",
+        help="Metric to display. Use 'efficiency' for time per iteration, 'communication' for total bandwidth. "
+        "'loss' resolves to personal_avg_test_loss or global_avg_test_loss based on save_local_model. "
+        "Use 'all' to generate tables for all available metrics.",
+    )
+    parser.add_argument(
+        "--pivot",
+        "-p",
+        type=str,
+        choices=PIVOT_OPTIONS,
+        default="model",
+        help="Pivot mode: 'model' groups by model with strategy columns, "
+        "'strategy' groups by strategy with model columns",
+    )
+    parser.add_argument(
+        "--no-ranking",
+        action="store_true",
+        help="Disable ranking table generation",
+    )
+    parser.add_argument(
+        "--higher-is-better",
+        action="store_true",
+        help="Higher metric values are better (default: lower is better)",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable debug logging",
+    )
 
-    experiments = load_all_experiments(runs_dir=args.runs_dir, max_lines=args.max_lines)
-    if not experiments:
-        print(f"No valid experiments found in {args.runs_dir}")
-        return
-    experiments = filter_experiments(experiments, args)
+    # Filtering options
+    filter_group = parser.add_argument_group("filtering options")
+    filter_group.add_argument(
+        "--models",
+        type=str,
+        nargs="+",
+        metavar="MODEL",
+        help="Filter to specific models",
+    )
+    filter_group.add_argument(
+        "--strategies",
+        type=str,
+        nargs="+",
+        metavar="STRATEGY",
+        help="Filter to specific strategies",
+    )
+    filter_group.add_argument(
+        "--datasets",
+        type=str,
+        nargs="+",
+        metavar="DATASET",
+        help="Filter to specific datasets",
+    )
+    filter_group.add_argument(
+        "--output-lens",
+        type=int,
+        nargs="+",
+        metavar="LEN",
+        help="Filter to specific output lengths",
+    )
+    filter_group.add_argument(
+        "--experiments",
+        type=str,
+        nargs="+",
+        metavar="NAME",
+        help="Filter to specific experiment name patterns",
+    )
 
-    # Additional filter: Excel file
-    if args.excel:
-        if not os.path.exists(args.excel):
-            print(f"Excel file not found: {args.excel}")
-            return
-        excel_names = get_experiment_names_from_excel(args.excel)
-        experiments = [
-            exp for exp in experiments if exp.get("experiment_name", "") in excel_names
-        ]
-        if not args.quiet:
-            print(f"Filtered experiments using Excel file: {args.excel}")
-            print(f"Remaining experiments: {len(experiments)}")
+    return parser.parse_args()
 
-    if not experiments:
-        print("No experiments match the specified filters")
-        return
 
-    experiment_paths = get_experiment_paths(experiments)
+def main() -> None:
+    """Main entry point."""
+    args = parse_args()
 
-    if not args.quiet:
-        print(f"Processing {len(experiment_paths)} experiments...")
-        if args.models:
-            print(f"  Models: {args.models}")
-        if args.strategies:
-            print(f"  Strategies: {args.strategies}")
-        if args.datasets:
-            print(f"  Datasets: {args.datasets}")
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    # Generate tables based on type
-    if args.table_type in ["model-specific", "both"]:
-        if not args.quiet:
-            print("\nGenerating model-specific tables...")
+    analysis = Analysis(
+        runs_dir=args.runs_dir,
+        output_dir=args.output_dir,
+        std_multiplier=args.std_multiplier,
+        decimal_places=args.decimal_places,
+        agg_mode=args.agg_mode,
+        time_unit=args.time_unit,
+        size_unit=args.size_unit,
+    )
 
-        model_tables, metadata_table, ranking_tables = create_model_specific_tables(
-            experiment_paths,
-            runs_dir=args.runs_dir,
-            std_multiplier=args.std_multiplier,
-            decimal_places=args.decimal_places,
-            max_lines=args.max_lines,
-            pivot_by=pivot_by,
+    experiments = analysis.load_all_experiments(
+        models=args.models,
+        strategies=args.strategies,
+        datasets=args.datasets,
+        output_lens=args.output_lens,
+        experiments=args.experiments,
+    )
+
+    # Determine which metrics to process
+    if args.metric == "all":
+        metrics_to_process = [m for m in METRICS if m != "all"]
+        logger.info("Processing all metrics: %s", ", ".join(metrics_to_process))
+    else:
+        metrics_to_process = [args.metric]
+
+    # Process each metric
+    for metric in metrics_to_process:
+        if len(metrics_to_process) > 1:
+            logger.info("Processing metric: %s", metric)
+
+        analysis.save_tables(
+            experiments,
+            metric=metric,
+            pivot=args.pivot,
+            include_ranking=not args.no_ranking,
+            lower_is_better=not args.higher_is_better,
         )
-
-        if not args.no_display:
-            display_model_tables(
-                model_tables,
-                ranking_tables,
-                metadata_table if args.show_metadata else None,
-                show_metadata=args.show_metadata,
-                std_multiplier=args.std_multiplier,
-                decimal_places=args.decimal_places,
-            )
-
-        # Save tables (metadata always saved)
-        save_model_tables(
-            model_tables,
-            ranking_tables,
-            metadata_table,  # Always save metadata
-            output_dir=args.output_dir,
-            std_multiplier=args.std_multiplier,
-            decimal_places=args.decimal_places,
-        )
-
-    if args.table_type in ["comparison", "both"]:
-        if not args.quiet:
-            print("\nGenerating comparison tables...")
-
-        comp_tables, comp_metadata = create_comparison_tables(
-            experiment_paths,
-            runs_dir=args.runs_dir,
-            std_multiplier=args.std_multiplier,
-            decimal_places=args.decimal_places,
-            max_lines=args.max_lines,
-            pivot_by=pivot_by,
-        )
-
-        if not args.no_display:
-            display_comparison_tables(
-                comp_tables,
-                comp_metadata if args.show_metadata else None,
-                std_multiplier=args.std_multiplier,
-                decimal_places=args.decimal_places,
-            )
-
-        # Save comparison tables (metadata always saved)
-        save_comparison_tables(
-            comp_tables,
-            comp_metadata,  # Always save metadata
-            output_dir=args.output_dir,
-            std_multiplier=args.std_multiplier,
-            decimal_places=args.decimal_places,
-        )
-
-    if not args.quiet:
-        print(f"\nTables saved to: {args.output_dir}")
 
 
 if __name__ == "__main__":
