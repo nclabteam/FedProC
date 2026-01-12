@@ -19,6 +19,7 @@
 | ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
 | Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
 | ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256       | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
+| ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
 | METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272        | [Github](https://github.com/liyaguang/DCRNN) |
 | MekongSalinity           | Environment   |              |          |               |               | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
 | PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
