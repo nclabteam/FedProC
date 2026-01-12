@@ -17,7 +17,6 @@ import json
 import logging
 import os
 import sys
-from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -77,10 +76,10 @@ class InferenceEvaluator:
         self.runs_dir = Path(runs_dir)
         self.output_dir = Path(output_dir)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
+
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(
             "InferenceEvaluator initialized: runs_dir=%s, device=%s",
             self.runs_dir,
@@ -162,16 +161,18 @@ class InferenceEvaluator:
             Dictionary with per-client and aggregated metrics.
         """
         losses = []
-        
-        for client_idx, client in enumerate(tqdm(
-            data_info,
-            desc=f"Evaluating on dataset ({'denormalized' if denormalize else 'normalized'})"
-        )):
+
+        for client_idx, client in enumerate(
+            tqdm(
+                data_info,
+                desc=f"Evaluating on dataset ({'denormalized' if denormalize else 'normalized'})",
+            )
+        ):
             try:
                 # Load scaler
                 stats = client["stats"]["train"]
                 scaler = getattr(__import__("scalers"), config["scaler"])(stats)
-                
+
                 # Load test data
                 testloader = SharedMethods.load_data(
                     file=client["paths"]["test"],
@@ -180,7 +181,7 @@ class InferenceEvaluator:
                     scaler=scaler,
                     batch_size=config["batch_size"],
                 )
-                
+
                 # Evaluate
                 client_losses = []
                 with torch.no_grad():
@@ -188,7 +189,7 @@ class InferenceEvaluator:
                         x = x.to(self.device)
                         y = y.to(self.device)
                         pred = model(x)
-                        
+
                         if denormalize:
                             pred = torch.tensor(
                                 scaler.inverse_transform(pred.cpu().detach().numpy()),
@@ -200,10 +201,10 @@ class InferenceEvaluator:
                                 dtype=y.dtype,
                                 device=self.device,
                             )
-                        
+
                         loss = evaluation_result(pred, y)
                         client_losses.append(loss)
-                
+
                 # Aggregate client metrics
                 if client_losses:
                     client_metrics = {
@@ -211,7 +212,7 @@ class InferenceEvaluator:
                         for k in client_losses[0].keys()
                     }
                     losses.append(client_metrics)
-                    
+
             except Exception as e:
                 logger.warning(
                     "Failed to evaluate client %d: %s",
@@ -219,21 +220,19 @@ class InferenceEvaluator:
                     e,
                 )
                 continue
-        
+
         # Aggregate metrics across all clients
         if not losses:
             logger.warning("No valid client evaluations")
             return {}
-        
+
         aggregated = {
-            k: np.mean([loss[k] for loss in losses])
-            for k in losses[0].keys()
+            k: np.mean([loss[k] for loss in losses]) for k in losses[0].keys()
         }
         std_metrics = {
-            f"{k}_std": np.std([loss[k] for loss in losses])
-            for k in losses[0].keys()
+            f"{k}_std": np.std([loss[k] for loss in losses]) for k in losses[0].keys()
         }
-        
+
         return {**aggregated, **std_metrics}
 
     def evaluate_experiment(
@@ -254,52 +253,52 @@ class InferenceEvaluator:
             List of result dictionaries containing evaluation metrics.
         """
         results = []
-        
+
         # Load configuration and data info
         config = self._load_config(experiment_name)
         if not config:
             logger.error("Could not load config for experiment %s", experiment_name)
             return results
-        
+
         data_info = self._load_data_info(config["path_info"])
         target_data_info = self._load_data_info(
             config["path_info"].replace(config["dataset"], target_dataset)
         )
-        
+
         if not target_data_info:
             logger.error(
                 "Could not load target dataset info for %s",
                 target_dataset,
             )
             return results
-        
+
         # Process each trial
         exp_path = self.runs_dir / experiment_name
         for trial in sorted(os.listdir(exp_path)):
             trial_path = exp_path / trial / "models"
             if not trial_path.exists():
                 continue
-            
+
             # Process each model checkpoint
             for weights_file in sorted(os.listdir(trial_path)):
                 if not weights_file.endswith(".pt"):
                     continue
-                
+
                 model_path = trial_path / weights_file
                 model = self._load_model(model_path)
                 if model is None:
                     continue
-                
+
                 logger.info("Evaluating %s", model_path)
-                
+
                 # Determine model type
                 model_type = "best" if "best" in weights_file else "last"
-                
+
                 # Evaluate on target dataset
                 modes_to_eval = (
                     ["norm", "denorm"] if norm_mode == "both" else [norm_mode]
                 )
-                
+
                 for mode in modes_to_eval:
                     metrics = self.evaluate_model_on_dataset(
                         model,
@@ -307,7 +306,7 @@ class InferenceEvaluator:
                         config,
                         denormalize=(mode == "denorm"),
                     )
-                    
+
                     if metrics:
                         result = {
                             "experiment": experiment_name,
@@ -321,7 +320,7 @@ class InferenceEvaluator:
                         }
                         result.update(metrics)
                         results.append(result)
-        
+
         return results
 
     def save_results(
@@ -344,18 +343,16 @@ class InferenceEvaluator:
         if not results:
             logger.warning("No results to save")
             return None
-        
+
         df = pl.DataFrame(results)
-        
+
         # Generate filename
-        filename = (
-            f"{experiment_name}_inference_{target_dataset}.csv"
-        )
+        filename = f"{experiment_name}_inference_{target_dataset}.csv"
         output_path = self.output_dir / filename
-        
+
         df.write_csv(str(output_path))
         logger.info("Saved inference results to %s", output_path)
-        
+
         return output_path
 
 
@@ -428,13 +425,13 @@ def main() -> None:
 
     for experiment in args.experiments:
         logger.info("Processing experiment: %s", experiment)
-        
+
         results = evaluator.evaluate_experiment(
             experiment,
             args.target_dataset,
             args.norm_mode,
         )
-        
+
         if results:
             evaluator.save_results(results, experiment, args.target_dataset)
         else:
