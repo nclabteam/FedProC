@@ -900,11 +900,11 @@ class Analysis:
 
         Args:
             experiment: Experiment metadata dictionary.
-            models: List of model names to include (case-insensitive).
-            strategies: List of strategy names to include (case-insensitive).
-            datasets: List of dataset names to include (case-insensitive).
+            models: List of model names to include (case-insensitive substring matching).
+            strategies: List of strategy names to include (case-insensitive substring matching).
+            datasets: List of dataset names to include (case-insensitive substring matching).
             output_lens: List of output lengths to include.
-            experiments: List of experiment name patterns to include.
+            experiments: List of experiment name patterns to include (case-insensitive substring matching).
 
         Returns:
             True if the experiment matches all non-None filters.
@@ -917,17 +917,17 @@ class Analysis:
 
         if models is not None:
             exp_model = experiment.get("model", "").lower()
-            if not any(m.lower() == exp_model for m in models):
+            if not any(m.lower() in exp_model for m in models):
                 return False
 
         if strategies is not None:
             exp_strategy = experiment.get("strategy", "").lower()
-            if not any(s.lower() == exp_strategy for s in strategies):
+            if not any(s.lower() in exp_strategy for s in strategies):
                 return False
 
         if datasets is not None:
             exp_dataset = experiment.get("dataset", "").lower()
-            if not any(d.lower() == exp_dataset for d in datasets):
+            if not any(d.lower() in exp_dataset for d in datasets):
                 return False
 
         if output_lens is not None:
