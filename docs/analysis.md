@@ -1,10 +1,12 @@
 # Analysis Tools Documentation
 
-This directory contains the analysis tool for processing federated learning experiment results.
+This document describes the analysis tools for processing federated learning experiment results.
 
 ---
 
-## results.py - Experiment Results Analyzer
+# Experiment Results Analysis
+
+## Overview
 
 Generates comprehensive analysis tables from federated learning experiments with support for multiple metrics, pivot views, and ranking tables.
 
@@ -182,6 +184,121 @@ python analysis/results.py --models DLinear --strategies FedAvg --output-lens 96
 ```
 
 This flexibility allows researchers to perform targeted analysis on specific experimental conditions while maintaining consistent output formats and analysis methodologies.
+
+---
+
+# Inference Evaluation
+
+## Overview
+
+Evaluates federated learning models on datasets (same or different) with comprehensive metric computation, supporting both regular inference and zero-shot evaluation.
+
+**Features:**
+- Evaluate models on same training dataset (regular inference)
+- Evaluate models on different datasets (zero-shot transfer evaluation)
+- Both normalized and denormalized inference evaluation modes
+- Per-client and aggregated metric computation
+- Batch processing of multiple experiments and trials
+- Comprehensive logging and progress tracking
+- Both model best and last checkpoints
+- Flexible dataset selection for comprehensive evaluation
+
+---
+
+## Command Line Arguments
+
+| Argument           | Short | Type   | Default            | Description                                          |
+|--------------------|-------|--------|-------------------|------------------------------------------------------|
+| --runs-dir         | -r    | str    | "runs"             | Directory containing experiment folders              |
+| --output-dir       | -o    | str    | "analysis/inference" | Output directory for inference results              |
+| --experiments      |       | list   | Required           | Experiments to evaluate (e.g. exp1 exp2 exp3)       |
+| --target-dataset   |       | str    | Required           | Target dataset for evaluation                        |
+| --norm-mode        |       | choice | "both"             | Evaluation mode: norm, denorm, or both              |
+| --verbose          | -v    | flag   | False              | Enable debug logging                                 |
+
+---
+
+## Usage Examples
+
+```bash
+# Zero-shot evaluation: Evaluate trained model on different dataset
+python analysis/inference.py --experiments exp1 --target-dataset ETDatasetHour
+
+# Regular inference: Evaluate model on same training dataset
+python analysis/inference.py --experiments exp1 --target-dataset SolarEnergy
+
+# Batch evaluate multiple experiments on same target dataset
+python analysis/inference.py --experiments exp1 exp2 exp3 --target-dataset ETDatasetHour
+
+# Evaluate with only denormalized metrics
+python analysis/inference.py --experiments exp1 --target-dataset SolarEnergy --norm-mode denorm
+
+# Evaluate with only normalized metrics (keep outputs normalized)
+python analysis/inference.py --experiments exp1 --target-dataset SolarEnergy --norm-mode norm
+
+# Custom output directory
+python analysis/inference.py --experiments exp1 --target-dataset ETDatasetHour --output-dir my_results/inference
+
+# Enable verbose logging for debugging
+python analysis/inference.py --experiments exp1 --target-dataset ETDatasetHour --verbose
+```
+
+---
+
+## Evaluation Modes
+
+**Regular Inference:**
+- Evaluate trained models on the same dataset they were trained on
+- Measures final model performance and training effectiveness
+- Target dataset matches source dataset in experiment config
+
+**Zero-Shot Inference:**
+- Evaluate trained models on different, unseen datasets
+- Measures model generalization and transfer capabilities
+- Target dataset differs from source dataset in experiment config
+- No fine-tuning on target dataset
+
+**Note:** When target_dataset equals source_dataset, this is regular inference. When different, this is zero-shot evaluation.
+Both modes use the same inference pipeline with identical metric computation.
+
+---
+
+## Output Files
+
+Inference results are saved to `analysis/inference/` directory with the following naming convention:
+- `{experiment}_inference_{target_dataset}.csv`: Inference evaluation metrics
+
+**CSV Columns:**
+- `experiment`: Source experiment name
+- `trial`: Trial number within the experiment
+- `model_type`: Either "best" or "last" checkpoint
+- `normalization`: Evaluation mode (norm or denorm)
+- `target_dataset`: Dataset used for evaluation
+- `source_dataset`: Original training dataset
+- `input_len`: Input sequence length
+- `output_len`: Prediction horizon
+- `[metric_name]`: Computed metric (mean across clients)
+- `[metric_name]_std`: Standard deviation of metric across clients
+
+---
+
+## Normalization Modes
+
+**Normalized Mode (`--norm-mode norm`):**
+- Input data is normalized using training statistics
+- Output predictions remain in normalized space (no inverse transform)
+- Useful for analyzing model prediction distributions
+
+**Denormalized Mode (`--norm-mode denorm`):**
+- Input data is normalized
+- Output predictions are denormalized using training statistics
+- Metrics computed on actual value scale
+- More interpretable for domain experts
+
+**Both Mode (`--norm-mode both`):**
+- Evaluates in both norm and denorm modes
+- Provides comprehensive comparison
+- Useful for understanding model behavior across different scales
 
 ---
 
