@@ -79,6 +79,7 @@ METRICS: Tuple[str, ...] = (
     "most_frequent_improvement_streak",
     "oscillation_count",
     "improvement_ratio",
+    "improvement_magnitude",
 )
 
 # Metric descriptions for display
@@ -138,6 +139,13 @@ METRIC_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "Lower values = Inefficient training, many wasted rounds\n"
         "Higher values = Efficient training, most rounds contributed to learning\n"
         "Values >0.5 indicate productive training; <0.3 suggests optimization problems.",
+    },
+    "improvement_magnitude": {
+        "title": "Average loss reduction per improvement (improvement speed)",
+        "explanation": "Average magnitude of loss reduction when improvements occur.\n"
+        "Calculated as average of all loss deltas where loss[i] < loss[i-1].\n"
+        "Higher values = Larger improvements in each step (better optimizer efficiency)\n"
+        "Lower values = Marginal improvements (slower convergence progress).",
     },
 }
 
@@ -644,77 +652,47 @@ class Analysis:
         }
 
     # =========================================================================
-    # Stability metrics
+    # Loss-derived metric helpers
     # =========================================================================
 
-    def _compute_stability_from_sequence(
-        self, seq: List[float], lower_is_better: bool = True
-    ) -> Dict[str, float]:
-        """
-        Compute stability statistics from a per-round metric sequence.
-
-        Args:
-            seq: List of per-round metric values.
-            lower_is_better: If True, lower values are considered better.
-
-        Returns:
-            Dictionary with stability metrics:
-            - last_improvement_round: Last round with improvement
-            - longest_improvement_streak: Maximum consecutive improvements
-            - most_frequent_improvement_streak: Most common improvement pattern
-            - oscillation_count: Number of direction changes
-            - improvement_ratio: Fraction of improving rounds
-        """
-        stability_keys = (
-            "last_improvement_round",
-            "longest_improvement_streak",
-            "most_frequent_improvement_streak",
-            "oscillation_count",
-            "improvement_ratio",
-        )
-
-        out = {k: self.output_sentinel for k in stability_keys}
-        vals = [
-            v for v in seq if isinstance(v, (int, float)) and v != self.input_sentinel
-        ]
-        n = len(vals)
-        if n < 2:
-            return out
-
-        # Define comparison and sign functions based on optimization direction
-        def is_better(new: float, best: float) -> bool:
-            """Check if new value is better than current best."""
-            return new < best if lower_is_better else new > best
-
-        def sign(delta: float) -> int:
-            """Return sign of delta: -1, 0, or 1."""
-            return 0 if delta == 0 else (1 if delta > 0 else -1)
+    def _compute_last_improvement_round(self, vals: List[float]) -> Optional[float]:
+        """Compute the last round where loss improved."""
+        if len(vals) < 2:
+            return None
 
         best_so_far = vals[0]
-        improvements: List[bool] = []  # Boolean per round (starting from round 2)
-        deltas: List[float] = []  # val[i] - val[i-1]
+        last_imp_idx = 0
+        for i in range(1, len(vals)):
+            if vals[i] < best_so_far:
+                last_imp_idx = i + 1  # 1-based
+                best_so_far = vals[i]
 
-        for i in range(1, n):
-            cur = vals[i]
-            deltas.append(cur - vals[i - 1])
-            if is_better(cur, best_so_far):
+        return float(last_imp_idx) if last_imp_idx > 0 else None
+
+    def _compute_improvement_streaks(
+        self, vals: List[float]
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """Compute longest and most frequent improvement streaks.
+
+        Returns:
+            Tuple of (longest_streak, most_frequent_streak)
+        """
+        if len(vals) < 2:
+            return None, None
+
+        best_so_far = vals[0]
+        improvements: List[bool] = []
+        for i in range(1, len(vals)):
+            if vals[i] < best_so_far:
                 improvements.append(True)
-                best_so_far = cur
+                best_so_far = vals[i]
             else:
                 improvements.append(False)
 
-        # Last Improvement Round (1-based round index)
-        last_imp_idx = 0
-        for i, imp in enumerate(improvements, start=2):
-            if imp:
-                last_imp_idx = i
-        out["last_improvement_round"] = float(last_imp_idx) if last_imp_idx > 0 else 0.0
-
-        # Longest Improvement Streak: maximum consecutive True values
+        # Compute streaks
         max_streak = 0
         cur_streak = 0
         streaks: List[int] = []
-
         for imp in improvements:
             if imp:
                 cur_streak += 1
@@ -723,36 +701,72 @@ class Analysis:
                     streaks.append(cur_streak)
                 max_streak = max(max_streak, cur_streak)
                 cur_streak = 0
-
-        # Don't forget the final streak if it exists
         if cur_streak > 0:
             streaks.append(cur_streak)
             max_streak = max(max_streak, cur_streak)
 
-        out["longest_improvement_streak"] = float(max_streak)
+        longest = float(max_streak) if max_streak > 0 else None
 
-        # Most Frequent Improvement Streak: mode of streak lengths
+        # Most frequent
+        most_frequent = None
         if streaks:
             cnt = Counter(streaks)
             most_common = cnt.most_common()
             max_freq = most_common[0][1]
-            # Handle ties by selecting the larger streak
             candidates = [length for length, freq in most_common if freq == max_freq]
-            most_freq_streak = max(candidates)
-            out["most_frequent_improvement_streak"] = float(most_freq_streak)
-        else:
-            out["most_frequent_improvement_streak"] = 0.0
+            most_frequent = float(max(candidates))
 
-        # Oscillation Count: count sign changes in deltas (ignoring zeros)
-        signs = [sign(d) for d in deltas if d != 0]
+        return longest, most_frequent
+
+    def _compute_oscillation_count(self, vals: List[float]) -> Optional[float]:
+        """Compute number of direction changes in loss."""
+        if len(vals) < 2:
+            return None
+
+        deltas = [vals[i] - vals[i - 1] for i in range(1, len(vals))]
+        signs = [0 if d == 0 else (1 if d > 0 else -1) for d in deltas if d != 0]
+
+        if len(signs) < 2:
+            return 0.0
+
         oscillations = sum(1 for i in range(1, len(signs)) if signs[i] != signs[i - 1])
-        out["oscillation_count"] = float(oscillations)
+        return float(oscillations)
 
-        # Improvement Ratio: fraction of rounds with improvement
-        imp_count = sum(1 for imp in improvements if imp)
-        out["improvement_ratio"] = float(imp_count) / float(max(1, n - 1))
+    def _compute_improvement_ratio(self, vals: List[float]) -> Optional[float]:
+        """Compute fraction of rounds with improvement."""
+        if len(vals) < 2:
+            return None
 
-        return out
+        best_so_far = vals[0]
+        improvements = 0
+        for val in vals[1:]:
+            if val < best_so_far:
+                improvements += 1
+                best_so_far = val
+
+        return float(improvements) / float(len(vals) - 1)
+
+    def _compute_improvement_magnitude(self, vals: List[float]) -> Optional[float]:
+        """Compute average magnitude of loss reduction between improvements."""
+        if len(vals) < 2:
+            return None
+
+        # Extract loss values at improvement points
+        last_impr_loss: List[float] = []
+        best_so_far = vals[0]
+        for val in vals:
+            if val < best_so_far:
+                last_impr_loss.append(val)
+                best_so_far = val
+
+        # Calculate deltas between consecutive improvement loss values
+        run_deltas = []
+        for i in range(1, len(last_impr_loss)):
+            delta = last_impr_loss[i - 1] - last_impr_loss[i]
+            if delta > 0:
+                run_deltas.append(delta)
+
+        return float(np.mean(run_deltas)) if run_deltas else None
 
     # =========================================================================
     # Loading data
@@ -857,28 +871,85 @@ class Analysis:
             )
 
         # =====================================================================
-        # Stability metrics (derived from loss time-series per run)
+        # Per-run loss-derived metrics
         # =====================================================================
-        stability_keys = (
-            "last_improvement_round",
-            "longest_improvement_streak",
-            "most_frequent_improvement_streak",
-            "oscillation_count",
-            "improvement_ratio",
-        )
-        stability_per_run: Dict[str, List[float]] = {k: [] for k in stability_keys}
-        for r in runs:
-            seq = r.get(loss_metric_name, [])
-            vals = self._parse_numeric_list(seq, exclude_zero=False)
-            if not vals:
-                continue
-            stab = self._compute_stability_from_sequence(vals, lower_is_better=True)
-            for k, v in stab.items():
-                if v is not None:
-                    stability_per_run[k].append(v)
+        run_vals = [
+            (
+                r,
+                self._parse_numeric_list(
+                    r.get(loss_metric_name, []), exclude_zero=False
+                ),
+            )
+            for r in runs
+        ]
+        valid_run_vals = [(r, vals) for r, vals in run_vals if len(vals) >= 2]
 
-        for sub in stability_keys:
-            aggregates.update(self._compute_aggregates(stability_per_run[sub], sub))
+        # Aggregate all metrics
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_last_improvement_round(vals)) is not None
+                ],
+                "last_improvement_round",
+            )
+        )
+
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_improvement_streaks(vals)[0]) is not None
+                ],
+                "longest_improvement_streak",
+            )
+        )
+
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_improvement_streaks(vals)[1]) is not None
+                ],
+                "most_frequent_improvement_streak",
+            )
+        )
+
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_oscillation_count(vals)) is not None
+                ],
+                "oscillation_count",
+            )
+        )
+
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_improvement_ratio(vals)) is not None
+                ],
+                "improvement_ratio",
+            )
+        )
+
+        aggregates.update(
+            self._compute_aggregates(
+                [
+                    v
+                    for r, vals in valid_run_vals
+                    if (v := self._compute_improvement_magnitude(vals)) is not None
+                ],
+                "improvement_magnitude",
+            )
+        )
 
         return {"aggregates": aggregates}
 
