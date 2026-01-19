@@ -13,6 +13,7 @@ Generates comprehensive analysis tables from federated learning experiments with
 **Features:**
 - Analyze 8 different metrics: loss, efficiency, communication, and 5 stability metrics
 - Batch processing with "all" metric option to generate tables for all metrics at once
+- Excel-driven batch runs: read multiple Excel files with per-row experiment targets
 - Flexible pivot modes: group by model or strategy
 - Ranking tables with performance-based ordering
 - Unit conversion for time (s, ms, m, h) and bandwidth (b, kb, mb, gb, tb)
@@ -20,6 +21,7 @@ Generates comprehensive analysis tables from federated learning experiments with
 - Configurable aggregation modes (min, max, mean, last, median)
 - Customizable output precision and standard deviation scaling
 - Comprehensive metric descriptions displayed in table headers
+- Missing experiments surfaced with their suggested run scripts
 
 ---
 
@@ -39,6 +41,7 @@ Generates comprehensive analysis tables from federated learning experiments with
 | --no-ranking       |       | flag   | False             | Disable ranking table generation                     |
 | --higher-is-better |       | flag   | False             | Higher metric values are better (default: lower)     |
 | --verbose          | -v    | flag   | False             | Enable debug logging                                 |
+| --excels           | -e    | list   | None              | One or more Excel files providing batch queries      |
 | --models           |       | list   | None              | Filter to specific models (e.g. Linear DLinear)      |
 | --strategies       |       | list   | None              | Filter to specific strategies (e.g. FedAvg FedProx)  |
 | --datasets         |       | list   | None              | Filter to specific datasets (e.g. SolarEnergy)       |
@@ -109,7 +112,19 @@ python analysis/results.py --agg-mode median
 
 # Enable verbose logging
 python analysis/results.py --verbose
+
+# Batch by Excel (rows with --project= and --name=; optional script column for rerun hints)
+python analysis/results.py --excels .\scripts\FedProC.xlsx .\scripts\default.xlsx
 ```
+
+---
+
+## Excel Batch Processing
+
+- Provide one or more Excel files via `--excels`. Each row must include columns `--project=` and `--name=` specifying the runs directory and experiment name. An optional `script` column is echoed in logs when an experiment is missing, so you can rerun it quickly.
+- All experiments across all Excel files are aggregated into a single combined table per metric.
+- Rows missing the required columns are skipped with a warning; unreadable files are logged as errors.
+- When an experiment listed in Excel is absent, the log will show `MISSING EXPERIMENTS` with the experiment name and its `script` value if provided.
 
 ---
 

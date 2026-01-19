@@ -1061,7 +1061,6 @@ class Analysis:
             datum.update(stats)
             all_experiments.append(datum)
 
-        logger.info("Loaded %d experiments (after filtering)", len(all_experiments))
         return all_experiments
 
     # =========================================================================
@@ -1711,6 +1710,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--excels",
+        "-e",
+        type=str,
+        nargs="+",
+        help="Excel files with 'project' and 'name' columns for batch processing",
+    )
 
     # Filtering options
     filter_group = parser.add_argument_group("filtering options")
@@ -1753,6 +1759,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_queries_from_excels(
+    excels: List[str],
+) -> List[Tuple[str, str, Dict[str, Any]]]:
+    """Load (project, name, row) tuples from Excel files."""
+    queries: List[Tuple[str, str, Dict[str, Any]]] = []
+    for excel_file in excels:
+        try:
+            df = pl.read_excel(excel_file)
+            for row in df.iter_rows(named=True):
+                project = row.get("--project=")
+                name = row.get("--name=")
+                if project and name:
+                    queries.append((project, name, row))
+                else:
+                    logger.warning(
+                        "Skipping row with missing --project= or --name= in %s: %s",
+                        excel_file,
+                        row,
+                    )
+            logger.info("Loaded queries from Excel file: %s", excel_file)
+        except Exception as e:
+            logger.error("Failed to read Excel file %s: %s", excel_file, e)
+    return queries
+
+
 def main() -> None:
     """Main entry point."""
     args = parse_args()
@@ -1760,23 +1791,74 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    analysis = Analysis(
-        runs_dir=args.runs_dir,
-        output_dir=args.output_dir,
-        std_multiplier=args.std_multiplier,
-        decimal_places=args.decimal_places,
-        agg_mode=args.agg_mode,
-        time_unit=args.time_unit,
-        size_unit=args.size_unit,
-    )
+    # Determine queries to process
+    if args.excels:
+        queries = _load_queries_from_excels(args.excels)
+        if not queries:
+            logger.error("No valid queries loaded from Excel files")
+            return
+        logger.info("Total queries to process: %d", len(queries))
+    else:
+        # Use command-line arguments as single query
+        queries = [(args.runs_dir, None, None)]
 
-    experiments = analysis.load_all_experiments(
-        models=args.models,
-        strategies=args.strategies,
-        datasets=args.datasets,
-        output_lens=args.output_lens,
-        experiments=args.experiments,
-    )
+    # Load all experiments from all queries and track missing ones
+    all_experiments = []
+    missing_experiments = []
+
+    for query_item in queries:
+        runs_dir, exp_name, row = query_item
+
+        analysis = Analysis(
+            runs_dir=runs_dir,
+            output_dir=args.output_dir,
+            std_multiplier=args.std_multiplier,
+            decimal_places=args.decimal_places,
+            agg_mode=args.agg_mode,
+            time_unit=args.time_unit,
+            size_unit=args.size_unit,
+        )
+
+        # Load only the specific experiment from Excel, or all experiments if using CLI
+        if exp_name:
+            # From Excel: load only the specified experiment
+            experiments = analysis.load_all_experiments(
+                experiments=[exp_name],
+                models=args.models,
+                strategies=args.strategies,
+                datasets=args.datasets,
+                output_lens=args.output_lens,
+            )
+            if not experiments and row:
+                # Experiment not found, store for later logging
+                missing_experiments.append((exp_name, row))
+        else:
+            # From CLI: load all experiments with optional filters
+            experiments = analysis.load_all_experiments(
+                models=args.models,
+                strategies=args.strategies,
+                datasets=args.datasets,
+                output_lens=args.output_lens,
+                experiments=args.experiments,
+            )
+
+        all_experiments.extend(experiments)
+
+    # Log missing experiments with their script commands
+    if missing_experiments:
+        logger.warning("\n" + "=" * 80)
+        logger.warning("MISSING EXPERIMENTS - Run these commands to generate results:")
+        logger.warning("=" * 80)
+        for exp_name, row in missing_experiments:
+            script = row.get("script", "N/A") if row else "N/A"
+            print(script)
+        logger.warning("\n" + "=" * 80)
+
+    if not all_experiments:
+        logger.warning("No experiments loaded from any query")
+        return
+
+    logger.info("Total experiments loaded: %d", len(all_experiments))
 
     # Determine which metrics to process
     if args.metric == "all":
@@ -1785,13 +1867,24 @@ def main() -> None:
     else:
         metrics_to_process = [args.metric]
 
-    # Process each metric
+    # Create Analysis instance for save_tables (uses first runs_dir for output_dir reference)
+    analysis = Analysis(
+        runs_dir=queries[0][0],
+        output_dir=args.output_dir,
+        std_multiplier=args.std_multiplier,
+        decimal_places=args.decimal_places,
+        agg_mode=args.agg_mode,
+        time_unit=args.time_unit,
+        size_unit=args.size_unit,
+    )
+
+    # Process each metric once with all experiments combined
     for metric in metrics_to_process:
         if len(metrics_to_process) > 1:
             logger.info("Processing metric: %s", metric)
 
         analysis.save_tables(
-            experiments,
+            all_experiments,
             metric=metric,
             pivot=args.pivot,
             include_ranking=not args.no_ranking,
