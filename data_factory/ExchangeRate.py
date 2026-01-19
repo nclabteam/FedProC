@@ -12,10 +12,11 @@ from .base import BaseDataset
 class ExchangeRate(BaseDataset):
     """
     Daily exchange rates for 8 foreign countries (1990-2016).
-    
+
     Countries: Australia, British, Canada, Switzerland, China, Japan, New Zealand, Singapore.
     Data is preprocessed with weekends/holidays already removed.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Set the paths for the dataset
@@ -63,10 +64,7 @@ class ExchangeRate(BaseDataset):
         start_date = datetime(1990, 1, 1)
         num_rows = df.shape[0]  # Number of rows in the dataset
 
-        datetime_series = [
-            start_date + timedelta(days=i)
-            for i in range(num_rows)
-        ]
+        datetime_series = [start_date + timedelta(days=i) for i in range(num_rows)]
         df = df.with_columns(pl.Series(self.column_date, datetime_series))
 
         if self.split_files:
