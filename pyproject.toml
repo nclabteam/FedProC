@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fedproc"
+version = "1.0.0"
+description = "A Benchmarking Framework for Federated Time-Series Forecasting"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Khoa Nguyen", email = "neko941@cbnu.ac.kr"},
+]
+keywords = ["federated-learning", "time-series-forecasting", "benchmarking"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "torch>=1.13.0",
+    "numpy>=1.23.0",
+    "polars>=0.16.0",
+    "ray>=2.0.0",
+    "matplotlib",
+    "tqdm",
+    "scipy",
+    "scikit-learn",
+    "rich",
+    "ptflops",
+    "torchvision",
+    "gdown",
+    "pandas",
+    "statsmodels",
+    "einops",
+    "holidays",
+    "peft",
+    "torch-dct",
+    "PyWavelets",
+    "pytorch-wavelets",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nclabteam/FedProC"
+"Documentation" = "https://fedproc.readthedocs.io/"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["utils*", "strategies*", "models*", "data_factory*", "layers*", "losses*", "optimizers*", "scalers*", "schedulers*", "topologies*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
