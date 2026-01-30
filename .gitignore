@@ -10,3 +10,5 @@ analysis/saved_plots
 analysis/predictions
 analysis/plots
 analysis/tables
+
+venv*
