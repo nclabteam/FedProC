@@ -64,7 +64,13 @@ class TestDataCharacteristics(unittest.TestCase):
         """Verify transition value computation logic for time series."""
         import polars as pl
         import numpy as np
-        from data_factory.base import TimeSeriesCharacteristics
+        try:
+            from data_factory.base import TimeSeriesCharacteristics
+        except ImportError as e:
+            import data_factory.base as df_base
+            print(f"DEBUG: data_factory.base path: {df_base.__file__}")
+            print(f"DEBUG: Available names in data_factory.base: {dir(df_base)}")
+            raise e
         
         # Create a simple predictable signal
         data = pl.DataFrame({
