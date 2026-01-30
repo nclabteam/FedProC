@@ -39,6 +39,9 @@ dependencies = [
     "torch-dct",
     "PyWavelets",
     "pytorch-wavelets",
+    "timm",
+    "higher",
+    "reformer-pytorch",
 ]
 
 [project.urls]
