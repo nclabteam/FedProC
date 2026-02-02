@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Khoa Nguyen", email = "neko941@cbnu.ac.kr"},
+    {name = "NCLab", email = "nclabteam@gmail.com"},
 ]
 keywords = ["federated-learning", "time-series-forecasting", "benchmarking"]
 classifiers = [
@@ -19,10 +19,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "torch>=1.13.0",
-    "numpy>=1.23.0",
-    "polars>=0.16.0",
-    "ray>=2.0.0",
+    "torch>=2.7.1",
+    "numpy>=1.26.3",
+    "polars>=1.19.0",
+    "ray>=2.48.0",
     "matplotlib",
     "tqdm",
     "scipy",
