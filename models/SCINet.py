@@ -27,7 +27,11 @@ class SCINet(nn.Module):
             d_model=configs.d_model,
         )
         self.projection = nn.Conv1d(
-            configs.input_len, configs.ouput_len, kernel_size=1, stride=1, bias=False
+            in_channels=configs.input_len,
+            out_channels=configs.output_len,
+            kernel_size=1,
+            stride=1,
+            bias=False,
         )
 
     def forward(self, x):
