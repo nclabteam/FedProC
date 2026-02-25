@@ -7,6 +7,7 @@ import sys
 import time
 from argparse import Namespace
 from collections import deque
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import polars as pl
@@ -27,22 +28,31 @@ class SharedMethods:
     default_value = 9_999_999.0
 
     @staticmethod
-    def load_data(file, sample_ratio=1.0, batch_size=32, shuffle=False, scaler=None):
+    def load_data(
+        file: str,
+        sample_ratio: float = 1.0,
+        batch_size: int = 32,
+        shuffle: bool = False,
+        scaler: Any = None,
+    ) -> DataLoader:
         """
-        Load data from a numpy .npz file and construct a PyTorch DataLoader.
+        Loads data from a numpy .npz file and constructs a PyTorch DataLoader.
 
         Expects the file to contain arrays 'x' and 'y'. Applies `scaler.transform`
-        to both x and y, converts to torch.float32 tensors and returns a DataLoader.
+        to both x and y, converts to torch.float32 tensors, and returns a DataLoader.
 
         Args:
-            file (str): Path to a .npz file containing arrays 'x' and 'y'.
-            sample_ratio (float): fraction of dataset to use (0..1), default 1.0.
-            batch_size (int): DataLoader batch size.
-            shuffle (bool): whether to shuffle the dataset.
-            scaler: object exposing .transform(array) used to normalize data.
+            file: Path to a .npz file containing arrays 'x' and 'y'.
+            sample_ratio: Fraction of dataset to use (0.0 to 1.0). Defaults to 1.0.
+            batch_size: The batch size for the DataLoader. Defaults to 32.
+            shuffle: Whether to shuffle the dataset. Defaults to False.
+            scaler: An object exposing a `.transform(array)` method for normalization.
 
         Returns:
-            torch.utils.data.DataLoader
+            A PyTorch DataLoader containing the processed dataset.
+
+        Raises:
+            AssertionError: If sample_ratio is not within [0, 1].
         """
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
 
@@ -61,58 +71,111 @@ class SharedMethods:
             indices = torch.randperm(len(dataset))[:subset_size]
             dataset = Subset(dataset, indices)
 
-        dataloader = DataLoader(
+        return DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
         )
 
-        return dataloader
-
     @staticmethod
-    def calculate_loss(model, dataloader, criterion, device="cpu"):
+    def calculate_loss(
+        model: torch.nn.Module,
+        dataloader: DataLoader,
+        criterion: Callable,
+        device: Union[str, torch.device] = "cpu",
+    ) -> List[float]:
+        """
+        Calculates loss for each batch in the dataloader without gradients.
+
+        Args:
+            model: The neural network model.
+            dataloader: The experimental data loader.
+            criterion: The loss function (e.g., nn.MSELoss).
+            device: The device to perform computation on.
+
+        Returns:
+            A list of scalar loss values for each batch.
+        """
         losses = []
         model.to(device)
         model.eval()
-        for batch_x, batch_y in dataloader:
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
-            loss = criterion(outputs, batch_y)
-            losses.append(loss.item())
+        with torch.no_grad():
+            for batch_x, batch_y in dataloader:
+                batch_x = batch_x.float().to(device)
+                batch_y = batch_y.float().to(device)
+                outputs = model(batch_x)
+                loss = criterion(outputs, batch_y)
+                losses.append(loss.item())
         model.to("cpu")
         return losses
 
     @staticmethod
-    def save_model(model, path, name, postfix="", extention="pt", verbose=None):
-        path = os.path.join(
+    def save_model(
+        model: torch.nn.Module,
+        path: str,
+        name: str,
+        postfix: str = "",
+        extention: str = "pt",
+        verbose: Optional[logging.Logger] = None,
+    ) -> None:
+        """
+        Saves a PyTorch model to a specified directory.
+
+        Args:
+            model: The model instance to save.
+            path: Target directory path.
+            name: Base name of the model.
+            postfix: Optional string to append to the filename.
+            extention: File extension (default: "pt").
+            verbose: Optional logger to record the save path.
+        """
+        save_path = os.path.join(
             path,
             f"{'_'.join([name.lower().strip(), postfix])}.{extention}",
         )
-        torch.save(obj=model, f=path)
+        torch.save(obj=model, f=save_path)
         if verbose is not None:
-            verbose.info(f"Model saved to {path}")
+            verbose.info(f"Model saved to {save_path}")
 
     @staticmethod
-    def reset_model(model):
+    def reset_model(model: torch.nn.Module) -> torch.nn.Module:
+        """
+        Creates a deep copy of the model with all parameters zeroed out.
+
+        Args:
+            model: The template model.
+
+        Returns:
+            A new model instance with identical architecture but zeroed weights.
+        """
         result = copy.deepcopy(model)
         for param in result.parameters():
             param.data.zero_()
         return result
 
     @staticmethod
-    def get_size(obj):
+    def get_size(obj: Any) -> float:
+        """
+        Computes the approximate memory size of various objects in Megabytes (MB).
+
+        Args:
+            obj: The object to measure (Tensor, Module, DataLoader, etc.).
+
+        Returns:
+            The size of the object in MB.
+        """
         if isinstance(obj, torch.Tensor):
-            return obj.element_size() * obj.nelement() / (1024**2)  # Size in MB
+            return obj.element_size() * obj.nelement() / (1024**2)
         if isinstance(obj, torch.nn.Module):
             total_size = sum(
                 param.element_size() * param.nelement() for param in obj.parameters()
             )
             total_size += sum(
                 buffer.element_size() * buffer.nelement() for buffer in obj.buffers()
-            )  # Include buffers
-            return total_size / (1024**2)  # Size in MB
+            )
+            return total_size / (1024**2)
         if isinstance(obj, DataLoader):
+            # Estimate size of current dataset
             total_size = sum(
                 sum(
                     item.element_size() * item.nelement()
@@ -121,22 +184,40 @@ class SharedMethods:
                 )
                 for data in obj.dataset
             )
-            return total_size / (1024**2)  # Size in MB
+            return total_size / (1024**2)
         if isinstance(obj, TensorDataset):
             total_size = sum(
                 tensor.element_size() * tensor.nelement() for tensor in obj.tensors
             )
-            return total_size / (1024**2)  # Size in MB
+            return total_size / (1024**2)
         if isinstance(obj, dict):
             total_size = sum(SharedMethods.get_size(value) for value in obj.values())
             return total_size / (1024**2)
         if isinstance(obj, list):
             total_size = sum(SharedMethods.get_size(item) for item in obj)
             return total_size / (1024**2)
-        return sys.getsizeof(obj) / (1024**2)  # Size in MB
+        return sys.getsizeof(obj) / (1024**2)
 
     @staticmethod
-    def train_one_epoch(model, dataloader, optimizer, criterion, scheduler, device):
+    def train_one_epoch(
+        model: torch.nn.Module,
+        dataloader: DataLoader,
+        optimizer: torch.optim.Optimizer,
+        criterion: Callable,
+        scheduler: Optional[Any],
+        device: Union[str, torch.device],
+    ) -> None:
+        """
+        Trains the model for one full epoch over the dataloader.
+
+        Args:
+            model: The neural network model.
+            dataloader: Training data loader.
+            optimizer: PyTorch optimizer instance.
+            criterion: Loss function.
+            scheduler: Optional learning rate scheduler.
+            device: Computing device (CPU/GPU).
+        """
         model.to(device)
         model.train()
         for batch_x, batch_y in dataloader:
@@ -151,14 +232,28 @@ class SharedMethods:
         scheduler.step()
 
     @staticmethod
-    def update_model_params(old, new):
-        """Update the parameters of old_model with those from new_model."""
+    def update_model_params(old: torch.nn.Module, new: torch.nn.Module) -> None:
+        """
+        Copies parameters from one model to another.
+
+        Args:
+            old: The target model to be updated.
+            new: The source model containing new weights.
+        """
         for old_param, new_param in zip(old.parameters(), new.parameters()):
             old_param.data.copy_(new_param.data)
 
     @staticmethod
-    def update_optimizer_params(old, new):
-        """Update the parameters and hyperparameters of old_optimizer with those from new_optimizer."""
+    def update_optimizer_params(
+        old: torch.optim.Optimizer, new: torch.optim.Optimizer
+    ) -> None:
+        """
+        Synchronizes hyperparameters and parameters between two optimizers.
+
+        Args:
+            old: The target optimizer.
+            new: The source optimizer.
+        """
         for old_group, new_group in zip(old.param_groups, new.param_groups):
             # Update all hyperparameters dynamically
             for key in new_group.keys():
@@ -170,31 +265,48 @@ class SharedMethods:
                 old_param.data.copy_(new_param.data)
 
     @staticmethod
-    def _get_objective_function(func_type, func_name):
+    def _get_objective_function(func_type: str, func_name: str) -> Callable:
         """
-        Dynamically import and return the specified function from the given module.
+        Dynamically imports and returns a specified function/class.
+
+        Args:
+            func_type: The module name (e.g., 'losses', 'models').
+            func_name: The function or class name within that module.
+
+        Returns:
+            The imported function or class object.
         """
         module = __import__(func_type, fromlist=[func_name])
         func = getattr(module, func_name)
         return func
 
-    def initialize_loss(self):
+    def initialize_loss(self) -> None:
+        """Initializes the loss function based on the strategy configuration."""
         obj = self._get_objective_function("losses", self.loss)
         self.loss = obj()
 
-    def initialize_model(self):
+    def initialize_model(self) -> None:
+        """Initializes the model architecture based on the strategy configuration."""
         obj = self._get_objective_function("models", self.model)
         self.model = obj(configs=self.configs)
 
-    def initialize_optimizer(self):
+    def initialize_optimizer(self) -> None:
+        """Initializes the optimizer based on the model and configuration."""
         obj = self._get_objective_function("optimizers", self.optimizer)
         self.optimizer = obj(params=self.model.parameters(), configs=self.configs)
 
-    def initialize_scheduler(self):
+    def initialize_scheduler(self) -> None:
+        """Initializes the learning rate scheduler if specified in configuration."""
         obj = self._get_objective_function("schedulers", self.scheduler)
         self.scheduler = obj(optimizer=self.optimizer, configs=self.configs)
 
-    def summarize_model(self, dataloader):
+    def summarize_model(self, dataloader: DataLoader) -> None:
+        """
+        Generates a visual and textual summary of the model architecture.
+
+        Args:
+            dataloader: A sample dataloader to determine input shapes.
+        """
         getattr(__import__("utils"), "ModelSummarizer")(
             model=self.model,
             dataloader=dataloader,
@@ -204,13 +316,20 @@ class SharedMethods:
             device=self.device,
         ).execute()
 
-    def save_results(self):
+    def save_results(self) -> None:
+        """Exports the accumulated metrics to a CSV file."""
         pl_df = pl.DataFrame(self.metrics)
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
         pl_df.write_csv(path)
         self.logger.info(f"Results saved to {path}")
 
-    def fix_results(self, default=-1.0):
+    def fix_results(self, default: float = -1.0) -> None:
+        """
+        Pads all metric lists to the same length to ensure table consistency.
+
+        Args:
+            default: The filler value for missing metrics. Defaults to -1.0.
+        """
         max_length = max(len(lst) for lst in self.metrics.values())
         for key in self.metrics.keys():
             if len(self.metrics[key]) < max_length:
@@ -218,9 +337,13 @@ class SharedMethods:
                     [default] * (max_length - len(self.metrics[key]))
                 )
 
-    def make_logger(self, name, path):
+    def make_logger(self, name: str, path: str) -> None:
         """
-        Creates a logger with a unique name and path.
+        Initializes and configures a unique logger for the class instance.
+
+        Args:
+            name: Base name for the logger.
+            path: Directory path where the log file will be saved.
         """
         log_path = os.path.join(path, f"{name.lower().strip()}.log")
 
@@ -247,9 +370,6 @@ class SharedMethods:
 
         # Set logging format
         formatter = logging.Formatter(f"%(asctime)s ~ {name} ~ %(message)s")
-        # formatter = logging.Formatter(
-        #     f"%(asctime)s ~ %(levelname)s ~ %(lineno)-4.4d ~ {name} ~ %(message)s"
-        # )
         file_handler.setFormatter(formatter)
         stream_handler.setFormatter(formatter)
 
@@ -259,16 +379,25 @@ class SharedMethods:
 
         self.logger.info(f"Logger created at {log_path}")
 
-    def close_logger(self):
-        for h in list(self.logger.handlers):
-            try:
-                h.flush()
-                h.close()
-            except Exception:
-                pass
-        self.logger.handlers.clear()
+    def close_logger(self) -> None:
+        """Flushes and closes all handlers associated with the logger."""
+        if hasattr(self, "logger"):
+            for h in list(self.logger.handlers):
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+            self.logger.handlers.clear()
 
-    def set_configs(self, configs, **kwargs):
+    def set_configs(self, configs: Namespace, **kwargs: Any) -> None:
+        """
+        Sets class attributes based on the provided configuration namespace.
+
+        Args:
+            configs: The configuration namespace from argparse.
+            **kwargs: Additional overrides for configuration attributes.
+        """
         if isinstance(configs, Namespace):
             for key, value in vars(configs).items():
                 setattr(self, key, value)
@@ -276,45 +405,59 @@ class SharedMethods:
             setattr(self, key, value)
         self.configs = configs
 
-    def mkdir(self):
+    def mkdir(self) -> None:
+        """Creates the necessary directory structure for experiments."""
         self.save_path = os.path.join(self.save_path, str(self.times))
         self.model_path = os.path.join(self.save_path, "models")
         self.model_info_path = os.path.join(self.save_path, "models_info")
         self.log_path = os.path.join(self.save_path, "logs")
         self.result_path = os.path.join(self.save_path, "results")
-        for dir in [
+        for dir_path in [
             self.save_path,
             self.model_path,
             self.log_path,
             self.model_info_path,
             self.result_path,
         ]:
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
 
 
 # --- Ray Remote Function: unified client-side loss worker ---
 @ray.remote
 def ray_compute_client_loss(
-    client, mode, dataset_type, model=None, criterion=None, device="cpu"
-):
+    client: Any,
+    mode: str,
+    dataset_type: str,
+    model: Optional[torch.nn.Module] = None,
+    criterion: Optional[Callable] = None,
+    device: Union[str, torch.device] = "cpu",
+) -> float:
     """
-    Unified Ray remote worker to compute either:
-      - generalization loss: evaluate provided model on client's dataset
-      - personalization loss: call client's get_{dataset_type}_loss()
+    Unified Ray remote worker to compute client-side losses.
+
+    Supports two modes:
+    1. 'generalization': Evaluates a provided model on the client's local dataset.
+    2. 'personalization': Instructs the client to compute loss using its internal model.
 
     Args:
-        client: client object (must expose load_{dataset_type}_data or get_{dataset_type}_loss).
-        mode: "generalization" or "personalization"
-        dataset_type: "train" | "test" | "valid"
-        model: torch.nn.Module (required for mode="generalization")
-        criterion: loss function (required for mode="generalization")
-        device: device string passed to model / client (e.g. "cpu" or "cuda:0")
+        client: The client object instance.
+        mode: The evaluation mode ('generalization' or 'personalization').
+        dataset_type: The dataset split to use ('train', 'test', or 'valid').
+        model: Optional model instance for generalization evaluation.
+        criterion: Optional loss function for generalization evaluation.
+        device: The device to perform computation on.
+
     Returns:
-        float: scalar loss
+        The computed scalar loss value.
+
+    Raises:
+        ValueError: If an unsupported mode is provided.
     """
     if mode == "generalization":
         # evaluate the provided model on the client's data
+        if model is None or criterion is None:
+            raise ValueError("model and criterion are required for generalization mode")
         model = model.to(device)
         dataloader = getattr(client, f"load_{dataset_type}_data")()
         losses = []
@@ -325,7 +468,6 @@ def ray_compute_client_loss(
                 batch_y = batch_y.float().to(device)
                 outputs = model(batch_x)
                 loss = criterion(outputs, batch_y)
-                # ensure scalar
                 losses.append(float(loss.item()))
         return float(np.mean(losses))
 
@@ -339,7 +481,20 @@ def ray_compute_client_loss(
 
 
 class Server(SharedMethods):
-    def __init__(self, configs, times):
+    """
+    Orchestrates the federated learning process on the server side.
+
+    Handles client selection, model aggregation, communication, and overall
+    experiment tracking. Inherits from SharedMethods for utility functions.
+    """
+
+    def __init__(self, configs: Namespace, times: int) -> None:
+        """Initializes the Server instance with provided configurations.
+
+        Args:
+            configs: Global configuration namespace.
+            times: Experiment iteration/repetition index.
+        """
         super().__init__()
         self.set_configs(configs=configs, times=times)
         self.mkdir()
@@ -377,7 +532,12 @@ class Server(SharedMethods):
         self.initialize_model()
         self.get_model_info()
 
-    def select_clients(self):
+    def select_clients(self) -> None:
+        """
+        Selects a subset of clients to participate in the current round.
+
+        Uses either a fixed join ratio or a random join ratio based on configs.
+        """
         if self.random_join_ratio:
             self.current_num_join_clients = np.random.choice(
                 range(self.num_join_clients, self.num_clients + 1), 1, replace=False
@@ -388,84 +548,107 @@ class Server(SharedMethods):
             np.random.choice(self.clients, self.current_num_join_clients, replace=False)
         )
 
-    def variables_to_be_sent(self):
+    def variables_to_be_sent(self) -> Dict[str, Any]:
+        """
+        Defines the variables to be communicated from server to clients.
+
+        Returns:
+            A dictionary containing objects to be sent (e.g., global model).
+        """
         return {"model": self.model}
 
-    def send_to_clients(self):
-        b = 0
+    def send_to_clients(self) -> None:
+        """
+        Broadcasts global parameters to all clients.
+
+        Tracks the amount of data (in MB) sent during this operation.
+        """
+        total_bytes_sent = 0.0
         to_be_sent = self.variables_to_be_sent()
         for idx, client in enumerate(self.clients):
-            c = {}
+            data_to_send = {}
             for key, value in to_be_sent.items():
                 if isinstance(value, list) and len(value) == len(self.clients):
                     value = value[idx]
-                b += self.get_size(value)
-                c[key] = value
-            client.receive_from_server(c)
-        self.metrics["send_mb"].append(b)
+                total_bytes_sent += self.get_size(value)
+                data_to_send[key] = value
+            client.receive_from_server(data_to_send)
+        self.metrics["send_mb"].append(total_bytes_sent)
 
-    def receive_from_clients(self):
+    def receive_from_clients(self) -> None:
+        """
+        Collects updated parameters or statistics from the selected clients.
+
+        Stores the collected data in `self.client_data`.
+        """
         self.client_data = []
         for client in self.selected_clients:
             try:
                 self.client_data.append(client.send_to_server())
             except Exception as e:
-                print(f"Failed to receive data from client {client.id}: {e}")
+                self.logger.error(
+                    f"Failed to receive data from client {client.id}: {e}"
+                )
 
-    def initialize_clients(self):
+    def initialize_clients(self) -> None:
+        """
+        Instantiates client objects based on the strategy configuration.
+
+        Dynamically resolves the client class name based on the server's module.
+        """
         module_name = self.__module__
         class_name = self.__class__.__name__ + "_Client"
         try:
-            client_object = getattr(
+            client_class = getattr(
                 __import__(module_name, fromlist=[class_name]), class_name
             )
-        except:
-            client_object = Client
+        except (ImportError, AttributeError):
+            # Fallback to base Client class if specialized one isn't found
+            client_class = Client
         self.clients = [
-            client_object(configs=self.configs, id=id, times=self.times)
-            for id in range(self.num_clients)
+            client_class(configs=self.configs, id=cid, times=self.times)
+            for cid in range(self.num_clients)
         ]
 
-    def save_results(self):
+    def save_results(self) -> None:
+        """Saves both server-side and all individual client-side metrics."""
         super().save_results()
         for client in self.clients:
             client.save_results()
 
-    def save_models(self, save_type: str, verbose: bool = True):
-        """
-        Saves models based on the specified type ('last' or 'best').
+    def save_models(self, save_type: str, verbose: bool = True) -> None:
+        """Saves the current model(s) to disk.
 
         Args:
-            save_type (str): The type of model to save. Expected values: "last", "best".
+            save_type: The save criteria ('last' or 'best').
+            verbose: Whether to log the save operation.
+
+        Raises:
+            ValueError: If an unsupported save_type is provided.
         """
         if save_type not in ["last", "best"]:
             raise ValueError("save_type must be 'last' or 'best'")
 
-        should_save_this_round = True  # Assume we save, unless "best" condition fails
+        should_save = True
 
         if save_type == "best":
-            # Determine the metric to check for "best"
             metric_key = (
                 "personal_avg_test_loss"
                 if self.save_local_model
                 else "global_avg_test_loss"
             )
 
-            # Ensure the metric exists and is not empty
             if metric_key not in self.metrics or not self.metrics[metric_key]:
-                # print(f"Warning: Metric '{metric_key}' not found or empty. Cannot save 'best' model.")
-                should_save_this_round = False
+                should_save = False
             else:
                 metric_values = self.metrics[metric_key]
                 if metric_values[-1] != min(metric_values):
-                    should_save_this_round = False
+                    should_save = False
 
-        # If it's "best" type and the condition wasn't met, don't proceed
-        if not should_save_this_round:
+        if not should_save:
             return
 
-        # --- Common saving logic ---
-        postfix = save_type  # "last" or "best"
+        postfix = save_type
 
         # Save server/global model
         if not self.exclude_server_model_processes:
@@ -491,7 +674,15 @@ class Server(SharedMethods):
                 verbose=client.logger,
             )
 
-    def early_stopping(self):
+    def early_stopping(self) -> bool:
+        """
+        Determines if the training process should stop early based on patience.
+
+        Checks the trend of test loss (local or global depending on config).
+
+        Returns:
+            True if early stopping criteria are met, False otherwise.
+        """
         metric = (
             self.metrics["personal_avg_test_loss"]
             if self.save_local_model
@@ -511,7 +702,13 @@ class Server(SharedMethods):
 
         return False
 
-    def evaluate_generalization_loss(self, dataset_type):
+    def evaluate_generalization_loss(self, dataset_type: str) -> None:
+        """
+        Evaluates the global model's performance across all clients.
+
+        Args:
+            dataset_type: The dataset split to evaluate ('train', 'test', or 'valid').
+        """
         if self.parallel:
             futures = []
             for client in self.clients:
@@ -566,7 +763,13 @@ class Server(SharedMethods):
             f"{self.metrics[metric_name][-1]:.4f}"
         )
 
-    def evaluate_personalization_loss(self, dataset_type):
+    def evaluate_personalization_loss(self, dataset_type: str) -> None:
+        """
+        Evaluates each client's personalized model performance locally.
+
+        Args:
+            dataset_type: The dataset split to evaluate ('train', 'test', or 'valid').
+        """
         if self.parallel:
             futures = []
             for client in self.clients:
@@ -597,7 +800,13 @@ class Server(SharedMethods):
             f"{self.metrics[metric_name][-1]:.4f}"
         )
 
-    def train_clients(self):
+    def train_clients(self) -> None:
+        """
+        Orchestrates the training of selected clients in the current round.
+
+        Handles both parallel execution via Ray and serial execution on the local machine.
+        Results are collected and local client states are updated automatically.
+        """
         if self.parallel:
             i = 0
             futures = []
@@ -611,6 +820,7 @@ class Server(SharedMethods):
                     client = self.selected_clients[i]
 
                     # Parallelize the `train()` method using Ray
+                    # We use a lambda to ensure the remote worker has access to the client instance
                     future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
                         lambda cl: cl.train()
                     ).remote(client)
@@ -627,7 +837,7 @@ class Server(SharedMethods):
                         idle_workers.append(worker_id)
                         client_packages[client] = client_package
 
-                        # Update client model & optimizer (since clients are normal Python objects)
+                        # Update client model & optimizer parameters from the remote worker's package
                         client.update_model_params(
                             old=client.model, new=client_package["model"]
                         )
@@ -640,18 +850,27 @@ class Server(SharedMethods):
                         client.train_samples = client_package["train_samples"]
 
         else:
-            [client.train() for client in self.selected_clients]  # Serial execution
+            # Serial execution for debugging or small-scale runs
+            for client in self.selected_clients:
+                client.train()
 
-    def fix_results(self):
+    def fix_results(self) -> None:
+        """Pads results for the server and all clients to ensure consistent metric lengths."""
         super().fix_results(default=self.default_value)
         for client in self.clients:
             client.fix_results(default=self.default_value)
 
-    def calculate_aggregation_weights(self):
+    def calculate_aggregation_weights(self) -> None:
+        """Computes weight for each client based on their contribution score (e.g., sample size)."""
         ts = [client["score"] for client in self.client_data]
         self.weights = torch.tensor(ts) / sum(ts)
 
-    def aggregate_models(self):
+    def aggregate_models(self) -> None:
+        """
+        Aggregates client models into the global server model.
+
+        Supports both standard averaging and difference-based aggregation (Federated Averaging).
+        """
         if self.return_diff:
             for client, weight in zip(self.client_data, self.weights):
                 for global_param, local_param in zip(
@@ -666,7 +885,12 @@ class Server(SharedMethods):
                 ):
                     global_param.data.add_(local_param.data, alpha=weight)
 
-    def get_model_info(self):
+    def get_model_info(self) -> None:
+        """
+        Generates architectural summaries for the server and client models.
+
+        Computes input/output shapes and visualizes the network structure.
+        """
         if not self.exclude_server_model_processes:
             dl = self.clients[0].load_train_data()
             self.summarize_model(dataloader=dl)
@@ -679,7 +903,12 @@ class Server(SharedMethods):
                 del dl
                 gc.collect()
 
-    def post_process(self):
+    def post_process(self) -> None:
+        """
+        Executes cleanup and final saving operations after training completion.
+
+        Saves the final model, exports results, closes loggers, and shuts down Ray.
+        """
         self.logger.info("")
         self.logger.info("-" * 50)
         self.save_models(save_type="last")
@@ -704,12 +933,18 @@ class Server(SharedMethods):
         except Exception:
             pass
 
-    def pre_train_clients(self):
-        pass
+    def pre_train_clients(self) -> None:
+        """Hook for executing operations before client training begins each round."""
 
-    def train(self):
+    def train(self) -> None:
+        """
+        Main federated learning training loop.
+
+        Iterates through the specified number of communications rounds,
+        orchestrating the end-to-end FL process.
+        """
         for i in range(self.iterations):
-            s_t = time.time()
+            round_start_time = time.time()
             self.current_iter = i
 
             self.logger.info("")
@@ -719,6 +954,8 @@ class Server(SharedMethods):
 
             self.select_clients()
             self.send_to_clients()
+
+            # Optional Pre-aggregation Evaluation
             if self.current_iter % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
@@ -726,11 +963,14 @@ class Server(SharedMethods):
                     if self.save_local_model:
                         # Personalization loss evaluation
                         self.evaluate_personalization_loss(dataset_type)
+
             self.pre_train_clients()
             self.train_clients()
             self.receive_from_clients()
             self.calculate_aggregation_weights()
             self.aggregate_models()
+
+            # Post-aggregation Evaluation
             if self.current_iter % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
@@ -738,17 +978,36 @@ class Server(SharedMethods):
                     if not self.exclude_server_model_processes:
                         # Generalization loss evaluation
                         self.evaluate_generalization_loss(dataset_type)
+
             self.save_models(save_type="best")
-            self.metrics["time_per_iter"].append(time.time() - s_t)
-            self.logger.info(f'Time cost: {self.metrics["time_per_iter"][-1]:.4f}s')
+            round_duration = time.time() - round_start_time
+            self.metrics["time_per_iter"].append(round_duration)
+            self.logger.info(f"Time cost: {round_duration:.4f}s")
+
             self.fix_results()
             if self.early_stopping():
                 break
+
         self.post_process()
 
 
 class Client(SharedMethods):
-    def __init__(self, configs: dict, id: int, times: int):
+    """
+    Represents a local node in the federated learning network.
+
+    Handles local data loading, model training, and communication with the server.
+    Inherits from SharedMethods for utility functions.
+    """
+
+    def __init__(self, configs: Namespace, id: int, times: int) -> None:
+        """
+        Initializes the Client instance with provided configurations.
+
+        Args:
+            configs: Global configuration namespace.
+            id: Unique identifier for the client.
+            times: Experiment iteration/repetition index.
+        """
         super().__init__()
         self.set_configs(configs=configs, id=id, times=times)
         self.mkdir()
@@ -770,7 +1029,8 @@ class Client(SharedMethods):
             "lr": [],
         }
 
-    def initialize_private_info(self):
+    def initialize_private_info(self) -> None:
+        """Loads client-specific metadata and data paths from the info file."""
         with open(self.path_info, "r") as f:
             self.private_data = json.load(f)[self.id]
         if self.private_data["client"] != self.id:
@@ -783,10 +1043,19 @@ class Client(SharedMethods):
         self.configs.__dict__["output_channels"] = self.private_data["output_channels"]
         self.output_channels = self.private_data["output_channels"]
 
-    def initialize_scaler(self):
+    def initialize_scaler(self) -> None:
+        """Initializes the data scaler based on client-specific statistics."""
         self.scaler = getattr(__import__("scalers"), self.scaler)(self.stats)
 
-    def variables_to_be_sent(self):
+    def variables_to_be_sent(self) -> Dict[str, Any]:
+        """
+        Prepares the local parameters/differentials to be sent to the server.
+
+        Supports sending full models or model differentials (weights - snapshot).
+
+        Returns:
+            A dictionary containing the local model and sample count.
+        """
         if self.return_diff:
             diff_dict = {
                 key: param_old - param_new.detach().to("cpu")
@@ -802,15 +1071,31 @@ class Client(SharedMethods):
             model = self.model
         return {"model": model, "score": self.train_samples}
 
-    def send_to_server(self):
+    def send_to_server(self) -> Dict[str, Any]:
+        """
+        Initiates the data transfer to the server and tracks communication volume.
+
+        Returns:
+            The local data package (model, score, etc.).
+        """
         to_be_sent = self.variables_to_be_sent()
-        b = 0
-        for value in to_be_sent.values():
-            b += self.get_size(value)
-        self.metrics["send_mb"].append(b)
+        total_size = sum(self.get_size(value) for value in to_be_sent.values())
+        self.metrics["send_mb"].append(total_size)
         return to_be_sent
 
-    def load_train_data(self, sample_ratio=1.0, shuffle=True):
+    def load_train_data(
+        self, sample_ratio: float = 1.0, shuffle: bool = True
+    ) -> DataLoader:
+        """
+        Loads the client's local training dataset.
+
+        Args:
+            sample_ratio: Fraction of the local dataset to use.
+            shuffle: Whether to shuffle the training data.
+
+        Returns:
+            A PyTorch DataLoader for training.
+        """
         trainloader = self.load_data(
             file=self.train_file,
             sample_ratio=sample_ratio,
@@ -821,7 +1106,19 @@ class Client(SharedMethods):
         self.train_samples = len(trainloader.dataset)
         return trainloader
 
-    def load_test_data(self, sample_ratio=1.0, shuffle=False):
+    def load_test_data(
+        self, sample_ratio: float = 1.0, shuffle: bool = False
+    ) -> DataLoader:
+        """
+        Loads the client's local test dataset.
+
+        Args:
+            sample_ratio: Fraction of the local dataset to use.
+            shuffle: Whether to shuffle the test data.
+
+        Returns:
+            A PyTorch DataLoader for testing.
+        """
         testloader = self.load_data(
             file=self.test_file,
             sample_ratio=sample_ratio,
@@ -832,7 +1129,14 @@ class Client(SharedMethods):
         self.test_samples = len(testloader.dataset)
         return testloader
 
-    def train(self):
+    def train(self) -> Optional[Dict[str, Any]]:
+        """
+        Executes local training for the specified number of epochs.
+
+        Returns:
+            In parallel mode, returns a dictionary containing the updated model,
+            optimizer, and metrics. Returns None in serial mode.
+        """
         train_loader = self.load_train_data()
         start_time = time.time()
         for _ in range(self.epochs):
@@ -855,8 +1159,15 @@ class Client(SharedMethods):
             }
         self.metrics["train_time"].append(train_time)
         self.metrics["lr"].append(self.scheduler.get_last_lr()[0])
+        return None
 
-    def get_train_loss(self):
+    def get_train_loss(self) -> float:
+        """
+        Calculates the average training loss on the local dataset.
+
+        Returns:
+            The mean scalar loss across all training batches.
+        """
         losses = self.calculate_loss(
             model=self.model,
             dataloader=self.load_train_data(),
