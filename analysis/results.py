@@ -965,41 +965,48 @@ class Analysis:
         datasets: Optional[List[str]] = None,
         output_lens: Optional[List[int]] = None,
         experiments: Optional[List[str]] = None,
+        exact: bool = False,
     ) -> bool:
         """
         Check if an experiment matches all provided filters.
 
         Args:
             experiment: Experiment metadata dictionary.
-            models: List of model names to include (case-insensitive substring matching).
-            strategies: List of strategy names to include (case-insensitive substring matching).
-            datasets: List of dataset names to include (case-insensitive substring matching).
-            output_lens: List of output lengths to include.
-            experiments: List of experiment name patterns to include (case-insensitive substring matching).
+            models: List of model names to include.
+            strategies: List of strategy names to include.
+            datasets: List of dataset names to include.
+            output_lens: List of output lengths to include (always exact).
+            experiments: List of experiment name patterns to include.
+            exact: If True, perform exact phrase matching instead of substring matching.
 
         Returns:
             True if the experiment matches all non-None filters.
         """
-        exp_name = experiment.get("exp", "").lower()
+        def _check_match(target: str, queries: List[str]) -> bool:
+            target_lower = target.lower()
+            if exact:
+                return any(q.lower() == target_lower for q in queries)
+            else:
+                return any(q.lower() in target_lower for q in queries)
 
-        if experiments is not None:
-            if not any(e.lower() in exp_name for e in experiments):
-                return False
+        exp_name = experiment.get("exp", "")
+        if experiments is not None and not _check_match(exp_name, experiments):
+            return False
 
-        if models is not None:
-            exp_model = experiment.get("model", "").lower()
-            if not any(m.lower() in exp_model for m in models):
-                return False
+        if models is not None and not _check_match(
+            experiment.get("model", ""), models
+        ):
+            return False
 
-        if strategies is not None:
-            exp_strategy = experiment.get("strategy", "").lower()
-            if not any(s.lower() in exp_strategy for s in strategies):
-                return False
+        if strategies is not None and not _check_match(
+            experiment.get("strategy", ""), strategies
+        ):
+            return False
 
-        if datasets is not None:
-            exp_dataset = experiment.get("dataset", "").lower()
-            if not any(d.lower() in exp_dataset for d in datasets):
-                return False
+        if datasets is not None and not _check_match(
+            experiment.get("dataset", ""), datasets
+        ):
+            return False
 
         if output_lens is not None:
             exp_output_len = experiment.get("output_len")
@@ -1015,6 +1022,7 @@ class Analysis:
         datasets: Optional[List[str]] = None,
         output_lens: Optional[List[int]] = None,
         experiments: Optional[List[str]] = None,
+        exact: bool = False,
     ) -> List[Dict]:
         """
         Load all experiments from the runs directory with optional filtering.
@@ -1025,6 +1033,7 @@ class Analysis:
             datasets: Filter to specific datasets.
             output_lens: Filter to specific output lengths.
             experiments: Filter to specific experiment name patterns.
+            exact: Use exact phrase matching for string filters.
 
         Returns:
             List of experiment dictionaries containing config and aggregated stats.
@@ -1053,6 +1062,7 @@ class Analysis:
                 datasets=datasets,
                 output_lens=output_lens,
                 experiments=experiments,
+                exact=exact,
             ):
                 logger.debug("Skipping experiment (filtered out): %s", child.name)
                 continue
@@ -1755,6 +1765,11 @@ def parse_args() -> argparse.Namespace:
         metavar="NAME",
         help="Filter to specific experiment name patterns",
     )
+    filter_group.add_argument(
+        "--exact",
+        action="store_true",
+        help="Use exact phrase matching for filters (default: substring matching)",
+    )
 
     return parser.parse_args()
 
@@ -1828,6 +1843,7 @@ def main() -> None:
                 strategies=args.strategies,
                 datasets=args.datasets,
                 output_lens=args.output_lens,
+                exact=args.exact,
             )
             if not experiments and row:
                 # Experiment not found, store for later logging
@@ -1840,6 +1856,7 @@ def main() -> None:
                 datasets=args.datasets,
                 output_lens=args.output_lens,
                 experiments=args.experiments,
+                exact=args.exact,
             )
 
         all_experiments.extend(experiments)
