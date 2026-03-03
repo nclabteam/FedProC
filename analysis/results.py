@@ -1531,6 +1531,48 @@ class Analysis:
 
         return df
 
+    def _escape_markdown_cell(self, value: Any) -> str:
+        """Escape a value for safe markdown table rendering."""
+        if value is None:
+            return ""
+        text = str(value)
+        text = text.replace("|", "\\|")
+        text = text.replace("\n", "<br>")
+        return text
+
+    def _dataframe_to_markdown(self, df: pl.DataFrame) -> str:
+        """Convert a polars DataFrame into a markdown table string."""
+        if df.is_empty():
+            return "_No data_"
+
+        cols = df.columns
+        header = "| " + " | ".join(cols) + " |"
+        separator = "| " + " | ".join(["---"] * len(cols)) + " |"
+
+        rows = []
+        for row in df.iter_rows(named=True):
+            cells = [self._escape_markdown_cell(row.get(col)) for col in cols]
+            rows.append("| " + " | ".join(cells) + " |")
+
+        return "\n".join([header, separator, *rows])
+
+    def _metric_description_markdown(self, metric: str) -> str:
+        """Render metric description text as markdown."""
+        if metric not in METRIC_DESCRIPTIONS:
+            return ""
+
+        desc = METRIC_DESCRIPTIONS[metric]
+        title = desc.get("title", "").strip()
+        explanation = desc.get("explanation", "").strip()
+
+        parts: List[str] = []
+        if title:
+            parts.append(f"**{title}**")
+        if explanation:
+            parts.append(explanation.replace("\n", "<br>"))
+
+        return "\n\n".join(parts)
+
     def save_tables(
         self,
         experiments: List[Dict],
@@ -1538,6 +1580,7 @@ class Analysis:
         pivot: PivotOption = "model",
         include_ranking: bool = True,
         lower_is_better: bool = True,
+        markdown_path: Optional[str | Path] = None,
     ) -> None:
         """
         Save tables grouped by the specified pivot field to the output directory.
@@ -1553,9 +1596,14 @@ class Analysis:
                    'strategy' groups by strategy and pivots by model.
             include_ranking: If True, also generate ranking tables.
             lower_is_better: If True, lower metric values get better ranks (for ranking).
+            markdown_path: Optional path to append rendered tables as markdown.
         """
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        md_output_path: Optional[Path] = Path(markdown_path) if markdown_path else None
+        if md_output_path is not None:
+            md_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Get pivot configuration
         group_by_field, pivot_by_field, row_group_by = self._get_pivot_config(pivot)
@@ -1592,6 +1640,17 @@ class Analysis:
             print(df)
             print()
 
+            if md_output_path is not None:
+                with md_output_path.open("a", encoding="utf-8") as f:
+                    f.write(f"## {header.splitlines()[1]}\n\n")
+                    f.write(f"**Metric:** {metric}\n\n")
+                    metric_desc_md = self._metric_description_markdown(metric)
+                    if metric_desc_md:
+                        f.write(metric_desc_md)
+                        f.write("\n\n")
+                    f.write(self._dataframe_to_markdown(df))
+                    f.write("\n\n")
+
             # Save to CSV
             filename = f"{group_value}_{metric}_{self.agg_mode}.csv"
             output_path = self.output_dir / filename
@@ -1616,6 +1675,12 @@ class Analysis:
                     print(rank_header)
                     print(df_rank)
                     print()
+
+                    if md_output_path is not None:
+                        with md_output_path.open("a", encoding="utf-8") as f:
+                            f.write(f"### Ranking - {header.splitlines()[1]}\n\n")
+                            f.write(self._dataframe_to_markdown(df_rank))
+                            f.write("\n\n")
 
                     # Save ranking table
                     rank_filename = (
@@ -1726,6 +1791,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         nargs="+",
         help="Excel files with 'project' and 'name' columns for batch processing",
+    )
+    parser.add_argument(
+        "--markdown-path",
+        type=str,
+        default=None,
+        help="Optional output markdown file path for terminal-rendered tables",
     )
 
     # Filtering options
@@ -1896,9 +1967,22 @@ def main() -> None:
     )
 
     # Process each metric once with all experiments combined
+    if args.markdown_path:
+        markdown_path = Path(args.markdown_path)
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        with markdown_path.open("w", encoding="utf-8") as f:
+            f.write("# Analysis Tables\n\n")
+            f.write(f"- Aggregation mode: {args.agg_mode}\n")
+            f.write(f"- Pivot: {args.pivot}\n")
+            f.write(f"- Metric selection: {args.metric}\n\n")
+
     for metric in metrics_to_process:
         if len(metrics_to_process) > 1:
             logger.info("Processing metric: %s", metric)
+
+        if args.markdown_path:
+            with Path(args.markdown_path).open("a", encoding="utf-8") as f:
+                f.write(f"# Metric: {metric}\n\n")
 
         analysis.save_tables(
             all_experiments,
@@ -1906,6 +1990,7 @@ def main() -> None:
             pivot=args.pivot,
             include_ranking=not args.no_ranking,
             lower_is_better=not args.higher_is_better,
+            markdown_path=args.markdown_path,
         )
 
 
