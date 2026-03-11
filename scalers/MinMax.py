@@ -3,7 +3,7 @@ import numpy as np
 from .BaseScaler import BaseScaler
 
 
-class MinMaxScaler(BaseScaler):
+class MinMax(BaseScaler):
     def __init__(self, stat=None):
         super().__init__()
         if stat is not None:

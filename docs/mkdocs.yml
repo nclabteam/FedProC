@@ -16,6 +16,7 @@ nav:
   - Strategies: strategies.md
   - Datasets: datasets.md
   - Models: models.md
+  - Scalers: scalers.md
   - Losses: losses.md
   - Schedulers: schedulers.md
   - Customization: customization.md

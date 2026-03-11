@@ -3,9 +3,9 @@ import numpy as np
 from .BaseScaler import BaseScaler
 
 
-class StandardScaler(BaseScaler):
+class Standard(BaseScaler):
     def __init__(self, stat=None):
-        super(StandardScaler, self).__init__()
+        super().__init__()
         if stat is not None:
             self.mean = []
             self.std = []
