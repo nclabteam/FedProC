@@ -1,6 +1,5 @@
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import ray
 import torch
@@ -74,17 +73,21 @@ class DFL(Server):
             start = time.time()
             receive_mb = 0
             all_to_be_received = {}
+
+            # Each client sends its own data
             for key, value in node.variables_to_be_sent().items():
                 all_to_be_received[key] = [value]
 
+            # Receive from neighbors (following topology)
             for neighbor in node.neighbors:
-                neighbor = self.clients[neighbor]
-                to_be_received = neighbor.variables_to_be_sent()
+                neighbor_node = self.clients[neighbor]
+                to_be_received = neighbor_node.variables_to_be_sent()
                 for key, value in to_be_received.items():
-                    if isinstance(value, list):
+                    if isinstance(value, list) and len(value) == len(self.clients):
                         value = value[node.id]
                     receive_mb += self.get_size(value)
                     all_to_be_received[key].append(value)
+
             node.metrics["receive_mb"].append(receive_mb)
             node.receive_from_server(all_to_be_received)
 
@@ -95,29 +98,12 @@ class DFL(Server):
         pass
 
     def calculate_aggregation_weights(self, *args, **kwargs):
-        if self.parallel:
-            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                futures = [
-                    executor.submit(node.calculate_aggregation_weights)
-                    for node in self.clients
-                ]
-                for future in futures:
-                    future.result()
-        else:
-            for node in self.clients:
-                node.calculate_aggregation_weights()
+        for node in self.clients:
+            node.calculate_aggregation_weights()
 
     def aggregate_models(self, *args, **kwargs):
-        if self.parallel:
-            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                futures = [
-                    executor.submit(node.aggregate_models) for node in self.clients
-                ]
-                for future in futures:
-                    future.result()
-        else:
-            for node in self.clients:
-                node.aggregate_models()
+        for node in self.clients:
+            node.aggregate_models()
 
 
 class DFL_Client(Client):
