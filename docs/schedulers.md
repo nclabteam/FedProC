@@ -7,4 +7,5 @@
 | CosineAnnealingLR |||||
 | ExpHyperbolicLR   ||| HyperbolicLR: Epoch Insensitive Learning Rate Scheduler | [Arxiv](https://arxiv.org/abs/2407.15200) |
 | HyperbolicLR      ||| HyperbolicLR: Epoch Insensitive Learning Rate Scheduler | [Arxiv](https://arxiv.org/abs/2407.15200) |
+| OneCycleLR        | arXiv | 2017 | Super-Convergence: Very Fast Training of Neural Networks Using Large Learning Rates | [Arxiv](https://arxiv.org/abs/1708.07120) |
 | StepLR            |||||
