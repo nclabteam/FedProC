@@ -106,7 +106,7 @@ class Options:
         parser.add_argument(
             "--scaler",
             type=str,
-            default="StandardScaler",
+            default="Standard",
             choices=SCALERS,
             help="data normalization method",
         )
