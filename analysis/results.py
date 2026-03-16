@@ -62,6 +62,20 @@ PivotOption = Literal["model", "strategy"]
 # Output value when no valid data exists
 MISSING_VALUE: float = 0.0
 
+# Fields that are already shown as row/column identifiers — excluded from hyperparams block
+IDENTIFIER_FIELDS: frozenset = frozenset(
+    {
+        "exp",
+        "aggregates",
+        "dataset",
+        "input_len",
+        "output_len",
+        "model",
+        "strategy",
+        "name",
+    }
+)
+
 # Time columns that should be converted
 TIME_COLUMNS: Tuple[str, ...] = ("efficiency",)
 
@@ -72,6 +86,8 @@ SIZE_COLUMNS: Tuple[str, ...] = ("downlink", "uplink", "communication")
 METRICS: Tuple[str, ...] = (
     "all",
     "loss",
+    "personalization_loss",
+    "generalization_loss",
     "efficiency",
     "communication",
     "last_improvement_round",
@@ -80,6 +96,7 @@ METRICS: Tuple[str, ...] = (
     "oscillation_count",
     "improvement_ratio",
     "improvement_magnitude",
+    "hyperparameters",
 )
 
 # Metric descriptions for display
@@ -90,6 +107,14 @@ METRIC_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "Lower values = Better model performance\n"
         "Higher values = Worse model performance\n"
         "Primary metric for evaluating model quality and convergence.",
+    },
+    "personalization_loss": {
+        "title": "Personalization test loss (client-local models)",
+        "explanation": "Uses personal_avg_test_loss regardless of save_local_model.",
+    },
+    "generalization_loss": {
+        "title": "Generalization test loss (global server model)",
+        "explanation": "Uses global_avg_test_loss regardless of save_local_model.",
     },
     "efficiency": {
         "title": "Time per training round (computational efficiency)",
@@ -843,6 +868,14 @@ class Analysis:
                 if agg_val is not None:
                     bandwidth_per_run[key].append(agg_val)
 
+        # Always expose both loss tracks as aggregatable metrics.
+        # If a run exists but a column is absent, we treat it as input sentinel.
+        forced_loss_columns = {
+            "personal_avg_test_loss",
+            "global_avg_test_loss",
+        }
+        numeric_cols.update(forced_loss_columns)
+
         aggregates: Dict[str, float] = {}
 
         for col in sorted(numeric_cols):
@@ -982,6 +1015,7 @@ class Analysis:
         Returns:
             True if the experiment matches all non-None filters.
         """
+
         def _check_match(target: str, queries: List[str]) -> bool:
             target_lower = target.lower()
             if exact:
@@ -993,9 +1027,7 @@ class Analysis:
         if experiments is not None and not _check_match(exp_name, experiments):
             return False
 
-        if models is not None and not _check_match(
-            experiment.get("model", ""), models
-        ):
+        if models is not None and not _check_match(experiment.get("model", ""), models):
             return False
 
         if strategies is not None and not _check_match(
@@ -1088,6 +1120,10 @@ class Analysis:
         Returns:
             Resolved metric name.
         """
+        if metric == "personalization_loss":
+            return "personal_avg_test_loss"
+        if metric == "generalization_loss":
+            return "global_avg_test_loss"
         if metric == "loss":
             save_local_model = experiment.get("save_local_model", False)
             return self.resolve_loss_metric(save_local_model)
@@ -1573,6 +1609,147 @@ class Analysis:
 
         return "\n\n".join(parts)
 
+    def _split_hyperparams(
+        self,
+        experiments: List[Dict],
+        group_by_field: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
+        """
+        Split hyperparameter fields into global vs group-specific.
+
+        Args:
+            experiments: All experiments to analyse.
+            group_by_field: The field used to group tables (e.g. 'model' or 'strategy').
+
+        Returns:
+            (global_params, per_group_params) where:
+            - global_params: fields whose value is identical across ALL experiments.
+            - per_group_params: {group_value: {field: value}} — fields that are
+              constant within a group but differ across groups.
+              Fields that vary even within a group are omitted entirely.
+        """
+        if not experiments:
+            return {}, {}
+
+        all_keys: set = set()
+        for exp in experiments:
+            for k in exp:
+                if k not in IDENTIFIER_FIELDS:
+                    all_keys.add(k)
+
+        # Partition: global vs group-varying
+        # Experiments that lack a key are treated as having value None for that key.
+        global_params: Dict[str, Any] = {}
+        group_varying_keys: set = set()
+        for key in all_keys:
+            values = [str(exp.get(key)) for exp in experiments]
+            if len(set(values)) == 1:
+                global_params[key] = experiments[0].get(key)
+            else:
+                group_varying_keys.add(key)
+
+        # For group-varying keys, check if constant within each group
+        groups: Dict[str, List[Dict]] = {}
+        for exp in experiments:
+            gv = str(exp.get(group_by_field, "unknown"))
+            groups.setdefault(gv, []).append(exp)
+
+        per_group_params: Dict[str, Dict[str, Any]] = {}
+        for gv, group_exps in groups.items():
+            per_group_params[gv] = {}
+            for key in group_varying_keys:
+                values = [str(exp.get(key)) for exp in group_exps]
+                unique = list(dict.fromkeys(values))
+                if len(unique) == 1:
+                    per_group_params[gv][key] = group_exps[0].get(key)
+                else:
+                    sample = ", ".join(unique[:3])
+                    suffix = "..." if len(unique) > 3 else ""
+                    per_group_params[gv][key] = f"varies: {sample}{suffix}"
+
+        return (
+            dict(sorted(global_params.items())),
+            {gv: dict(sorted(p.items())) for gv, p in per_group_params.items()},
+        )
+
+    def _format_hyperparams_text(
+        self, hyperparams: Dict[str, Any], label: str = "HYPERPARAMETERS"
+    ) -> str:
+        """Format hyperparameters as indented text lines for stdout."""
+        if not hyperparams:
+            return ""
+        lines = [f"{label}:"]
+        for k, v in hyperparams.items():
+            lines.append(f"  {k}: {v}")
+        return "\n".join(lines)
+
+    def _format_hyperparams_markdown(
+        self, hyperparams: Dict[str, Any], label: str = "Hyperparameters"
+    ) -> str:
+        """Format hyperparameters as a markdown table."""
+        if not hyperparams:
+            return ""
+        lines = [
+            f"**{label}:**\n",
+            "| Parameter | Value |",
+            "| --- | --- |",
+        ]
+        for k, v in hyperparams.items():
+            lines.append(f"| `{k}` | {self._escape_markdown_cell(v)} |")
+        return "\n".join(lines)
+
+    def _save_hyperparams_section(
+        self,
+        experiments: List[Dict],
+        pivot: PivotOption,
+        md_output_path: Optional[Path],
+    ) -> None:
+        """Print and write the hyperparameters section (used when metric='hyperparameters')."""
+        group_by_field, _, _ = self._get_pivot_config(pivot)
+        global_hyp, per_group_hyp = self._split_hyperparams(experiments, group_by_field)
+
+        group_values = sorted(
+            set(str(exp.get(group_by_field, "unknown")) for exp in experiments)
+        )
+
+        # --- stdout ---
+        print("=" * 80)
+        print("HYPERPARAMETERS")
+        print("=" * 80)
+        if global_hyp:
+            print(self._format_hyperparams_text(global_hyp, "GLOBAL"))
+            print()
+        for gv in group_values:
+            group_hyp = per_group_hyp.get(gv, {})
+            if group_hyp:
+                print(
+                    self._format_hyperparams_text(
+                        group_hyp, f"{group_by_field.upper()}-SPECIFIC [{gv}]"
+                    )
+                )
+                print()
+
+        # --- markdown ---
+        if md_output_path is not None:
+            with md_output_path.open("a", encoding="utf-8") as f:
+                if global_hyp:
+                    f.write(
+                        self._format_hyperparams_markdown(
+                            global_hyp, "Global Hyperparameters"
+                        )
+                    )
+                    f.write("\n\n")
+                for gv in group_values:
+                    group_hyp = per_group_hyp.get(gv, {})
+                    if group_hyp:
+                        f.write(
+                            self._format_hyperparams_markdown(
+                                group_hyp,
+                                f"{group_by_field.capitalize()}-specific Hyperparameters — {gv}",
+                            )
+                        )
+                        f.write("\n\n")
+
     def save_tables(
         self,
         experiments: List[Dict],
@@ -1604,6 +1781,11 @@ class Analysis:
         md_output_path: Optional[Path] = Path(markdown_path) if markdown_path else None
         if md_output_path is not None:
             md_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Hyperparameters is its own dedicated section, not a data metric
+        if metric == "hyperparameters":
+            self._save_hyperparams_section(experiments, pivot, md_output_path)
+            return
 
         # Get pivot configuration
         group_by_field, pivot_by_field, row_group_by = self._get_pivot_config(pivot)
