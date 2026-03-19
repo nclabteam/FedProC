@@ -10,6 +10,7 @@
 | FedAvg | AISTATS | 2017 | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) |
 | FedMedian | ICML | 2018 | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) |
 | FedTrimmedAvg | ICML | 2018 | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) |
+| MOON | CVPR | 2021 | Model-Contrastive Federated Learning | [Arxiv](https://arxiv.org/abs/2103.16257) |
 | FedAdam | ICLR | 2021 | Adaptive Federated Optimization | [Arxiv](https://arxiv.org/abs/2003.00295) |
 | FedYogi | ICLR | 2021 | Adaptive Federated Optimization |  [Arxiv](https://arxiv.org/abs/2003.00295) |
 | Krum | | | Byzantine-Tolerant Machine Learning | [Arxiv](https://arxiv.org/abs/1703.02757) |
