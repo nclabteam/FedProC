@@ -38,7 +38,7 @@ class OneCycleLR(OneCycleLR):
             max_lr=configs.max_lr,
             total_steps=configs.total_steps,
             epochs=configs.epochs,
-            steps_per_epoch=configs.steps_per_epoch,
+            steps_per_epoch=getattr(configs, "steps_per_epoch", None),
             pct_start=configs.pct_start,
             anneal_strategy=configs.anneal_strategy,
             cycle_momentum=configs.cycle_momentum,
