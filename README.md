@@ -1,8 +1,25 @@
-# FedProC
+# FedProC: A Benchmarking Framework for Federated Time-Series Forecasting
 
 **Federated Prognos Chronos** – A federated learning framework for time-series forecasting.
 
 📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/)
+
+## Citation
+
+If you use this work, please cite:
+
+```bibtex
+@article{NGUYEN2026102646,
+title = {FedProC: A Benchmarking Framework for Federated Time-Series Forecasting},
+journal = {SoftwareX},
+volume = {34},
+pages = {102646},
+year = {2026},
+issn = {2352-7110},
+doi = {https://doi.org/10.1016/j.softx.2026.102646},
+author = {Khoa Nguyen and Taehong Kim},
+}
+```
 
 ## Overview
 
