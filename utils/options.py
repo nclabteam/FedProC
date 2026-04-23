@@ -50,6 +50,17 @@ class Options:
             "--device", type=str, default="cuda", choices=["cpu", "cuda"], help="device"
         )
         parser.add_argument("--device_id", type=str, default="0", help="device id")
+        parser.add_argument(
+            "--efficiency",
+            type=str,
+            default="high",
+            choices=["low", "med", "high"],
+            help=(
+                "Device residency policy: low offloads after each train/eval step, "
+                "med offloads after each local train/eval call, high keeps models "
+                "resident when possible"
+            ),
+        )
 
         parser.add_argument(
             "--save_local_model",

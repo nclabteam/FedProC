@@ -83,6 +83,7 @@ class SharedMethods:
         dataloader: DataLoader,
         criterion: Callable,
         device: Union[str, torch.device] = "cpu",
+        offload_after: bool = True,
     ) -> List[float]:
         """
         Calculates loss for each batch in the dataloader without gradients.
@@ -92,6 +93,7 @@ class SharedMethods:
             dataloader: The experimental data loader.
             criterion: The loss function (e.g., nn.MSELoss).
             device: The device to perform computation on.
+            offload_after: Whether to move the model back to CPU after eval.
 
         Returns:
             A list of scalar loss values for each batch.
@@ -106,7 +108,8 @@ class SharedMethods:
                 outputs = model(batch_x)
                 loss = criterion(outputs, batch_y)
                 losses.append(loss.item())
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         return losses
 
     @staticmethod
@@ -206,6 +209,7 @@ class SharedMethods:
         criterion: Callable,
         scheduler: Optional[Any],
         device: Union[str, torch.device],
+        offload_after: bool = True,
     ) -> None:
         """
         Trains the model for one full epoch over the dataloader.
@@ -217,6 +221,7 @@ class SharedMethods:
             criterion: Loss function.
             scheduler: Optional learning rate scheduler.
             device: Computing device (CPU/GPU).
+            offload_after: Whether to move the model back to CPU after the epoch.
         """
         model.to(device)
         model.train()
@@ -228,7 +233,8 @@ class SharedMethods:
             loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         scheduler.step()
 
     @staticmethod
@@ -1069,6 +1075,8 @@ class Client(SharedMethods):
             del self.snapshot
         else:
             model = self.model
+        if self.efficiency == "high":
+            model = copy.deepcopy(model).to("cpu")
         return {"model": model, "score": self.train_samples}
 
     def send_to_server(self) -> Dict[str, Any]:
@@ -1139,6 +1147,7 @@ class Client(SharedMethods):
         """
         train_loader = self.load_train_data()
         start_time = time.time()
+        offload_after_epoch = self.efficiency == "low"
         for _ in range(self.epochs):
             self.train_one_epoch(
                 model=self.model,
@@ -1147,12 +1156,18 @@ class Client(SharedMethods):
                 criterion=self.loss,
                 scheduler=self.scheduler,
                 device=self.device,
+                offload_after=offload_after_epoch,
             )
+        if self.efficiency == "med":
+            self.model.to("cpu")
         train_time = time.time() - start_time
         if self.parallel:
+            model = self.model
+            if self.efficiency == "high":
+                model = copy.deepcopy(self.model).to("cpu")
             return {
                 "id": self.id,
-                "model": self.model,
+                "model": model,
                 "optimizer": self.optimizer,
                 "train_time": train_time,
                 "train_samples": self.train_samples,
@@ -1173,6 +1188,7 @@ class Client(SharedMethods):
             dataloader=self.load_train_data(),
             criterion=self.loss,
             device=self.device,
+            offload_after=self.efficiency != "high",
         )
         losses = np.mean(losses)
         self.metrics["train_loss"].append(losses)
@@ -1184,6 +1200,7 @@ class Client(SharedMethods):
             dataloader=self.load_test_data(),
             criterion=self.loss,
             device=self.device,
+            offload_after=self.efficiency != "high",
         )
         losses = np.mean(losses)
         self.metrics["test_loss"].append(losses)
