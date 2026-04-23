@@ -16,10 +16,14 @@ def args_update(parser):
 class FLinear(nn.Module):
     def __init__(self, configs):
         super().__init__()
+        self.input_len = configs.input_len
+        self.output_len = configs.output_len
+        self.freq_topk = configs.freq_topk
+        self.rfft = configs.rfft
         self.Linear = nn.Linear(self.input_len, self.output_len)
         self.rev = FAN(
-            seq_len=configs.seq_len,
-            pred_len=configs.pred_len,
+            seq_len=self.input_len,
+            pred_len=self.output_len,
             enc_in=configs.input_channels,
             freq_topk=self.freq_topk,
             rfft=self.rfft,

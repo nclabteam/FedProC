@@ -80,9 +80,8 @@ class UMixer(nn.Module):
 
         x_old, _ = self.patch_embedding(x_ori.permute(0, 2, 1))
 
-        x_all = torch.zeros(
-            [x_input.shape[0], x_input.shape[1], x_input.shape[2], self.layers],
-            device="cuda:0",
+        x_all = x_input.new_zeros(
+            (x_input.shape[0], x_input.shape[1], x_input.shape[2], self.layers)
         )
         for i in range(self.layers):
             x_ud = self.mlp_tempmix_md[i](x_input)
@@ -270,7 +269,7 @@ class channelMix_CI_pat(nn.Module):
         self.channels = configs.d_model
 
     def forward(self, x):
-        o = torch.zeros(x.shape, dtype=x.dtype, device="cuda:0")
+        o = torch.zeros_like(x)
         for i in range(self.channels):
             o[:, :, i] = self.drop(self.conv2[i](self.gelu(self.conv1[i](x[:, :, i]))))
         res = o + x
@@ -293,7 +292,7 @@ class tempolMix_CI_pat(nn.Module):
         self.channels = patnum
 
     def forward(self, x):
-        o = torch.zeros(x.shape, dtype=x.dtype, device="cuda:0")
+        o = torch.zeros_like(x)
         for i in range(self.channels):
             o[:, i, :] = self.drop(self.conv2[i](self.gelu(self.conv1[i](x[:, i, :]))))
         res = o + x

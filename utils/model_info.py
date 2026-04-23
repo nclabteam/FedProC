@@ -23,7 +23,7 @@ class ModelSummarizer:
         dataloader=None,
         input_size=None,
         batch_size=-1,
-        device=torch.device("cuda:0"),
+        device=None,
         dtypes=None,
     ):
         """Initializes the ModelSummarizer class.
@@ -53,6 +53,9 @@ class ModelSummarizer:
             raise ValueError("Please provide either 'dataloader' or 'input_size'")
 
     def execute(self):
+        original_device = self._get_model_device()
+        if self.device is None:
+            self.device = original_device
         self.model.to(self.device)
         """Prints the model summary."""
         summary_dict, hooks = self._create_summary_dict()
@@ -65,8 +68,15 @@ class ModelSummarizer:
         )
         self._print_table(table, summary_str)
         df = self._table_to_df(table).write_csv(self.save_path.replace(".svg", ".csv"))
-        self.model.to("cpu")
+        self.model.to(original_device)
         return table, (total_params, trainable_params, total_macs, total_flops)
+
+    def _get_model_device(self):
+        for parameter in self.model.parameters():
+            return parameter.device
+        for buffer in self.model.buffers():
+            return buffer.device
+        return torch.device("cpu")
 
     def _create_summary_dict(self):
         """Creates a summary dictionary of the model.

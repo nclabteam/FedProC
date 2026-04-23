@@ -67,6 +67,7 @@ def main_freq_part(x, k, rfft=True):
     else:
         xf = torch.fft.fft(x, dim=1)
 
+    k = min(k, xf.shape[1])
     k_values = torch.topk(xf.abs(), k, dim=1)
     indices = k_values.indices
 

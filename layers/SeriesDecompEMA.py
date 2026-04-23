@@ -37,12 +37,20 @@ class ExponentialMovingAverage(nn.Module):
     def forward(self, x):
         # x: [Batch, Input, Channel]
         _, t, _ = x.shape
-        powers = torch.flip(torch.arange(t, dtype=torch.double), dims=(0,))
-        weights = torch.pow((1 - self.alpha), powers).to("cuda")
+        powers = torch.flip(
+            torch.arange(t, dtype=x.dtype, device=x.device),
+            dims=(0,),
+        )
+        alpha = (
+            self.alpha.to(device=x.device, dtype=x.dtype)
+            if torch.is_tensor(self.alpha)
+            else self.alpha
+        )
+        weights = torch.pow((1 - alpha), powers)
         divisor = weights.clone()
-        weights[1:] = weights[1:] * self.alpha
+        weights[1:] = weights[1:] * alpha
         weights = weights.reshape(1, t, 1)
         divisor = divisor.reshape(1, t, 1)
         x = torch.cumsum(x * weights, dim=1)
         x = torch.div(x, divisor)
-        return x.to(torch.float32)
+        return x

@@ -508,7 +508,8 @@ class Server(SharedMethods):
         self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
-        self.num_gpus = len(self.device_id.split(","))
+        device_ids = [device_id for device_id in self.device_id.split(",") if device_id]
+        self.num_gpus = len(device_ids) if self.device == "cuda" else 0
         configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
         self.parallel = configs.parallel
         ray.init(
@@ -1076,8 +1077,18 @@ class Client(SharedMethods):
         else:
             model = self.model
         if self.efficiency == "high":
-            model = copy.deepcopy(model).to("cpu")
+            model = self._clone_model_to_cpu(model)
         return {"model": model, "score": self.train_samples}
+
+    def _clone_model_to_cpu(self, model: torch.nn.Module) -> torch.nn.Module:
+        clone = model.__class__(configs=self.configs)
+        state_dict = {
+            key: value.detach().cpu().clone()
+            for key, value in model.state_dict().items()
+        }
+        clone.load_state_dict(state_dict)
+        clone.train(model.training)
+        return clone.to("cpu")
 
     def send_to_server(self) -> Dict[str, Any]:
         """
@@ -1164,7 +1175,7 @@ class Client(SharedMethods):
         if self.parallel:
             model = self.model
             if self.efficiency == "high":
-                model = copy.deepcopy(self.model).to("cpu")
+                model = self._clone_model_to_cpu(self.model)
             return {
                 "id": self.id,
                 "model": model,

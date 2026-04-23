@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fedproc"
-version = "1.1.0"
+version = "1.2.1"
 description = "A Benchmarking Framework for Federated Time-Series Forecasting"
 readme = "README.md"
 requires-python = ">=3.10"
