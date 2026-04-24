@@ -1236,7 +1236,6 @@ class Client(SharedMethods):
             "train_loss": [],
             "test_loss": [],
             "send_mb": [],
-            "lr": [],
         }
 
     def initialize_private_info(self) -> None:
@@ -1387,7 +1386,6 @@ class Client(SharedMethods):
                 "train_samples": self.train_samples,
             }
         self.metrics["train_time"].append(train_time)
-        self.metrics["lr"].append(self.scheduler.get_last_lr()[0])
         return None
 
     def get_train_loss(self) -> float:
