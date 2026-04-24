@@ -300,8 +300,21 @@ class SharedMethods:
         Returns:
             The size of the object in MB.
         """
+        return SharedMethods._get_size_bytes(obj) / (1024**2)
+
+    @staticmethod
+    def _get_size_bytes(obj: Any) -> float:
+        """
+        Computes the approximate memory size of various objects in bytes.
+
+        Args:
+            obj: The object to measure (Tensor, Module, DataLoader, etc.).
+
+        Returns:
+            The size of the object in bytes.
+        """
         if isinstance(obj, torch.Tensor):
-            return obj.element_size() * obj.nelement() / (1024**2)
+            return obj.element_size() * obj.nelement()
         if isinstance(obj, torch.nn.Module):
             total_size = sum(
                 param.element_size() * param.nelement() for param in obj.parameters()
@@ -309,7 +322,7 @@ class SharedMethods:
             total_size += sum(
                 buffer.element_size() * buffer.nelement() for buffer in obj.buffers()
             )
-            return total_size / (1024**2)
+            return total_size
         if isinstance(obj, DataLoader):
             # Estimate size of current dataset
             total_size = sum(
@@ -320,19 +333,17 @@ class SharedMethods:
                 )
                 for data in obj.dataset
             )
-            return total_size / (1024**2)
+            return total_size
         if isinstance(obj, TensorDataset):
             total_size = sum(
                 tensor.element_size() * tensor.nelement() for tensor in obj.tensors
             )
-            return total_size / (1024**2)
+            return total_size
         if isinstance(obj, dict):
-            total_size = sum(SharedMethods.get_size(value) for value in obj.values())
-            return total_size / (1024**2)
-        if isinstance(obj, list):
-            total_size = sum(SharedMethods.get_size(item) for item in obj)
-            return total_size / (1024**2)
-        return sys.getsizeof(obj) / (1024**2)
+            return sum(SharedMethods._get_size_bytes(value) for value in obj.values())
+        if isinstance(obj, (list, tuple)):
+            return sum(SharedMethods._get_size_bytes(item) for item in obj)
+        return sys.getsizeof(obj)
 
     @staticmethod
     def train_one_epoch(
