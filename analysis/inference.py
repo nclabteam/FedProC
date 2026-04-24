@@ -76,6 +76,7 @@ class InferenceEvaluator:
         self.runs_dir = Path(runs_dir)
         self.output_dir = Path(output_dir)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.allow_unsafe_legacy = False
 
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,7 +133,12 @@ class InferenceEvaluator:
             Loaded model on the configured device, or None if loading fails.
         """
         try:
-            model = torch.load(str(model_path), weights_only=False)
+            model = SharedMethods.load_checkpoint_model(
+                checkpoint_path=str(model_path),
+                device=self.device,
+                allow_unsafe_legacy=self.allow_unsafe_legacy,
+                verbose=logger,
+            )
             model = model.to(self.device)
             model.eval()
             logger.debug("Loaded model from %s", model_path)
@@ -403,6 +409,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--allow-unsafe-legacy",
+        action="store_true",
+        help="Allow loading legacy full-object checkpoints with unsafe pickle deserialization.",
+    )
 
     return parser.parse_args()
 
@@ -418,6 +429,7 @@ def main() -> None:
         runs_dir=args.runs_dir,
         output_dir=args.output_dir,
     )
+    evaluator.allow_unsafe_legacy = args.allow_unsafe_legacy
 
     if not args.experiments:
         logger.error("No experiments specified. Use --experiments exp1 exp2 ...")

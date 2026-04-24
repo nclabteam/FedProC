@@ -3,6 +3,8 @@ import gc
 import json
 import logging
 import os
+import platform
+import subprocess
 import sys
 import time
 from argparse import Namespace
@@ -26,6 +28,8 @@ class SharedMethods:
     """
 
     default_value = 9_999_999.0
+    checkpoint_format = "fedproc_state_dict_v1"
+    checkpoint_format_version = 1
 
     @staticmethod
     def load_data(
@@ -119,6 +123,8 @@ class SharedMethods:
         name: str,
         postfix: str = "",
         extention: str = "pt",
+        configs: Optional[Namespace] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         verbose: Optional[logging.Logger] = None,
     ) -> None:
         """
@@ -130,15 +136,142 @@ class SharedMethods:
             name: Base name of the model.
             postfix: Optional string to append to the filename.
             extention: File extension (default: "pt").
+            configs: Experiment config namespace used to reconstruct the model.
+            metadata: Optional extra metadata to embed in the checkpoint.
             verbose: Optional logger to record the save path.
         """
         save_path = os.path.join(
             path,
             f"{'_'.join([name.lower().strip(), postfix])}.{extention}",
         )
-        torch.save(obj=model, f=save_path)
+        checkpoint = SharedMethods.build_checkpoint(
+            model=model,
+            configs=configs,
+            metadata=metadata,
+        )
+        torch.save(obj=checkpoint, f=save_path)
         if verbose is not None:
             verbose.info(f"Model saved to {save_path}")
+
+    @staticmethod
+    def _to_serializable(value: Any) -> Any:
+        if isinstance(value, Namespace):
+            return SharedMethods._to_serializable(vars(value))
+        if isinstance(value, dict):
+            return {
+                key: SharedMethods._to_serializable(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [SharedMethods._to_serializable(item) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    @staticmethod
+    def _checkpoint_metadata(extra_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        metadata = {
+            "torch_version": str(torch.__version__),
+            "python_version": platform.python_version(),
+            "git_commit": SharedMethods._get_git_commit(),
+        }
+        if extra_metadata:
+            metadata.update(SharedMethods._to_serializable(extra_metadata))
+        return metadata
+
+    @staticmethod
+    def _get_git_commit() -> Optional[str]:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout.strip() or None
+        except Exception:
+            return None
+
+    @staticmethod
+    def build_checkpoint(
+        model: torch.nn.Module,
+        configs: Optional[Namespace] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        config_dict = SharedMethods._to_serializable(vars(configs)) if configs else {}
+        model_name = config_dict.get("model", model.__class__.__name__)
+        state_dict = {
+            key: value.detach().cpu().clone()
+            for key, value in model.state_dict().items()
+        }
+        return {
+            "format": SharedMethods.checkpoint_format,
+            "format_version": SharedMethods.checkpoint_format_version,
+            "model_name": model_name,
+            "config": config_dict,
+            "state_dict": state_dict,
+            "metadata": SharedMethods._checkpoint_metadata(metadata),
+        }
+
+    @staticmethod
+    def load_checkpoint_model(
+        checkpoint_path: str,
+        device: Union[str, torch.device] = "cpu",
+        allow_unsafe_legacy: bool = False,
+        verbose: Optional[logging.Logger] = None,
+    ) -> torch.nn.Module:
+        def log_warning(message: str) -> None:
+            if verbose is not None:
+                verbose.warning(message)
+
+        try:
+            payload = torch.load(
+                checkpoint_path,
+                map_location="cpu",
+                weights_only=True,
+            )
+        except Exception as error:
+            if not allow_unsafe_legacy:
+                raise ValueError(
+                    f"Checkpoint {checkpoint_path} is not in the safe FedProC state-dict "
+                    "format. Re-run with unsafe legacy loading explicitly enabled."
+                ) from error
+            log_warning(
+                f"Unsafe legacy checkpoint load enabled for {checkpoint_path}. "
+                "This may execute arbitrary code during deserialization."
+            )
+            payload = torch.load(
+                checkpoint_path,
+                map_location="cpu",
+                weights_only=False,
+            )
+
+        if (
+            isinstance(payload, dict)
+            and payload.get("format") == SharedMethods.checkpoint_format
+        ):
+            model_name = payload["model_name"]
+            config = Namespace(**payload.get("config", {}))
+            model_cls = SharedMethods._get_objective_function("models", model_name)
+            model = model_cls(configs=config)
+            model.load_state_dict(payload["state_dict"])
+            return model.to(device)
+
+        if isinstance(payload, torch.nn.Module):
+            if not allow_unsafe_legacy:
+                raise ValueError(
+                    f"Checkpoint {checkpoint_path} uses the legacy full-object format. "
+                    "Enable unsafe legacy loading explicitly to open it."
+                )
+            log_warning(
+                f"Unsafe legacy checkpoint load enabled for {checkpoint_path}. "
+                "This may execute arbitrary code during deserialization."
+            )
+            return payload.to(device)
+
+        raise ValueError(
+            f"Checkpoint {checkpoint_path} is not in a supported FedProC format."
+        )
 
     @staticmethod
     def reset_model(model: torch.nn.Module) -> torch.nn.Module:
@@ -712,6 +845,8 @@ class Server(SharedMethods):
                 path=self.model_path,
                 name=self.name,
                 postfix=postfix,
+                configs=self.configs,
+                metadata={"save_type": postfix, "owner": "server"},
                 verbose=self.logger,
             )
 
@@ -726,6 +861,8 @@ class Server(SharedMethods):
                 path=client.model_path,
                 name=client.name,
                 postfix=postfix,
+                configs=client.configs,
+                metadata={"save_type": postfix, "owner": client.name},
                 verbose=client.logger,
             )
 
