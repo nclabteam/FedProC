@@ -1283,12 +1283,7 @@ class Client(SharedMethods):
         return {"model": model, "score": self.train_samples}
 
     def _clone_model_to_cpu(self, model: torch.nn.Module) -> torch.nn.Module:
-        clone = model.__class__(configs=self.configs)
-        state_dict = {
-            key: value.detach().cpu().clone()
-            for key, value in model.state_dict().items()
-        }
-        clone.load_state_dict(state_dict)
+        clone = copy.deepcopy(model)
         clone.train(model.training)
         return clone.to("cpu")
 
