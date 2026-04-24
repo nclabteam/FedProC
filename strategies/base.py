@@ -224,6 +224,7 @@ class SharedMethods:
             offload_after: Whether to move the model back to CPU after the epoch.
         """
         model.to(device)
+        SharedMethods._move_optimizer_state_to_param_devices(optimizer)
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
@@ -251,24 +252,71 @@ class SharedMethods:
 
     @staticmethod
     def update_optimizer_params(
-        old: torch.optim.Optimizer, new: torch.optim.Optimizer
+        old: torch.optim.Optimizer,
+        new: torch.optim.Optimizer | Dict[str, Any],
     ) -> None:
         """
-        Synchronizes hyperparameters and parameters between two optimizers.
+        Synchronizes optimizer hyperparameters and state.
 
         Args:
             old: The target optimizer.
-            new: The source optimizer.
+            new: The source optimizer or optimizer state dictionary.
         """
-        for old_group, new_group in zip(old.param_groups, new.param_groups):
-            # Update all hyperparameters dynamically
-            for key in new_group.keys():
-                if key != "params":  # Skip updating "params" directly
-                    old_group[key] = new_group[key]
+        state_dict = new.state_dict() if hasattr(new, "state_dict") else new
+        old_groups = old.state_dict()["param_groups"]
+        new_groups = state_dict["param_groups"]
+        if len(old_groups) != len(new_groups):
+            raise ValueError(
+                "Cannot load optimizer state with a different number of "
+                f"parameter groups: {len(old_groups)} != {len(new_groups)}"
+            )
+        for index, (old_group, new_group) in enumerate(zip(old_groups, new_groups)):
+            if len(old_group["params"]) != len(new_group["params"]):
+                raise ValueError(
+                    "Cannot load optimizer state with a different number of "
+                    f"parameters in group {index}: "
+                    f"{len(old_group['params'])} != {len(new_group['params'])}"
+                )
+        old.load_state_dict(state_dict)
+        SharedMethods._move_optimizer_state_to_param_devices(old)
 
-            # Update the model parameters inside param_groups
-            for old_param, new_param in zip(old_group["params"], new_group["params"]):
-                old_param.data.copy_(new_param.data)
+    @staticmethod
+    def _move_optimizer_state_to_param_devices(optimizer: torch.optim.Optimizer) -> None:
+        def move(value, device):
+            if isinstance(value, torch.Tensor):
+                return value.to(device=device)
+            if isinstance(value, dict):
+                return {key: move(item, device) for key, item in value.items()}
+            if isinstance(value, list):
+                return [move(item, device) for item in value]
+            if isinstance(value, tuple):
+                return tuple(move(item, device) for item in value)
+            return value
+
+        for group in optimizer.param_groups:
+            for parameter in group["params"]:
+                if parameter in optimizer.state:
+                    optimizer.state[parameter] = move(
+                        optimizer.state[parameter],
+                        parameter.device,
+                    )
+
+    @staticmethod
+    def _optimizer_state_to_cpu(optimizer: torch.optim.Optimizer) -> Dict[str, Any]:
+        state_dict = copy.deepcopy(optimizer.state_dict())
+
+        def to_cpu(value):
+            if isinstance(value, torch.Tensor):
+                return value.detach().cpu().clone()
+            if isinstance(value, dict):
+                return {key: to_cpu(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [to_cpu(item) for item in value]
+            if isinstance(value, tuple):
+                return tuple(to_cpu(item) for item in value)
+            return value
+
+        return to_cpu(state_dict)
 
     @staticmethod
     def _get_objective_function(func_type: str, func_name: str) -> Callable:
@@ -849,7 +897,8 @@ class Server(SharedMethods):
                             old=client.model, new=client_package["model"]
                         )
                         client.update_optimizer_params(
-                            old=client.optimizer, new=client_package["optimizer"]
+                            old=client.optimizer,
+                            new=client_package["optimizer_state"],
                         )
                         client.metrics["train_time"].append(
                             client_package["train_time"]
@@ -1179,7 +1228,7 @@ class Client(SharedMethods):
             return {
                 "id": self.id,
                 "model": model,
-                "optimizer": self.optimizer,
+                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
                 "train_time": train_time,
                 "train_samples": self.train_samples,
             }
