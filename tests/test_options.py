@@ -36,6 +36,86 @@ class TestOptions(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 Options(root=".").parse_options()
 
+    def test_cpu_device_clears_device_ids(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "main.py",
+                "--device",
+                "cpu",
+                "--device_id",
+                "0,1",
+                "--project",
+                "runs_test_options",
+            ],
+        ):
+            options = Options(root=".").parse_options()
+            options.fix_args()
+            self.assertEqual(options.args.device, "cpu")
+            self.assertEqual(options.args.device_id, "")
+
+    def test_missing_cuda_downgrades_to_cpu_and_clears_device_ids(self):
+        with patch("torch.cuda.is_available", return_value=False):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "main.py",
+                    "--device",
+                    "cuda",
+                    "--device_id",
+                    "0",
+                    "--project",
+                    "runs_test_options",
+                ],
+            ):
+                options = Options(root=".").parse_options()
+                options.fix_args()
+                self.assertEqual(options.args.device, "cpu")
+                self.assertEqual(options.args.device_id, "")
+
+    def test_invalid_cuda_device_id_rejected(self):
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.device_count", return_value=1):
+                with patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "main.py",
+                        "--device",
+                        "cuda",
+                        "--device_id",
+                        "2",
+                        "--project",
+                        "runs_test_options",
+                    ],
+                ):
+                    options = Options(root=".").parse_options()
+                    with self.assertRaises(ValueError):
+                        options.fix_args()
+
+    def test_valid_cuda_device_ids_are_normalized(self):
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.device_count", return_value=2):
+                with patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "main.py",
+                        "--device",
+                        "cuda",
+                        "--device_id",
+                        " 0, 1 ",
+                        "--project",
+                        "runs_test_options",
+                    ],
+                ):
+                    options = Options(root=".").parse_options()
+                    options.fix_args()
+                    self.assertEqual(options.args.device, "cuda")
+                    self.assertEqual(options.args.device_id, "0,1")
+
 
 if __name__ == "__main__":
     unittest.main()

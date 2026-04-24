@@ -324,6 +324,40 @@ class Options:
         if self.args.device == "cuda" and not torch.cuda.is_available():
             print("cuda is not available. Using cpu instead.")
             self.update_arg("device", "cpu")
+        if self.args.device != "cuda":
+            self.update_arg("device_id", "")
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+            return
+
+        raw_device_ids = [
+            device_id.strip()
+            for device_id in str(self.args.device_id).split(",")
+            if device_id.strip()
+        ]
+        if not raw_device_ids:
+            raise ValueError("CUDA device selected but no valid --device_id was provided")
+        if any(not device_id.isdigit() for device_id in raw_device_ids):
+            raise ValueError(
+                f"Invalid CUDA device id list: {self.args.device_id!r}. "
+                "Use comma-separated non-negative integers."
+            )
+
+        visible_device_count = torch.cuda.device_count()
+        invalid_ids = [
+            device_id
+            for device_id in raw_device_ids
+            if int(device_id) >= visible_device_count
+        ]
+        if invalid_ids:
+            raise ValueError(
+                "Invalid CUDA device id(s): "
+                f"{', '.join(invalid_ids)}. Visible CUDA device count: "
+                f"{visible_device_count}."
+            )
+
+        normalized_device_ids = ",".join(raw_device_ids)
+        self.update_arg("device_id", normalized_device_ids)
+        os.environ["CUDA_VISIBLE_DEVICES"] = normalized_device_ids
 
     @staticmethod
     def _clean_none_args(args):
