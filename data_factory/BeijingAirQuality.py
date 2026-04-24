@@ -1,9 +1,7 @@
-import io
 import os
 import zipfile
 
 import polars as pl
-import requests
 
 from .base import BaseDataset
 
@@ -48,15 +46,12 @@ class BeijingAirQuality(BaseDataset):
         tpath = os.path.join(self.save_path, "temp")
         os.makedirs(tpath, exist_ok=True)
 
-        response = requests.get(self.url)
-        response.raise_for_status()
-        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(tpath)
+        self.download_and_extract(url=self.url, save_path=tpath)
 
         with zipfile.ZipFile(
             os.path.join(tpath, "PRSA2017_Data_20130301-20170228.zip")
         ) as zip_ref:
-            zip_ref.extractall(self.save_path)
+            self._safe_extract_zip(zip_ref, self.save_path)
         os.rename(
             src=os.path.join(self.save_path, "PRSA_Data_20130301-20170228"),
             dst=self.path_raw,

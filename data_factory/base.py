@@ -1,9 +1,10 @@
-import io
 import json
 import os
 import re
+import tempfile
 import time
 import zipfile
+from pathlib import Path
 
 import gdown
 import numpy as np
@@ -413,6 +414,32 @@ class FileManager:
     without instantiating the class.
     """
 
+    request_timeout = 60
+
+    @staticmethod
+    def _ensure_parent_dir(path: str) -> None:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
+    @staticmethod
+    def _safe_extract_zip(zip_file: zipfile.ZipFile, destination: str) -> None:
+        destination_path = Path(destination).resolve()
+        destination_path.mkdir(parents=True, exist_ok=True)
+
+        for member in zip_file.infolist():
+            member_path = destination_path / member.filename
+            resolved_member_path = member_path.resolve(strict=False)
+            if os.path.commonpath(
+                [str(destination_path), str(resolved_member_path)]
+            ) != str(destination_path):
+                raise ValueError(
+                    f"Unsafe ZIP member path {member.filename!r} escapes "
+                    f"{destination_path}."
+                )
+
+        zip_file.extractall(destination)
+
     @staticmethod
     def download_and_extract(url: str, save_path: str) -> None:
         """Download a ZIP file from URL and extract contents to directory.
@@ -465,10 +492,27 @@ class FileManager:
             - Empty directories in ZIP are also created
             - For very large files, consider resuming failed downloads manually
         """
-        response = requests.get(url)
-        response.raise_for_status()
-        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            zip_ref.extractall(save_path)
+        os.makedirs(save_path, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            suffix=".zip",
+            delete=False,
+            dir=save_path,
+        ) as temp_file:
+            temp_path = temp_file.name
+
+        try:
+            with requests.get(url, stream=True, timeout=FileManager.request_timeout) as response:
+                response.raise_for_status()
+                with open(temp_path, "wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+
+            with zipfile.ZipFile(temp_path) as zip_ref:
+                FileManager._safe_extract_zip(zip_ref, save_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     @staticmethod
     def download_file(url: str, save_path: str) -> None:
@@ -519,13 +563,25 @@ class FileManager:
             - Parent directory of save_path must be writable
             - Does not resume partial downloads
         """
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(save_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    f.write(chunk)
-        else:
-            print(f"Failed to download {url} (Status Code: {response.status_code})")
+        FileManager._ensure_parent_dir(save_path)
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=os.path.dirname(save_path) or ".",
+        ) as temp_file:
+            temp_path = temp_file.name
+
+        try:
+            with requests.get(url, stream=True, timeout=FileManager.request_timeout) as response:
+                response.raise_for_status()
+                with open(temp_path, "wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+            os.replace(temp_path, save_path)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
 
     @staticmethod
     def download_from_google_drive(file_id: str, save_path: str) -> None:
@@ -577,7 +633,22 @@ class FileManager:
             - For very large files, Google Drive may require email confirmation
         """
         url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, save_path, quiet=False)
+        FileManager._ensure_parent_dir(save_path)
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=os.path.dirname(save_path) or ".",
+        ) as temp_file:
+            temp_path = temp_file.name
+
+        try:
+            result = gdown.download(url, temp_path, quiet=False)
+            if result is None or not os.path.exists(temp_path):
+                raise RuntimeError(f"Failed to download Google Drive file {file_id}.")
+            os.replace(temp_path, save_path)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
 
     @staticmethod
     def split_column_into_files(
