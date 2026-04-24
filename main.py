@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import logging
 import multiprocessing
 import os
 import shutil
@@ -10,6 +11,7 @@ import numpy as np
 import polars as pl
 
 from utils import Options, SetSeed
+from utils.cleanup import cleanup_interrupted_run
 
 FILE = os.path.abspath(__file__)
 ROOT = os.path.dirname(FILE)  # root directory
@@ -80,8 +82,9 @@ if __name__ == "__main__":
         print(stats)
     except KeyboardInterrupt:
         if not args.keep_useless_run:
-            import logging
-
             logging.shutdown()
-            os.system(f"rm -rf {args.save_path}")
-            print(f"KeyboardInterrupt => This run has been removed.")
+            removed_path = cleanup_interrupted_run(
+                save_path=args.save_path,
+                project_root=args.project,
+            )
+            print(f"KeyboardInterrupt => This run has been removed: {removed_path}")

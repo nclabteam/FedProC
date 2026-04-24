@@ -1,7 +1,3 @@
-from .decimal import Decimal
-from .general import increment_path
-from .seed import SetSeed
-
 __all__ = [
     "Decimal",
     "increment_path",
@@ -12,6 +8,14 @@ __all__ = [
 
 
 def __getattr__(name):
+    if name == "Decimal":
+        from .decimal import Decimal
+
+        return Decimal
+    if name == "increment_path":
+        from .general import increment_path
+
+        return increment_path
     if name == "ModelSummarizer":
         from .model_info import ModelSummarizer
 
@@ -20,4 +24,8 @@ def __getattr__(name):
         from .options import Options
 
         return Options
+    if name == "SetSeed":
+        from .seed import SetSeed
+
+        return SetSeed
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
