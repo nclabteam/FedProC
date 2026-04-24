@@ -1,46 +1,75 @@
 import importlib
 import os
+from collections.abc import Mapping
 from typing import Any, Callable, Dict
 
-# Get the directory of the current file
-current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize empty dictionaries to store the imported classes, optional dictionaries, and compulsory dictionaries
-models = {}
-optional: Dict[Any, dict] = {}
-compulsory: Dict[Any, dict] = {}
-args_update_functions: Dict[str, Callable] = {}
-
-for filename in os.listdir(current_dir):
-    if filename.endswith(".py") and filename != "__init__.py":
-        module_name = filename[:-3]  # Remove the .py extension
-        module = importlib.import_module(f".{module_name}", package=__package__)
-
-        # Import the main class
-        class_name = module_name
-        if hasattr(module, class_name):
-            class_obj = getattr(module, class_name)
-            models[class_name] = class_obj
-
-            # Import optional dictionary
-            optional[class_name] = (
-                getattr(module, "optional") if hasattr(module, "optional") else {}
-            )
-
-            # Import compulsory dictionary
-            compulsory[class_name] = (
-                getattr(module, "compulsory") if hasattr(module, "compulsory") else {}
-            )
-
-            # Import args_update function
-            args_update_functions[class_name] = (
-                getattr(module, "args_update") if hasattr(module, "args_update") else {}
-            )
-
-# Add the imported classes to the module's namespace
-globals().update(models)
+def _discover_module_names() -> list[str]:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    return sorted(
+        filename[:-3]
+        for filename in os.listdir(current_dir)
+        if filename.endswith(".py") and filename != "__init__.py"
+    )
 
 
-# Optionally, define __all__ to control what gets imported with "from strategies import *"
-__all__ = list(models.keys())
-MODELS = list(models.keys())
+_MODULE_NAMES = _discover_module_names()
+MODELS = list(_MODULE_NAMES)
+__all__ = list(MODELS)
+_MODULE_CACHE: Dict[str, Any] = {}
+
+
+def _load_module(module_name: str):
+    module = _MODULE_CACHE.get(module_name)
+    if module is None:
+        module = importlib.import_module(f".{module_name}", package=__name__)
+        _MODULE_CACHE[module_name] = module
+    return module
+
+
+def _load_model_class(model_name: str):
+    if model_name not in MODELS:
+        raise AttributeError(f"module {__name__!r} has no attribute {model_name!r}")
+    module = _load_module(model_name)
+    if not hasattr(module, model_name):
+        raise AttributeError(f"module {module.__name__!r} has no class {model_name!r}")
+    return getattr(module, model_name)
+
+
+class _LazyModuleRegistry(Mapping):
+    def __init__(self, attribute_name: str, default: Any):
+        self.attribute_name = attribute_name
+        self.default = default
+
+    def __getitem__(self, key):
+        if key not in MODELS:
+            raise KeyError(key)
+        module = _load_module(key)
+        return getattr(module, self.attribute_name, self.default)
+
+    def __iter__(self):
+        return iter(MODELS)
+
+    def __len__(self):
+        return len(MODELS)
+
+    def get(self, key, default=None):
+        if key not in MODELS:
+            return default
+        module = _load_module(key)
+        return getattr(
+            module,
+            self.attribute_name,
+            self.default if default is None else default,
+        )
+
+
+optional: Mapping[Any, dict] = _LazyModuleRegistry("optional", {})
+compulsory: Mapping[Any, dict] = _LazyModuleRegistry("compulsory", {})
+args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry(
+    "args_update", {}
+)
+
+
+def __getattr__(name: str):
+    return _load_model_class(name)
