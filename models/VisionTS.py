@@ -14,6 +14,7 @@ from timm.models.vision_transformer import Block, PatchEmbed
 from torch import nn
 from torchvision.transforms import Resize
 from tqdm import tqdm
+from utils.parsing import str2bool
 
 
 def get_mae_arch():
@@ -73,7 +74,7 @@ def args_update(parser):
         choices=["full", "ln", "bias", "none", "mlp", "attn"],
     )
     parser.add_argument("--ckpt_dir", type=str, default=None)
-    parser.add_argument("--load_ckpt", type=bool, default=None)
+    parser.add_argument("--load_ckpt", type=str2bool, default=None)
     parser.add_argument("--context_len", type=int, default=None)
     parser.add_argument("--periodicity", type=int, default=None)
     parser.add_argument("--norm_const", type=float, default=None)
@@ -84,8 +85,8 @@ def args_update(parser):
         default=None,
         choices=["bilinear", "nearest", "bicubic"],
     )
-    parser.add_argument("--export_image", type=bool, default=None)
-    parser.add_argument("--fp64", type=bool, default=None)
+    parser.add_argument("--export_image", type=str2bool, default=None)
+    parser.add_argument("--fp64", type=str2bool, default=None)
 
 
 class VisionTS(nn.Module):

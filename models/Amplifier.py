@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers import RevIN, SeriesDecompMA
+from utils.parsing import str2bool
 
 optional = {
     "moving_avg": 25,
@@ -15,7 +16,7 @@ def args_update(parser):
     parser.add_argument("--moving_avg", type=int, default=None)
     parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--hidden_size", type=int, default=None)
-    parser.add_argument("--noSCI", type=bool, default=None)
+    parser.add_argument("--noSCI", type=str2bool, default=None)
 
 
 class Amplifier(nn.Module):

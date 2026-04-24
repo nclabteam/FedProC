@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+from utils.parsing import str2bool
 
 optional = {"bias": True, "with_gate": True}
 
 
 def args_update(parser):
-    parser.add_argument("--bias", type=bool, default=None)
-    parser.add_argument("--with_gate", type=bool, default=None)
+    parser.add_argument("--bias", type=str2bool, default=None)
+    parser.add_argument("--with_gate", type=str2bool, default=None)
 
 
 class FAN(nn.Module):

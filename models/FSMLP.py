@@ -9,6 +9,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from layers import PositionalEncoding, RevIN, SimplexLinear, Transpose
+from utils.parsing import str2bool
 
 optional = {
     "f_model": 1,
@@ -53,16 +54,16 @@ def args_update(parser):
     parser.add_argument("--fc_dropout", type=float, default=None)
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument("--head_dropout", type=float, default=None)
-    parser.add_argument("--add", type=bool, default=None)
-    parser.add_argument("--individual", type=bool, default=None)
-    parser.add_argument("--wo_conv", type=bool, default=None)
-    parser.add_argument("--serial_conv", type=bool, default=None)
+    parser.add_argument("--add", type=str2bool, default=None)
+    parser.add_argument("--individual", type=str2bool, default=None)
+    parser.add_argument("--wo_conv", type=str2bool, default=None)
+    parser.add_argument("--serial_conv", type=str2bool, default=None)
     parser.add_argument("--patch_len", type=int, nargs="+", default=None)
     parser.add_argument("--kernel_list", type=int, nargs="+", default=None)
     parser.add_argument("--period", type=int, nargs="+", default=None)
     parser.add_argument("--stride", type=int, nargs="+", default=None)
-    parser.add_argument("--affine", type=bool, default=None)
-    parser.add_argument("--subtract_last", type=bool, default=None)
+    parser.add_argument("--affine", type=str2bool, default=None)
+    parser.add_argument("--subtract_last", type=str2bool, default=None)
     parser.add_argument("--d_k", type=int, default=None)
     parser.add_argument("--d_v", type=int, default=None)
     parser.add_argument(
@@ -72,11 +73,11 @@ def args_update(parser):
         "--act", type=str, default=None, choices=["gelu", "relu", "selu"]
     )
     parser.add_argument("--attn_dropout", type=float, default=None)
-    parser.add_argument("--res_attention", type=bool, default=None)
-    parser.add_argument("--pre_norm", type=bool, default=None)
-    parser.add_argument("--store_attn", type=bool, default=None)
+    parser.add_argument("--res_attention", type=str2bool, default=None)
+    parser.add_argument("--pre_norm", type=str2bool, default=None)
+    parser.add_argument("--store_attn", type=str2bool, default=None)
     parser.add_argument("--pe", type=str, default=None)
-    parser.add_argument("--learn_pe", type=bool, default=None)
+    parser.add_argument("--learn_pe", type=str2bool, default=None)
     parser.add_argument("--m_model", type=int, default=None)
     parser.add_argument("--m_layers", type=int, default=None)
 

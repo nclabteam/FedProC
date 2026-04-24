@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from layers import RevIN
+from utils.parsing import str2bool
 
 optional = {
     "use_norm": False,
@@ -22,7 +23,7 @@ optional = {
 
 
 def args_update(parser):
-    parser.add_argument("--use_norm", type=bool, default=None)
+    parser.add_argument("--use_norm", type=str2bool, default=None)
     parser.add_argument("--layer_num", type=int, default=None, choices=[1, 2, 3, 5])
     parser.add_argument("--layer_hp", type=list, default=None)
     parser.add_argument(

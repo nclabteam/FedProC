@@ -4,6 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from layers import RevIN, SeriesDecompMA, TSTiEncoder
+from utils.parsing import str2bool
 
 optional = {
     "e_layers": 3,
@@ -53,12 +54,12 @@ def args_update(parser):
     parser.add_argument("--patch_len", type=int, default=None)
     parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--padding_patch", type=str, default=None, choices=["end"])
-    parser.add_argument("--individual", type=bool, default=None)
-    parser.add_argument("--decomposition", type=bool, default=None)
+    parser.add_argument("--individual", type=str2bool, default=None)
+    parser.add_argument("--decomposition", type=str2bool, default=None)
     parser.add_argument("--kernel_size", type=int, default=None)
-    parser.add_argument("--revin", type=bool, default=None)
-    parser.add_argument("--affine", type=bool, default=None)
-    parser.add_argument("--subtract_last", type=bool, default=None)
+    parser.add_argument("--revin", type=str2bool, default=None)
+    parser.add_argument("--affine", type=str2bool, default=None)
+    parser.add_argument("--subtract_last", type=str2bool, default=None)
     parser.add_argument("--max_seq_len", type=int, default=None)
     parser.add_argument("--d_k", type=int, default=None)
     parser.add_argument("--d_v", type=int, default=None)
@@ -70,9 +71,9 @@ def args_update(parser):
     parser.add_argument("--key_padding_mask", type=str, default=None)
     parser.add_argument("--padding_var", type=int, default=None)
     parser.add_argument("--attn_mask", type=str, default=None)
-    parser.add_argument("--res_attention", type=bool, default=None)
-    parser.add_argument("--pre_norm", type=bool, default=None)
-    parser.add_argument("--store_attn", type=bool, default=None)
+    parser.add_argument("--res_attention", type=str2bool, default=None)
+    parser.add_argument("--pre_norm", type=str2bool, default=None)
+    parser.add_argument("--store_attn", type=str2bool, default=None)
     parser.add_argument(
         "--pe",
         type=str,
@@ -90,10 +91,10 @@ def args_update(parser):
             "sincos",
         ],
     )
-    parser.add_argument("--learn_pe", type=bool, default=None)
-    parser.add_argument("--pretrain_head", type=bool, default=None)
+    parser.add_argument("--learn_pe", type=str2bool, default=None)
+    parser.add_argument("--pretrain_head", type=str2bool, default=None)
     parser.add_argument("--head_type", type=str, default=None, choices=["flatten"])
-    parser.add_argument("--verbose", type=bool, default=None)
+    parser.add_argument("--verbose", type=str2bool, default=None)
 
 
 class PatchTST(nn.Module):

@@ -4,6 +4,7 @@ from einops import rearrange
 from torch import nn
 
 from layers import Transpose
+from utils.parsing import str2bool
 
 optional = {
     "patch_len": 16,
@@ -26,7 +27,7 @@ def args_update(parser):
     parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--d_model", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--use_statistic", type=bool, default=None)
+    parser.add_argument("--use_statistic", type=str2bool, default=None)
     parser.add_argument("--e_layers", type=int, default=None)
     parser.add_argument("--momentum", type=float, default=None)
     parser.add_argument("--n_heads", type=int, default=None)

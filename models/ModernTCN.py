@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from layers import RevIN, SeriesDecompMA
+from utils.parsing import str2bool
 
 optional = {
     "stem_ratio": 6,
@@ -36,12 +37,12 @@ def args_update(parser):
     parser.add_argument("--small_size", type=int, nargs="+", default=None)
     parser.add_argument("--dims", type=int, nargs="+", default=None)
     parser.add_argument("--dw_dims", type=int, nargs="+", default=None)
-    parser.add_argument("--small_kernel_merged", type=bool, default=None)
+    parser.add_argument("--small_kernel_merged", type=str2bool, default=None)
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument("--head_dropout", type=float, default=None)
-    parser.add_argument("--use_multi_scale", type=bool, default=None)
-    parser.add_argument("--revin", type=bool, default=None)
-    parser.add_argument("--affine", type=bool, default=None)
+    parser.add_argument("--use_multi_scale", type=str2bool, default=None)
+    parser.add_argument("--revin", type=str2bool, default=None)
+    parser.add_argument("--affine", type=str2bool, default=None)
     parser.add_argument(
         "--subtract_last",
         type=int,
@@ -51,7 +52,7 @@ def args_update(parser):
     parser.add_argument("--kernel_size", type=int, default=None)
     parser.add_argument("--patch_size", type=int, default=None)
     parser.add_argument("--patch_stride", type=int, default=None)
-    parser.add_argument("--decomposition", type=bool, default=None)
+    parser.add_argument("--decomposition", type=str2bool, default=None)
 
 
 class ModernTCN(nn.Module):

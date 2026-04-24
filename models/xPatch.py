@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers import SeriesDecompDEMA, SeriesDecompEMA
+from utils.parsing import str2bool
 
 optional = {
     "alpha": 0.3,
@@ -44,7 +45,7 @@ def args_update(parser):
     )
     parser.add_argument(
         "--learnable",
-        type=bool,
+        type=str2bool,
         default=None,
         help="learnable alpha and beta",
     )

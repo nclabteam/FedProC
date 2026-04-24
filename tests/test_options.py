@@ -6,6 +6,7 @@ from unittest.mock import patch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.options import Options
+from utils.parsing import str2bool
 
 
 class TestOptions(unittest.TestCase):
@@ -115,6 +116,38 @@ class TestOptions(unittest.TestCase):
                     options.fix_args()
                     self.assertEqual(options.args.device, "cuda")
                     self.assertEqual(options.args.device_id, "0,1")
+
+    def test_random_join_ratio_false_parses_correctly(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "main.py",
+                "--random_join_ratio",
+                "false",
+                "--project",
+                "runs_test_options",
+            ],
+        ):
+            self.assertFalse(Options(root=".").parse_options().args.random_join_ratio)
+
+    def test_return_diff_false_parses_correctly(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "main.py",
+                "--return_diff",
+                "false",
+                "--project",
+                "runs_test_options",
+            ],
+        ):
+            self.assertFalse(Options(root=".").parse_options().args.return_diff)
+
+    def test_str2bool_rejects_invalid_values(self):
+        with self.assertRaises(ValueError):
+            str2bool("maybe")
 
 
 if __name__ == "__main__":

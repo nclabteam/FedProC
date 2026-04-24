@@ -3,6 +3,7 @@ import math
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
+from utils.parsing import str2bool
 
 optional = {
     "merge_win": 4,
@@ -25,7 +26,7 @@ def args_update(parser):
     parser.add_argument("--n_heads", type=int, default=None)
     parser.add_argument("--e_layers", type=int, default=None)
     parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--baseline", type=bool, default=None)
+    parser.add_argument("--baseline", type=str2bool, default=None)
     parser.add_argument("--seg_len", type=int, default=None)
 
 

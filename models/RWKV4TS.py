@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from torch.nn import functional as F
+from utils.parsing import str2bool
 
 optional = {
     "block_size": 1024,
@@ -32,7 +33,7 @@ def args_update(parser):
     parser.add_argument("--dropout", type=float, default=None)
     parser.add_argument(
         "--bias",
-        type=bool,
+        type=str2bool,
         default=None,
         help="True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster",
     )

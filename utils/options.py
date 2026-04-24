@@ -15,6 +15,7 @@ from schedulers import SCHEDULERS
 from strategies import STRATEGIES
 
 from .general import increment_path
+from .parsing import str2bool
 
 
 class CustomHelpFormatter(argparse.HelpFormatter):
@@ -145,7 +146,7 @@ class Options:
             help="number of global rounds in federated learning",
         )
         parser.add_argument(
-            "--patience", type=int, default=False, help="Patience for early stopping"
+            "--patience", type=int, default=0, help="Patience for early stopping"
         )
         parser.add_argument(
             "--join_ratio",
@@ -155,7 +156,7 @@ class Options:
         )
         parser.add_argument(
             "--random_join_ratio",
-            type=bool,
+            type=str2bool,
             default=False,
             help="Random ratio of clients per round",
         )
@@ -203,7 +204,7 @@ class Options:
         )
         parser.add_argument(
             "--return_diff",
-            type=bool,
+            type=str2bool,
             default=False,
             help="Return the difference between the local model and the global model",
         )

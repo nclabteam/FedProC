@@ -1,6 +1,7 @@
 import torch
 import torch.nn.init as init
 from torch import nn
+from utils.parsing import str2bool
 
 optional = {
     "num_layers": 3,
@@ -37,7 +38,7 @@ def args_update(parser):
     )
     parser.add_argument(
         "--use_conv_w_avg",
-        type=bool,
+        type=str2bool,
         default=None,
         choices=[True, False],
         help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
@@ -51,7 +52,7 @@ def args_update(parser):
     )
     parser.add_argument(
         "--use_stitch",
-        type=bool,
+        type=str2bool,
         default=None,
         choices=[True, False],
         help="If True, apply stitching to combine original and shuffled sequences",

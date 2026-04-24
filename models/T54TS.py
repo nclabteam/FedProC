@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from transformers import T5Config, T5ForConditionalGeneration
+from utils.parsing import str2bool
 
 optional = {
     "is_gpt": True,
@@ -15,13 +16,13 @@ optional = {
 
 
 def args_update(parser):
-    parser.add_argument("--is_gpt", type=bool, default=None)
+    parser.add_argument("--is_gpt", type=str2bool, default=None)
     parser.add_argument("--patch_size", type=int, default=None)
-    parser.add_argument("--pretrain", type=bool, default=None)
+    parser.add_argument("--pretrain", type=str2bool, default=None)
     parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--gpt_layers", type=int, default=None)
     parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--freeze", type=bool, default=None)
+    parser.add_argument("--freeze", type=str2bool, default=None)
 
 
 class T54TS(nn.Module):
