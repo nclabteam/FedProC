@@ -710,6 +710,7 @@ class Server(SharedMethods):
         self.num_gpus = len(device_ids) if self.device == "cuda" else 0
         configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
         self.parallel = configs.parallel
+        os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
         ray.init(
             num_gpus=self.num_gpus,
             ignore_reinit_error=True,
