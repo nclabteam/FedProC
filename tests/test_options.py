@@ -205,6 +205,14 @@ class TestOptions(unittest.TestCase):
                     "high",
                 )
 
+    def test_compact_flag_parses(self):
+        with patch.object(
+            sys,
+            "argv",
+            ["main.py", "--compact", "--project", "runs_test_options"],
+        ):
+            self.assertTrue(Options(root=".").parse_options().args.compact)
+
 
 if __name__ == "__main__":
     unittest.main()

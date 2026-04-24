@@ -75,6 +75,15 @@ class Options:
             default=False,
             help="delete KeyBoardInterrupt run",
         )
+        parser.add_argument(
+            "--compact",
+            action="store_true",
+            default=False,
+            help=(
+                "merge per-seed result files into compact summaries and remove "
+                "allowlisted generated intermediates after a successful run"
+            ),
+        )
 
         # save path
         parser.add_argument(

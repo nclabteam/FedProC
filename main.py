@@ -12,6 +12,7 @@ import polars as pl
 
 from utils import Options, SetSeed
 from utils.cleanup import cleanup_interrupted_run
+from utils.compact import compact_experiment_runs
 
 FILE = os.path.abspath(__file__)
 ROOT = os.path.dirname(FILE)  # root directory
@@ -80,6 +81,9 @@ if __name__ == "__main__":
         stats = pl.DataFrame(rows)
         stats.write_csv(os.path.join(args.save_path, "results.csv"))
         print(stats)
+        if args.compact:
+            compact_summary = compact_experiment_runs(args.save_path)
+            print("Compact summary:", compact_summary)
     except KeyboardInterrupt:
         if not args.keep_useless_run:
             logging.shutdown()
