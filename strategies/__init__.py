@@ -1,5 +1,6 @@
 import importlib
 import os
+import sys
 from collections.abc import Mapping
 from typing import Any, Callable, Dict
 
@@ -24,6 +25,10 @@ def _load_module(module_name: str):
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
         _MODULE_CACHE[module_name] = module
+        # importlib.import_module binds the submodule into the parent package's
+        # __dict__, which would cause getattr(strategies, name) to return the
+        # module object instead of the class, bypassing __getattr__.
+        vars(sys.modules[__name__]).pop(module_name, None)
     return module
 
 
