@@ -1,12 +1,9 @@
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
-COMPACT_DIR_NAME = "compact"
-ALLOWLIST_DIRS = ("logs", "models_info")
 CLIENT_GLOB = "client_*.csv"
 
 
@@ -21,10 +18,9 @@ def _seed_run_dirs(save_path: Path) -> list[Path]:
 def _annotate_frame(frame: pl.DataFrame, **columns: Any) -> pl.DataFrame:
     if frame.is_empty():
         return frame
-    result = frame.with_row_index("step")
     for name, value in columns.items():
-        result = result.with_columns(pl.lit(value).alias(name))
-    return result
+        frame = frame.with_columns(pl.lit(value).alias(name))
+    return frame
 
 
 def compact_experiment_runs(save_path: str | Path) -> dict[str, Any]:
@@ -34,63 +30,51 @@ def compact_experiment_runs(save_path: str | Path) -> dict[str, Any]:
     if not experiment_dir.is_dir():
         raise ValueError(f"Experiment path is not a directory: {experiment_dir}")
 
-    compact_dir = experiment_dir / COMPACT_DIR_NAME
-    compact_dir.mkdir(parents=True, exist_ok=True)
-
     server_frames: list[pl.DataFrame] = []
     client_frames: list[pl.DataFrame] = []
-    delete_targets: list[Path] = []
 
     run_dirs = _seed_run_dirs(experiment_dir)
     for run_dir in run_dirs:
-        seed = int(run_dir.name)
+        run = int(run_dir.name)
         results_dir = run_dir / "results"
         server_path = results_dir / "server.csv"
         if server_path.exists():
-            server_frames.append(_annotate_frame(pl.read_csv(server_path), seed=seed))
+            server_frames.append(_annotate_frame(pl.read_csv(server_path), run=run))
 
         for client_path in sorted(results_dir.glob(CLIENT_GLOB)):
             client_frames.append(
                 _annotate_frame(
                     pl.read_csv(client_path),
-                    seed=seed,
+                    run=run,
                     client=client_path.stem,
                 )
             )
-            delete_targets.append(client_path)
-
-        for dirname in ALLOWLIST_DIRS:
-            target = run_dir / dirname
-            if target.exists():
-                delete_targets.append(target)
 
     generated_files: list[str] = []
     if server_frames:
-        server_output = compact_dir / "server.csv"
+        server_output = experiment_dir / "server.csv"
         pl.concat(server_frames, how="diagonal_relaxed").write_csv(server_output)
-        generated_files.append(str(server_output.relative_to(experiment_dir)))
+        generated_files.append("server.csv")
     if client_frames:
-        client_output = compact_dir / "clients.csv"
+        client_output = experiment_dir / "client.csv"
         pl.concat(client_frames, how="diagonal_relaxed").write_csv(client_output)
-        generated_files.append(str(client_output.relative_to(experiment_dir)))
+        generated_files.append("client.csv")
 
-    deleted_relative_paths: list[str] = []
-    for target in delete_targets:
-        if not target.exists():
-            continue
-        if target.is_dir():
-            shutil.rmtree(target, ignore_errors=False)
-        else:
-            target.unlink()
-        deleted_relative_paths.append(str(target.relative_to(experiment_dir)))
+    deleted_paths: list[str] = []
+    for run_dir in run_dirs:
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+            deleted_paths.append(run_dir.name)
 
-    summary = {
+    info_json = experiment_dir / "info.json"
+    if info_json.exists():
+        info_json.unlink()
+        deleted_paths.append("info.json")
+
+    return {
         "runs": len(run_dirs),
-        "server_rows": sum(frame.height for frame in server_frames),
-        "client_rows": sum(frame.height for frame in client_frames),
+        "server_rows": sum(f.height for f in server_frames),
+        "client_rows": sum(f.height for f in client_frames),
         "generated_files": generated_files,
-        "deleted_paths": sorted(deleted_relative_paths),
+        "deleted_paths": sorted(deleted_paths),
     }
-    with open(compact_dir / "manifest.json", "w", encoding="utf-8") as file:
-        json.dump(summary, file, indent=2)
-    return summary
