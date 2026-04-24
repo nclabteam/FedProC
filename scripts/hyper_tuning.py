@@ -3,7 +3,6 @@ import itertools
 import subprocess
 import sys
 
-
 BASE_ARGS = [
     "--epochs=1",
     "--times=1",

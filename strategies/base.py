@@ -159,8 +159,7 @@ class SharedMethods:
             return SharedMethods._to_serializable(vars(value))
         if isinstance(value, dict):
             return {
-                key: SharedMethods._to_serializable(item)
-                for key, item in value.items()
+                key: SharedMethods._to_serializable(item) for key, item in value.items()
             }
         if isinstance(value, (list, tuple)):
             return [SharedMethods._to_serializable(item) for item in value]
@@ -169,7 +168,9 @@ class SharedMethods:
         return str(value)
 
     @staticmethod
-    def _checkpoint_metadata(extra_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _checkpoint_metadata(
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         metadata = {
             "torch_version": str(torch.__version__),
             "python_version": platform.python_version(),
@@ -425,7 +426,9 @@ class SharedMethods:
         SharedMethods._move_optimizer_state_to_param_devices(old)
 
     @staticmethod
-    def _move_optimizer_state_to_param_devices(optimizer: torch.optim.Optimizer) -> None:
+    def _move_optimizer_state_to_param_devices(
+        optimizer: torch.optim.Optimizer,
+    ) -> None:
         def move(value, device):
             if isinstance(value, torch.Tensor):
                 return value.to(device=device)

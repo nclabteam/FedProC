@@ -82,9 +82,7 @@ class Decimal:
             return Decimal((num[0] * maximum + the_other_number[0] * maximum) / maximum)
         except IndexError:
             raise "Entered {}, which has the type {},\
-             is not a valid type".format(
-                other, type(other)
-            )
+             is not a valid type".format(other, type(other))
 
     def __float__(self):
         return float(self.number[0])
@@ -108,9 +106,7 @@ class Decimal:
             return Decimal((num[0] * maximum - the_other_number[0] * maximum) / maximum)
         except IndexError:
             raise "Entered {}, which has the type {},\
-         is not a valid type".format(
-                other, type(other)
-            )
+         is not a valid type".format(other, type(other))
 
     def __div__(self, other):
         the_other_number, num = list(other), list(self.number)
@@ -121,9 +117,7 @@ class Decimal:
             )
         except IndexError:
             raise "Entered {}, which has the type {},\
-         is not a valid type".format(
-                other, type(other)
-            )
+         is not a valid type".format(other, type(other))
 
     def __floordiv__(self, other):
         the_other_number, num = list(other), list(self.number)
@@ -134,9 +128,7 @@ class Decimal:
             )
         except IndexError:
             raise "Entered {}, which has the type {},\
-         is not a valid type".format(
-                other, type(other)
-            )
+         is not a valid type".format(other, type(other))
 
     def __mul__(self, other):
         the_other_number, num = list(other), list(self.number)
@@ -147,9 +139,7 @@ class Decimal:
             )
         except IndexError:
             raise "Entered {}, which has the type {},\
-         is not a valid type".format(
-                other, type(other)
-            )
+         is not a valid type".format(other, type(other))
 
     def __mod__(self, other):
         the_other_number, num = list(other), list(self.number)
@@ -160,6 +150,4 @@ class Decimal:
             )
         except IndexError:
             raise "Entered {}, which has the type {},\
-         is not a valid type".format(
-                other, type(other)
-            )
+         is not a valid type".format(other, type(other))

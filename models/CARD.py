@@ -285,7 +285,7 @@ class Attention(nn.Module):
         return src_dp
 
     def forward(self, src):
-        (B, nvars, H, C) = src.shape
+        B, nvars, H, C = src.shape
 
         qkv = (
             self.qkv(src)

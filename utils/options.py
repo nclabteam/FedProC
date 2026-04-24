@@ -336,7 +336,9 @@ class Options:
             if device_id.strip()
         ]
         if not raw_device_ids:
-            raise ValueError("CUDA device selected but no valid --device_id was provided")
+            raise ValueError(
+                "CUDA device selected but no valid --device_id was provided"
+            )
         if any(not device_id.isdigit() for device_id in raw_device_ids):
             raise ValueError(
                 f"Invalid CUDA device id list: {self.args.device_id!r}. "

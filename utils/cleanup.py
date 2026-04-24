@@ -9,10 +9,9 @@ def resolve_cleanup_path(save_path: str, project_root: str) -> Path:
     resolved_project_root = Path(project_root).resolve()
 
     try:
-        is_within_project = (
-            os.path.commonpath([str(resolved_save_path), str(resolved_project_root)])
-            == str(resolved_project_root)
-        )
+        is_within_project = os.path.commonpath(
+            [str(resolved_save_path), str(resolved_project_root)]
+        ) == str(resolved_project_root)
     except ValueError as error:
         raise ValueError(
             f"Cleanup path {resolved_save_path} is not under project root "
