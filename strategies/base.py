@@ -1,5 +1,6 @@
 import copy
 import gc
+import inspect
 import json
 import logging
 import os
@@ -479,6 +480,8 @@ class SharedMethods:
         """
         module = __import__(func_type, fromlist=[func_name])
         func = getattr(module, func_name)
+        if inspect.ismodule(func) and hasattr(func, func_name):
+            return getattr(func, func_name)
         return func
 
     def initialize_loss(self) -> None:

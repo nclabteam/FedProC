@@ -8,7 +8,7 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import Linear
+from models.Linear import Linear
 from strategies.base import SharedMethods
 
 
@@ -67,6 +67,34 @@ class TestCheckpointing(unittest.TestCase):
                 allow_unsafe_legacy=True,
             )
             self.assertIsInstance(restored, Linear)
+
+    def test_checkpoint_metadata_is_serializable(self):
+        model, configs = self.make_model()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            SharedMethods.save_model(
+                model=model,
+                path=tmpdir,
+                name="server",
+                postfix="meta",
+                configs=configs,
+                metadata={"nested": {"items": [1, "two", True]}},
+            )
+            payload = torch.load(
+                os.path.join(tmpdir, "server_meta.pt"),
+                weights_only=True,
+            )
+            self.assertEqual(payload["metadata"]["nested"]["items"], [1, "two", True])
+            self.assertIn("git_commit", payload["metadata"])
+
+    def test_invalid_checkpoint_payload_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_path = os.path.join(tmpdir, "broken.pt")
+            torch.save({"format": "unknown", "state_dict": {}}, checkpoint_path)
+            with self.assertRaises(ValueError):
+                SharedMethods.load_checkpoint_model(checkpoint_path)
+
+    def test_objective_resolution_returns_model_class(self):
+        self.assertIs(SharedMethods._get_objective_function("models", "Linear"), Linear)
 
 
 if __name__ == "__main__":

@@ -96,6 +96,25 @@ class TestOptions(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         options.fix_args()
 
+    def test_empty_cuda_device_id_rejected(self):
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "main.py",
+                    "--device",
+                    "cuda",
+                    "--device_id",
+                    " , ",
+                    "--project",
+                    "runs_test_options",
+                ],
+            ):
+                options = Options(root=".").parse_options()
+                with self.assertRaises(ValueError):
+                    options.fix_args()
+
     def test_valid_cuda_device_ids_are_normalized(self):
         with patch("torch.cuda.is_available", return_value=True):
             with patch("torch.cuda.device_count", return_value=2):
@@ -148,6 +167,43 @@ class TestOptions(unittest.TestCase):
     def test_str2bool_rejects_invalid_values(self):
         with self.assertRaises(ValueError):
             str2bool("maybe")
+
+    def test_config_file_defaults_are_applied_but_cli_still_wins(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, "config.json")
+            with open(config_path, "w", encoding="utf-8") as file:
+                json.dump(
+                    {
+                        "model": "Linear",
+                        "dataset": "ETDatasetHour",
+                        "strategy": "LocalOnly",
+                        "optimizer": "Adam",
+                        "scheduler": "BaseScheduler",
+                        "project": "runs_from_config",
+                        "efficiency": "low",
+                    },
+                    file,
+                )
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "main.py",
+                    "--config_file",
+                    config_path,
+                    "--efficiency",
+                    "high",
+                    "--project",
+                    "runs_test_options",
+                ],
+            ):
+                self.assertEqual(
+                    Options(root=".").parse_options().args.efficiency,
+                    "high",
+                )
 
 
 if __name__ == "__main__":
