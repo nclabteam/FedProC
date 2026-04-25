@@ -27,8 +27,9 @@ class DFL(Server):
         self.set_configs(configs=configs, times=times)
         self.mkdir()
 
-        self.num_gpus = len(self.device_id.split(","))
-        configs.parallel = True if self.num_gpus > 1 else False
+        device_ids = [d for d in self.device_id.split(",") if d]
+        self.num_gpus = len(device_ids) if self.device == "cuda" else 0
+        configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
         self.parallel = configs.parallel
         ray.init(
             num_gpus=self.num_gpus,
