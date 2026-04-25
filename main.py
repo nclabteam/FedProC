@@ -80,7 +80,7 @@ if __name__ == "__main__":
             rows.append(row)
         stats = pl.DataFrame(rows)
         stats.write_csv(os.path.join(args.save_path, "results.csv"))
-        print(stats)
+        sys.stdout.buffer.write((str(stats) + "\n").encode("utf-8", errors="replace"))
         if args.compact:
             compact_summary = compact_experiment_runs(args.save_path)
             print("Compact summary:", compact_summary)

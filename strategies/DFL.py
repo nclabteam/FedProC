@@ -125,7 +125,7 @@ class DFL_Client(Client):
         model = self.reset_model(self.model)
         for client, weight in zip(self.models, self.weights):
             for global_param, local_param in zip(
-                model.parameters(), client.parameters()
+                model.parameters(), client.to(self.device).parameters()
             ):
                 global_param.data.add_(local_param.data, alpha=weight)
         self.update_model_params(old=self.model, new=model)
