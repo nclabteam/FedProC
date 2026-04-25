@@ -989,7 +989,7 @@ class DataFrameOptimizer:
                 before, after
             )
             print(
-                f"Polars DataFrame memory usage: {before:.4f} {unit} ⇒ {after:.4f} {unit} ({reduction_str})"
+                f"Polars DataFrame memory usage: {before:.4f} {unit} -> {after:.4f} {unit} ({reduction_str})"
             )
         return df
 
@@ -1073,7 +1073,8 @@ class DataFrameOptimizer:
         # Find the smallest numeric type that fits the given range.
         dtype_list = numeric_int_types if current_type == "int" else numeric_float_types
         for dtype in dtype_list:
-            if np.can_cast(c_min, dtype) and np.can_cast(c_max, dtype):
+            info = np.iinfo(dtype) if current_type == "int" else np.finfo(dtype)
+            if info.min <= c_min and c_max <= info.max:
                 return dtype
         return None
 
