@@ -66,10 +66,8 @@ class SharedMethods:
         with np.load(file) as data:
             x = data["x"]
             y = data["y"]
-        x = scaler.transform(x)
-        y = scaler.transform(y)
-        x = torch.tensor(x, dtype=torch.float32)
-        y = torch.tensor(y, dtype=torch.float32)
+        x = torch.as_tensor(np.asarray(scaler.transform(x), dtype=np.float32))
+        y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
         dataset = TensorDataset(x, y)
 
         # Apply subsampling if necessary
@@ -110,8 +108,12 @@ class SharedMethods:
         model.eval()
         with torch.no_grad():
             for batch_x, batch_y in dataloader:
-                batch_x = batch_x.float().to(device)
-                batch_y = batch_y.float().to(device)
+                batch_x = batch_x.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                batch_y = batch_y.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
                 outputs = model(batch_x)
                 loss = criterion(outputs, batch_y)
                 losses.append(loss.item())
@@ -375,9 +377,9 @@ class SharedMethods:
         SharedMethods._move_optimizer_state_to_param_devices(optimizer)
         model.train()
         for batch_x, batch_y in dataloader:
-            optimizer.zero_grad()
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
+            optimizer.zero_grad(set_to_none=True)
+            batch_x = batch_x.to(device=device, dtype=torch.float32, non_blocking=True)
+            batch_y = batch_y.to(device=device, dtype=torch.float32, non_blocking=True)
             outputs = model(batch_x)
             loss = criterion(outputs, batch_y)
             loss.backward()
@@ -670,8 +672,12 @@ def ray_compute_client_loss(
         model.eval()
         with torch.no_grad():
             for batch_x, batch_y in dataloader:
-                batch_x = batch_x.float().to(device)
-                batch_y = batch_y.float().to(device)
+                batch_x = batch_x.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                batch_y = batch_y.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
                 outputs = model(batch_x)
                 loss = criterion(outputs, batch_y)
                 losses.append(float(loss.item()))
@@ -772,12 +778,19 @@ class Server(SharedMethods):
         """
         total_bytes_sent = 0.0
         to_be_sent = self.variables_to_be_sent()
+        shared_sizes = {
+            key: self.get_size(value)
+            for key, value in to_be_sent.items()
+            if not (isinstance(value, list) and len(value) == len(self.clients))
+        }
         for idx, client in enumerate(self.clients):
             data_to_send = {}
             for key, value in to_be_sent.items():
                 if isinstance(value, list) and len(value) == len(self.clients):
                     value = value[idx]
-                total_bytes_sent += self.get_size(value)
+                    total_bytes_sent += self.get_size(value)
+                else:
+                    total_bytes_sent += shared_sizes[key]
                 data_to_send[key] = value
             client.receive_from_server(data_to_send)
         self.metrics["send_mb"].append(total_bytes_sent)
@@ -926,29 +939,13 @@ class Server(SharedMethods):
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
 
-                future = ray.remote(num_gpus=num_gpus)(
-                    lambda cl, model, criterion, dtype, dev: (
-                        lambda: (
-                            model.to(dev),
-                            model.eval(),
-                            float(
-                                np.mean(
-                                    [
-                                        criterion(
-                                            model(x.float().to(dev)), y.float().to(dev)
-                                        ).item()
-                                        for x, y in getattr(cl, f"load_{dtype}_data")()
-                                    ]
-                                )
-                            ),
-                        )
-                    )()[2]
-                ).remote(
-                    client,
-                    self.model,
-                    client.loss,
-                    dataset_type,
-                    device,
+                future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                    client=client,
+                    mode="generalization",
+                    dataset_type=dataset_type,
+                    model=self.model,
+                    criterion=client.loss,
+                    device=device,
                 )
                 futures.append(future)
             losses = ray.get(futures)
@@ -987,15 +984,11 @@ class Server(SharedMethods):
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
 
-                future = ray.remote(num_gpus=num_gpus)(
-                    lambda cl, dtype, dev: (
-                        setattr(cl, "device", dev),
-                        float(getattr(cl, f"get_{dtype}_loss")()),
-                    )[1]
-                ).remote(
-                    client,
-                    dataset_type,
-                    device,
+                future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                    client=client,
+                    mode="personalization",
+                    dataset_type=dataset_type,
+                    device=device,
                 )
                 futures.append(future)
             losses = ray.get(futures)
