@@ -17,6 +17,7 @@ import polars as pl
 import ray
 import torch
 from torch.utils.data import DataLoader, Subset, TensorDataset
+from utils.seed import SetSeed
 
 os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 
@@ -41,6 +42,7 @@ class SharedMethods:
         batch_size: int = 32,
         shuffle: bool = False,
         scaler: Any = None,
+        seed: Optional[int] = None,
     ) -> DataLoader:
         """
         Loads data from a numpy .npz file and constructs a PyTorch DataLoader.
@@ -62,6 +64,10 @@ class SharedMethods:
             AssertionError: If sample_ratio is not within [0, 1].
         """
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
+        generator = None
+        if seed is not None:
+            generator = torch.Generator()
+            generator.manual_seed(seed)
 
         with np.load(file) as data:
             x = data["x"]
@@ -73,13 +79,14 @@ class SharedMethods:
         # Apply subsampling if necessary
         if sample_ratio < 1.0:
             subset_size = int(len(dataset) * sample_ratio)
-            indices = torch.randperm(len(dataset))[:subset_size]
+            indices = torch.randperm(len(dataset), generator=generator)[:subset_size]
             dataset = Subset(dataset, indices)
 
         return DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
+            generator=generator,
         )
 
     @staticmethod
@@ -350,6 +357,21 @@ class SharedMethods:
         if isinstance(obj, (list, tuple)):
             return sum(SharedMethods._get_size_bytes(item) for item in obj)
         return sys.getsizeof(obj)
+
+    @staticmethod
+    def _derive_seed(base_seed: Optional[int], *parts: int) -> Optional[int]:
+        if base_seed is None:
+            return None
+        seed = int(base_seed) & 0xFFFFFFFF
+        for part in parts:
+            seed = (seed * 1664525 + int(part) + 1013904223) & 0xFFFFFFFF
+        return seed
+
+    @staticmethod
+    def _set_worker_seed(seed: Optional[int]) -> None:
+        if seed is None:
+            return
+        SetSeed.set_all(seed, verbose=False)
 
     @staticmethod
     def train_one_epoch(
@@ -662,6 +684,8 @@ def ray_compute_client_loss(
     Raises:
         ValueError: If an unsupported mode is provided.
     """
+    seed = client._loader_seed(dataset_type)
+    client._set_worker_seed(seed)
     if mode == "generalization":
         # evaluate the provided model on the client's data
         if model is None or criterion is None:
@@ -783,7 +807,9 @@ class Server(SharedMethods):
             for key, value in to_be_sent.items()
             if not (isinstance(value, list) and len(value) == len(self.clients))
         }
+        current_iter = getattr(self, "current_iter", 0)
         for idx, client in enumerate(self.clients):
+            client.current_iter = current_iter
             data_to_send = {}
             for key, value in to_be_sent.items():
                 if isinstance(value, list) and len(value) == len(self.clients):
@@ -1011,6 +1037,7 @@ class Server(SharedMethods):
         Handles both parallel execution via Ray and serial execution on the local machine.
         Results are collected and local client states are updated automatically.
         """
+        current_iter = getattr(self, "current_iter", 0)
         if self.parallel:
             i = 0
             futures = []
@@ -1022,6 +1049,7 @@ class Server(SharedMethods):
                 while i < len(self.selected_clients) and len(idle_workers) > 0:
                     worker_id = idle_workers.popleft()
                     client = self.selected_clients[i]
+                    client.current_iter = current_iter
 
                     # Parallelize the `train()` method using Ray
                     # We use a lambda to ensure the remote worker has access to the client instance
@@ -1057,6 +1085,7 @@ class Server(SharedMethods):
         else:
             # Serial execution for debugging or small-scale runs
             for client in self.selected_clients:
+                client.current_iter = current_iter
                 client.train()
 
     def fix_results(self) -> None:
@@ -1282,6 +1311,18 @@ class Client(SharedMethods):
         clone.train(model.training)
         return clone.to("cpu")
 
+    def _loader_seed(self, dataset_type: str) -> Optional[int]:
+        base_seed = getattr(self, "seed", None)
+        if base_seed is None:
+            return None
+        dataset_offset = {"train": 0, "test": 1, "valid": 2}.get(dataset_type, 3)
+        return self._derive_seed(
+            int(base_seed) + int(getattr(self, "times", 0)),
+            getattr(self, "id", 0),
+            getattr(self, "current_iter", 0),
+            dataset_offset,
+        )
+
     def send_to_server(self) -> Dict[str, Any]:
         """
         Initiates the data transfer to the server and tracks communication volume.
@@ -1313,6 +1354,7 @@ class Client(SharedMethods):
             shuffle=shuffle,
             scaler=self.scaler,
             batch_size=self.batch_size,
+            seed=self._loader_seed("train"),
         )
         self.train_samples = len(trainloader.dataset)
         return trainloader
@@ -1336,6 +1378,7 @@ class Client(SharedMethods):
             shuffle=shuffle,
             scaler=self.scaler,
             batch_size=self.batch_size,
+            seed=self._loader_seed("test"),
         )
         self.test_samples = len(testloader.dataset)
         return testloader
@@ -1348,6 +1391,8 @@ class Client(SharedMethods):
             In parallel mode, returns a dictionary containing the updated model,
             optimizer, and metrics. Returns None in serial mode.
         """
+        seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
+        SharedMethods._set_worker_seed(seed)
         train_loader = self.load_train_data()
         start_time = time.time()
         offload_after_epoch = self.efficiency == "low"
@@ -1409,6 +1454,8 @@ class Client(SharedMethods):
         return losses
 
     def receive_from_server(self, data):
+        if "current_iter" in data:
+            self.current_iter = data["current_iter"]
         if self.return_diff:
             self.snapshot = copy.deepcopy(data["model"]).to("cpu")
         self.update_model_params(old=self.model, new=data["model"])

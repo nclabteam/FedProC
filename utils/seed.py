@@ -40,10 +40,12 @@ class SetSeed:
         torch.cuda.manual_seed_all(self.seed)  # for Multi-GPU, exception safe
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
     def _os(self):
         os.environ["PYTHONHASHSEED"] = str(self.seed)
         os.environ["PL_GLOBAL_SEED"] = str(self.seed)
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
     def _random(self):
         random.seed(self.seed)
@@ -51,10 +53,15 @@ class SetSeed:
     def _numpy(self):
         np.random.seed(self.seed)
 
-    def set(self):
+    @staticmethod
+    def set_all(seed: int, verbose: bool = True) -> None:
+        SetSeed(seed).set(verbose=verbose)
+
+    def set(self, verbose: bool = True):
         self._check()
-        self._torch()
         self._os()
+        self._torch()
         self._random()
         self._numpy()
-        print(f"Seed set to {self.seed}")
+        if verbose:
+            print(f"Seed set to {self.seed}")
