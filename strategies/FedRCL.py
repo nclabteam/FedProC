@@ -127,7 +127,7 @@ class FedRCL_Client(Client):
         return labels
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
+        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
     ):
         model.to(device)
         model.train()
@@ -160,5 +160,6 @@ class FedRCL_Client(Client):
             loss.backward()
             optimizer.step()
 
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         scheduler.step()

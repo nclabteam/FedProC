@@ -29,7 +29,7 @@ class MOON_Client(Client):
         self.update_model_params(old=self.model, new=data["model"])
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
+        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
     ):
         model.to(device)
 
@@ -69,5 +69,6 @@ class MOON_Client(Client):
             optimizer.step()
 
         scheduler.step()
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         del global_model, prev_model

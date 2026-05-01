@@ -73,7 +73,7 @@ class FedDyn_Client(Client):
         )
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
+        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
     ):
         model.to(device)
         model.train()
@@ -96,9 +96,10 @@ class FedDyn_Client(Client):
             self.old_grad = self.old_grad - self.alpha * (v1 - self.global_model_vector)
         scheduler.step()
 
-        self.model.to("cpu")
-        self.global_model_vector = None
-        self.old_grad = self.old_grad.to("cpu")
+        if offload_after:
+            model.to("cpu")
+            self.global_model_vector = None
+            self.old_grad = self.old_grad.to("cpu")
 
     def receive_from_server(self, data):
         super().receive_from_server(data)

@@ -48,7 +48,7 @@ class FML_Client(Client):
     def variables_to_be_sent(self):
         return {"model": self.model_g}
 
-    def train_one_epoch(self, dataloader, *args, **kwargs):
+    def train_one_epoch(self, dataloader, *args, offload_after=True, **kwargs):
         self.model.to(self.device)
         self.model_g.to(self.device)
         self.model.train()
@@ -73,8 +73,9 @@ class FML_Client(Client):
             self.optimizer.step()
             self.optimizer_g.step()
         self.scheduler.step()
-        self.model.to("cpu")
-        self.model_g.to("cpu")
+        if offload_after:
+            self.model.to("cpu")
+            self.model_g.to("cpu")
 
     def receive_from_server(self, data):
         self.update_model_params(old=self.model_g, new=data["model"])

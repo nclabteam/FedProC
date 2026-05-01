@@ -21,7 +21,14 @@ class FedProx_Client(Client):
         self.update_model_params(old=self.model, new=data["model"])
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
+        self,
+        model,
+        dataloader,
+        optimizer,
+        criterion,
+        scheduler,
+        device,
+        offload_after=True,
     ):
         model.to(device)
         global_params = copy.deepcopy(list(self.snapshot.to(device).parameters()))
@@ -38,5 +45,6 @@ class FedProx_Client(Client):
                     w.grad.data += self.mu * (w.data - w_t.data)
             optimizer.step()
         scheduler.step()
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         del global_params
