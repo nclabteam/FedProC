@@ -66,9 +66,7 @@ class _LazyModuleRegistry(Mapping):
 
 optional: Mapping[Any, dict] = _LazyModuleRegistry("optional", {})
 compulsory: Mapping[Any, dict] = _LazyModuleRegistry("compulsory", {})
-args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry(
-    "args_update", {}
-)
+args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry("args_update", {})
 
 
 def __getattr__(name: str):

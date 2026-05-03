@@ -1,6 +1,7 @@
 import torch
 import torch.nn.init as init
 from torch import nn
+
 from utils.parsing import str2bool
 
 optional = {

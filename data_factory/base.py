@@ -501,7 +501,9 @@ class FileManager:
             temp_path = temp_file.name
 
         try:
-            with requests.get(url, stream=True, timeout=FileManager.request_timeout) as response:
+            with requests.get(
+                url, stream=True, timeout=FileManager.request_timeout
+            ) as response:
                 response.raise_for_status()
                 with open(temp_path, "wb") as handle:
                     for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -571,7 +573,9 @@ class FileManager:
             temp_path = temp_file.name
 
         try:
-            with requests.get(url, stream=True, timeout=FileManager.request_timeout) as response:
+            with requests.get(
+                url, stream=True, timeout=FileManager.request_timeout
+            ) as response:
                 response.raise_for_status()
                 with open(temp_path, "wb") as handle:
                     for chunk in response.iter_content(chunk_size=1024 * 1024):

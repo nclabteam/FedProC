@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+
 from utils.parsing import str2bool
 
 optional = {"bias": True, "with_gate": True}

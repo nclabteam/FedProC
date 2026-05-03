@@ -3,6 +3,7 @@ import torch.nn as nn
 from einops import rearrange
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
+
 from utils.parsing import str2bool
 
 optional = {
