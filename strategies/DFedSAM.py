@@ -100,11 +100,19 @@ class DFedSAM_Client(DFL_Client):
             p.data.sub_(e_w)
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device
+        self,
+        model,
+        dataloader,
+        optimizer,
+        criterion,
+        scheduler,
+        device,
+        offload_after=True,
     ):
         """SAM training loop: two forward-backward passes per batch."""
         rho = self.rho
         model.to(device)
+        self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
         for batch_x, batch_y in dataloader:
             batch_x = batch_x.float().to(device)
@@ -127,5 +135,6 @@ class DFedSAM_Client(DFL_Client):
             # Step 4: restore weights and step with perturbed gradient
             self._remove_perturbation(model, eps)
             optimizer.step()
-        model.to("cpu")
+        if offload_after:
+            model.to("cpu")
         scheduler.step()

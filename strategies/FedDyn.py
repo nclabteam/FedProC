@@ -73,7 +73,14 @@ class FedDyn_Client(Client):
         )
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
+        self,
+        model,
+        dataloader,
+        optimizer,
+        criterion,
+        scheduler,
+        device,
+        offload_after=True,
     ):
         model.to(device)
         model.train()

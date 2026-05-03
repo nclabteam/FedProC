@@ -51,6 +51,8 @@ class FML_Client(Client):
     def train_one_epoch(self, dataloader, *args, offload_after=True, **kwargs):
         self.model.to(self.device)
         self.model_g.to(self.device)
+        self._move_optimizer_state_to_param_devices(self.optimizer)
+        self._move_optimizer_state_to_param_devices(self.optimizer_g)
         self.model.train()
         self.model_g.train()
         for batch_x, batch_y in dataloader:

@@ -2,7 +2,7 @@ from collections import deque
 
 import ray
 
-from .base import Client, Server
+from .base import Client, Server, SharedMethods
 
 
 class Centralized(Server):
@@ -95,6 +95,8 @@ class Centralized_Client(Client):
 def train_one_epoch_remote(
     model, dataloader, optimizer, criterion, scheduler, device, epochs
 ):
+    model.to(device)
+    SharedMethods._move_optimizer_state_to_param_devices(optimizer)
     model.train()
     for _ in range(epochs):
         for batch in dataloader:

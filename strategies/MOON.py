@@ -29,9 +29,17 @@ class MOON_Client(Client):
         self.update_model_params(old=self.model, new=data["model"])
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
+        self,
+        model,
+        dataloader,
+        optimizer,
+        criterion,
+        scheduler,
+        device,
+        offload_after=True,
     ):
         model.to(device)
+        self._move_optimizer_state_to_param_devices(optimizer)
 
         # [§Method] — frozen reference models for contrastive loss
         global_model = copy.deepcopy(self.global_model).to(device)

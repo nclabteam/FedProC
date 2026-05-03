@@ -127,9 +127,17 @@ class FedRCL_Client(Client):
         return labels
 
     def train_one_epoch(
-        self, model, dataloader, optimizer, criterion, scheduler, device, offload_after=True
+        self,
+        model,
+        dataloader,
+        optimizer,
+        criterion,
+        scheduler,
+        device,
+        offload_after=True,
     ):
         model.to(device)
+        self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
         for batch_x, batch_y in dataloader:
             optimizer.zero_grad()
