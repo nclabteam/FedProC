@@ -1,3 +1,4 @@
+import ast
 import importlib
 import os
 import sys
@@ -5,22 +6,43 @@ from collections.abc import Mapping
 from typing import Any, Callable, Dict
 
 
-def _discover_module_names() -> list[str]:
+def _discover_strategy_map() -> Dict[str, str]:
+    """Scan strategy files via AST and return {class_name: module_stem}.
+
+    A file named Foo.py registers every top-level class whose name ends with
+    'Foo' (e.g. Foo, DFoo, XFoo).  This lets co-located variants like
+    DFedProx live inside FedProx.py without a separate file.
+    """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    return sorted(
-        filename[:-3]
-        for filename in os.listdir(current_dir)
-        if filename.endswith(".py") and filename != "__init__.py"
-    )
+    result: Dict[str, str] = {}
+    for filename in sorted(os.listdir(current_dir)):
+        if not filename.endswith(".py") or filename == "__init__.py":
+            continue
+        stem = filename[:-3]
+        filepath = os.path.join(current_dir, filename)
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=filepath)
+            classes = [
+                n.name
+                for n in ast.walk(tree)
+                if isinstance(n, ast.ClassDef) and n.name.endswith(stem)
+            ]
+        except SyntaxError:
+            classes = []
+        for cls in classes or [stem]:
+            result[cls] = stem
+    return result
 
 
-_MODULE_NAMES = _discover_module_names()
-STRATEGIES = list(_MODULE_NAMES)
+_STRATEGY_MAP = _discover_strategy_map()  # {class_name: module_stem}
+STRATEGIES = sorted(_STRATEGY_MAP)
 __all__ = list(STRATEGIES)
 _MODULE_CACHE: Dict[str, Any] = {}
 
 
-def _load_module(module_name: str):
+def _load_module(strategy_name: str):
+    module_name = _STRATEGY_MAP[strategy_name]
     module = _MODULE_CACHE.get(module_name)
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
@@ -48,11 +70,19 @@ class _LazyModuleRegistry(Mapping):
         self.attribute_name = attribute_name
         self.default = default
 
+    def _resolve(self, key: str, module, fallback: Any) -> Any:
+        # Per-strategy override: e.g. DFedProx_compulsory takes priority over compulsory
+        return getattr(
+            module,
+            f"{key}_{self.attribute_name}",
+            getattr(module, self.attribute_name, fallback),
+        )
+
     def __getitem__(self, key):
         if key not in STRATEGIES:
             raise KeyError(key)
         module = _load_module(key)
-        return getattr(module, self.attribute_name, self.default)
+        return self._resolve(key, module, self.default)
 
     def __iter__(self):
         return iter(STRATEGIES)
@@ -64,18 +94,12 @@ class _LazyModuleRegistry(Mapping):
         if key not in STRATEGIES:
             return default
         module = _load_module(key)
-        return getattr(
-            module,
-            self.attribute_name,
-            self.default if default is None else default,
-        )
+        return self._resolve(key, module, self.default if default is None else default)
 
 
 optional: Mapping[Any, dict] = _LazyModuleRegistry("optional", {})
 compulsory: Mapping[Any, dict] = _LazyModuleRegistry("compulsory", {})
-args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry(
-    "args_update", {}
-)
+args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry("args_update", {})
 
 
 def __getattr__(name: str):

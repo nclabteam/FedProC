@@ -122,7 +122,7 @@ class DFL_Client(Client):
         self.weights = torch.tensor(self.scores).to(self.device) / sum(self.scores)
 
     def aggregate_models(self):
-        model = self.reset_model(self.model)
+        model = self.reset_model(self.model).to(self.device)
         for client, weight in zip(self.models, self.weights):
             for global_param, local_param in zip(
                 model.parameters(), client.to(self.device).parameters()
