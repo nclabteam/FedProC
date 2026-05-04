@@ -1,15 +1,13 @@
 #!/usr/bin/env python
+import json
 import logging
 import multiprocessing
 import os
 import shutil
 import sys
 import time
-from collections import defaultdict
 
-import numpy as np
-import polars as pl
-
+from analysis.single import ExperimentAnalysis
 from utils import Options, SetSeed
 from utils.cleanup import cleanup_interrupted_run
 from utils.compact import compact_experiment_runs
@@ -45,8 +43,7 @@ if __name__ == "__main__":
         os.path.join(args.save_path, "info.json"),
     )
 
-    time_per_experiment = []
-    stats = defaultdict(lambda: {"min": [], "max": []})
+    timings = []
 
     try:
         for t in range(args.prev, args.times):
@@ -56,31 +53,19 @@ if __name__ == "__main__":
             print("Creating server and clients ...")
             server = getattr(__import__("strategies"), args.strategy)(args, t)
             server.train()
-            for key, value in server.metrics.items():
-                sorted_values = sorted(v for v in value if v != server.default_value)
-                if sorted_values:
-                    min_val = sorted_values[0]
-                    max_val = sorted_values[-1]
-                else:
-                    min_val = server.default_value
-                    max_val = server.default_value
-                stats[key]["min"].append(min_val)
-                stats[key]["max"].append(max_val)
-            stats["time_per_experiment"]["min"].append(time.time() - start)
-            stats["time_per_experiment"]["max"].append(time.time() - start)
-        rows = []
-        for metric, stats in stats.items():
-            row = {
-                "metric": metric,
-                "avg_min": np.mean(stats["min"]),
-                "std_min": np.std(stats["min"]),
-                "avg_max": np.mean(stats["max"]),
-                "std_max": np.std(stats["max"]),
-            }
-            rows.append(row)
-        stats = pl.DataFrame(rows)
-        stats.write_csv(os.path.join(args.save_path, "results.csv"))
-        sys.stdout.buffer.write((str(stats) + "\n").encode("utf-8", errors="replace"))
+            elapsed = time.time() - start
+            timings.append({"run": t, "seconds": round(elapsed, 2)})
+            print(f"Run {t} finished in {elapsed:.2f}s")
+
+        timing_path = os.path.join(args.save_path, "timing.json")
+        with open(timing_path, "w") as f:
+            json.dump(timings, f, indent=2)
+        print(f"Timings saved to {timing_path}")
+
+        # Analyze before compact so run-level CSVs are still available
+        results_path = ExperimentAnalysis(args.save_path).save()
+        print(f"Analysis saved to {results_path}")
+
         if args.compact:
             compact_summary = compact_experiment_runs(args.save_path)
             print("Compact summary:", compact_summary)
