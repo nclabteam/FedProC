@@ -7,10 +7,6 @@ from utils.parsing import str2bool
 
 
 class ModernTCN(nn.Module):
-    """
-    Paper: https://openreview.net/pdf?id=vpJMJerXHU
-    Source: https://github.com/luodhhh/ModernTCN/blob/main/ModernTCN-Long-term-forecasting/models/ModernTCN.py
-    """
 
     optional = {
         "stem_ratio": 6,
@@ -51,16 +47,15 @@ class ModernTCN(nn.Module):
         parser.add_argument("--revin", type=str2bool, default=None)
         parser.add_argument("--affine", type=str2bool, default=None)
         parser.add_argument(
-        "--subtract_last",
-        type=int,
-        default=0,
-        help="0: subtract mean; 1: subtract last",
+            "--subtract_last",
+            type=int,
+            default=0,
+            help="0: subtract mean; 1: subtract last",
         )
         parser.add_argument("--kernel_size", type=int, default=None)
         parser.add_argument("--patch_size", type=int, default=None)
         parser.add_argument("--patch_stride", type=int, default=None)
         parser.add_argument("--decomposition", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super(ModernTCN, self).__init__()

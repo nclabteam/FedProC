@@ -4,11 +4,8 @@ import torch
 
 from .base import Client, Server
 
+
 class Elastic(Server):
-    """
-    Paper: https://openaccess.thecvf.com/content/CVPR2023/html/Chen_Elastic_Aggregation_for_Federated_Optimization_CVPR_2023_paper.html
-    Source: https://github.com/KarhouTam/FL-bench/blob/master/src/server/elastic.py
-    """
 
     optional = {
         "tau": 0.5,

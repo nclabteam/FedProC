@@ -5,11 +5,8 @@ import torch.nn.functional as F
 
 from .base import Server
 
+
 class FedCross(Server):
-    """
-    Paper: https://arxiv.org/abs/2210.08285
-    Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/servercross.py
-    """
 
     optional = {
         "first_stage_bound": 0.0,

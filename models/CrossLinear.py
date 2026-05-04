@@ -5,10 +5,6 @@ import torch.nn as nn
 
 
 class CrossLinear(nn.Module):
-    """
-    Paper: https://arxiv.org/pdf/2505.23116
-    Source: https://github.com/mumiao2000/CrossLinear/blob/main/models/CrossLinear.py
-    """
 
     optional = {
         "d_model": 512,
@@ -25,7 +21,6 @@ class CrossLinear(nn.Module):
         parser.add_argument("--patch_len", type=int, default=None)
         parser.add_argument("--alpha", type=float, default=None)
         parser.add_argument("--beta", type=float, default=None)
-
 
     def __init__(self, configs):
         super(CrossLinear, self).__init__()

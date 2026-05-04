@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class FAN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2409.20371
-    Source: https://github.com/icannotnamemyself/FAN/blob/main/torch_timeseries/normalizations/FAN.py
-    """
 
     def __init__(self, seq_len, pred_len, enc_in, freq_topk=20, rfft=True, **kwargs):
         super().__init__()

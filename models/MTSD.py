@@ -5,10 +5,6 @@ from .DLinear import DLinear
 
 
 class MTSD(DLinear):
-    """
-    Paper: https://arxiv.org/abs/2302.04501
-    Source: https://github.com/plumprc/MTS-Mixers/blob/main/models/MTSD.py
-    """
 
     optional = {
         **DLinear.optional,
@@ -19,7 +15,6 @@ class MTSD(DLinear):
     def args_update(cls, parser):
         DLinear.args_update(parser)
         parser.add_argument("--d_model", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__(configs)

@@ -5,10 +5,6 @@ from .NLinear import NLinear
 
 
 class DNGLinear(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2501.01087
-    Source: https://github.com/t-rizvi/GLinear/blob/main/models/WIthout_Normalization/DNGLinear.py
-    """
 
     optional = {
         "moving_avg": 25,
@@ -19,7 +15,6 @@ class DNGLinear(nn.Module):
     def args_update(cls, parser):
         parser.add_argument("--moving_avg", type=int, default=None)
         parser.add_argument("--stride", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

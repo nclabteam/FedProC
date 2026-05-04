@@ -4,6 +4,7 @@ from topologies import TOPOLOGIES
 
 from .DFL import DFL, DFL_Client
 
+
 class DFedSAM(DFL):
     """DFedSAM / DFedSAM-MGS server orchestrator.
 

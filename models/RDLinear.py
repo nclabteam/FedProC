@@ -4,9 +4,6 @@ from .DLinear import DLinear
 
 
 class RDLinear(DLinear):
-    """
-    Paper: https://ieeexplore.ieee.org/document/10650961
-    """
 
     optional = {
         "moving_avg": 25,
@@ -17,7 +14,6 @@ class RDLinear(DLinear):
     def args_update(cls, parser):
         parser.add_argument("--moving_avg", type=int, default=None)
         parser.add_argument("--stride", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__(configs=configs)

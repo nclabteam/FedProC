@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from pytorch_wavelets import DWT1DForward, DWT1DInverse
 
-
 wavelet_filter_lengths = {
     "haar": 2,
     "db1": 2,
@@ -58,10 +57,6 @@ def compute_dwt_dimensions(T, J, wav):
 
 
 class SWIFT(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2501.16178
-    Source: https://github.com/LancelotXWX/SWIFT/blob/main/models/SWIFT_Linear.py
-    """
 
     optional = {
         "conv_kernel": 3,
@@ -76,23 +71,22 @@ class SWIFT(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--conv_kernel", type=int, default=None, help="convolution kernel size"
+            "--conv_kernel", type=int, default=None, help="convolution kernel size"
         )
         parser.add_argument(
-        "--conv_dropout", type=float, default=None, help="convolution dropout"
+            "--conv_dropout", type=float, default=None, help="convolution dropout"
         )
         parser.add_argument(
-        "--fc_dropout", type=float, default=None, help="fully connected dropout"
+            "--fc_dropout", type=float, default=None, help="fully connected dropout"
         )
         parser.add_argument(
-        "--wav", type=str, default=None, choices=wavelet_filter_lengths.keys()
+            "--wav", type=str, default=None, choices=wavelet_filter_lengths.keys()
         )
         parser.add_argument("--J", type=int, default=None)
         parser.add_argument(
-        "--hidden_size", type=int, default=None, help="hidden_size of linear layer"
+            "--hidden_size", type=int, default=None, help="hidden_size of linear layer"
         )
         parser.add_argument("--core", type=str, default=None, choices=["Linear", "MLP"])
-
 
     def __init__(self, configs):
         super().__init__()

@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class MTSMatrix(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2302.04501
-    Source: https://github.com/plumprc/MTS-Mixers/blob/main/models/MTSMatrix.py
-    """
 
     optional = {
         "sampling": 2,
@@ -18,19 +14,23 @@ class MTSMatrix(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--sampling",
-        type=int,
-        default=None,
-        help="the number of downsampling in factorized temporal interaction",
+            "--sampling",
+            type=int,
+            default=None,
+            help="the number of downsampling in factorized temporal interaction",
         )
         parser.add_argument(
-        "--norm", action="store_false", default=None, help="whether to apply LayerNorm"
+            "--norm",
+            action="store_false",
+            default=None,
+            help="whether to apply LayerNorm",
         )
         parser.add_argument(
-        "--e_layers", type=int, default=None, help="num of encoder layers"
+            "--e_layers", type=int, default=None, help="num of encoder layers"
         )
-        parser.add_argument("--mat", type=str, default=None, choices=["random", "identity"])
-
+        parser.add_argument(
+            "--mat", type=str, default=None, choices=["random", "identity"]
+        )
 
     def __init__(self, configs):
         super().__init__()

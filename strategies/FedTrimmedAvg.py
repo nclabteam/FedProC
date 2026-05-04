@@ -2,11 +2,8 @@ import torch
 
 from .base import Client, Server
 
+
 class FedTrimmedAvg(Server):
-    """
-    Paper: https://arxiv.org/abs/1803.01498
-    Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedtrimmedavg.py
-    """
 
     optional = {
         "beta": 0.2,

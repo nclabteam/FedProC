@@ -3,9 +3,6 @@ import torch.nn as nn
 
 
 class ConvRNN(nn.Module):
-    """
-    Source: https://github.com/KurochkinAlexey/ConvRNN/blob/master/ConvRNN_SML2010.ipynb
-    """
 
     def __init__(self, configs):
         super().__init__()

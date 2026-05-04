@@ -3,9 +3,6 @@ import torch.nn as nn
 
 
 class SegRNN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2308.11200
-    """
 
     optional = {
         "d_model": 512,
@@ -18,7 +15,6 @@ class SegRNN(nn.Module):
         parser.add_argument("--d_model", type=int, default=None)
         parser.add_argument("--seg_len", type=int, default=None)
         parser.add_argument("--dropout", type=float, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

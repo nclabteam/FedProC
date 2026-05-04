@@ -5,11 +5,6 @@ from utils.parsing import str2bool
 
 
 class FAN(nn.Module):
-    """
-    Fourier Analysis Networks
-    Paper: https://arxiv.org/abs/2410.02675
-    Source: https://github.com/YihongDong/FAN/blob/main/Timeseries_Forecasting/layers/FANLayer.py
-    """
 
     optional = {"bias": True, "with_gate": True}
 
@@ -17,7 +12,6 @@ class FAN(nn.Module):
     def args_update(cls, parser):
         parser.add_argument("--bias", type=str2bool, default=None)
         parser.add_argument("--with_gate", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

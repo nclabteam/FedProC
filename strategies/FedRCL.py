@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 from .base import Client, Server
 
+
 class FedRCL(Server):
     """
     [methodology.tex, Algorithm 1] — Server side: standard FedAvg aggregation.

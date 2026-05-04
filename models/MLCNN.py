@@ -4,10 +4,6 @@ import torch.nn.functional as F
 
 
 class MLCNN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/1912.05122
-    Source: https://github.com/smallGum/MLCNN-Multivariate-Time-Series/blob/master/models/models.py
-    """
 
     optional = {
         "kernel_size": 3,
@@ -28,7 +24,6 @@ class MLCNN(nn.Module):
         parser.add_argument("--collaborate_span", type=int, default=None)
         parser.add_argument("--n_CNN", type=int, default=None)
         parser.add_argument("--dropout", type=float, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

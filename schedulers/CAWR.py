@@ -12,21 +12,20 @@ class CAWR(CosineAnnealingWarmRestarts):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--T_0",
-        type=int,
-        default=None,
-        help="Number of iterations for the first restart.",
+            "--T_0",
+            type=int,
+            default=None,
+            help="Number of iterations for the first restart.",
         )
         parser.add_argument(
-        "--T_mult",
-        type=int,
-        default=None,
-        help="Multiplier for the next restart period.",
+            "--T_mult",
+            type=int,
+            default=None,
+            help="Multiplier for the next restart period.",
         )
         parser.add_argument(
-        "--eta_min", type=float, default=None, help="Minimum learning rate."
+            "--eta_min", type=float, default=None, help="Minimum learning rate."
         )
-
 
     def __init__(self, optimizer, configs, last_epoch=-1):
         super().__init__(

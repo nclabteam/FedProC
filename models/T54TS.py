@@ -7,10 +7,6 @@ from utils.parsing import str2bool
 
 
 class T54TS(nn.Module):
-    """
-    Paper: https://arxiv.org/pdf/2310.04948
-    Source: https://github.com/DC-research/TEMPO/blob/main/tempo/models/T5.py
-    """
 
     optional = {
         "is_gpt": True,
@@ -31,7 +27,6 @@ class T54TS(nn.Module):
         parser.add_argument("--gpt_layers", type=int, default=None)
         parser.add_argument("--d_model", type=int, default=None)
         parser.add_argument("--freeze", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

@@ -70,10 +70,10 @@ class FSMLP(nn.Module):
         parser.add_argument("--d_k", type=int, default=None)
         parser.add_argument("--d_v", type=int, default=None)
         parser.add_argument(
-        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
+            "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
         )
         parser.add_argument(
-        "--act", type=str, default=None, choices=["gelu", "relu", "selu"]
+            "--act", type=str, default=None, choices=["gelu", "relu", "selu"]
         )
         parser.add_argument("--attn_dropout", type=float, default=None)
         parser.add_argument("--res_attention", type=str2bool, default=None)
@@ -83,7 +83,6 @@ class FSMLP(nn.Module):
         parser.add_argument("--learn_pe", type=str2bool, default=None)
         parser.add_argument("--m_model", type=int, default=None)
         parser.add_argument("--m_layers", type=int, default=None)
-
 
     def __init__(
         self,

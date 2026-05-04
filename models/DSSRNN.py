@@ -5,11 +5,6 @@ from layers import SeriesDecompMA
 
 
 class DSSRNN(nn.Module):
-    """
-    Decomposition-Enhanced State-Space Recurrent Neural Network
-    Paper: https://arxiv.org/abs/2412.00994
-    Source: https://github.com/ahmad-shirazi/DSSRNN/blob/main/models/DSSRNN.py
-    """
 
     optional = {
         "kernel_size": 25,
@@ -20,7 +15,6 @@ class DSSRNN(nn.Module):
     def args_update(cls, parser):
         parser.add_argument("--kernel_size", type=int, default=None)
         parser.add_argument("--hidden_size", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

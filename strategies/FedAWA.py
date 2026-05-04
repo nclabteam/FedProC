@@ -8,10 +8,6 @@ from .DFL import DFL, DFL_Client
 
 
 class FedAWA(Server):
-    """
-    Paper: https://arxiv.org/abs/2503.15842
-    Source: https://github.com/ChanglongShi/FedAWA/blob/main/server_funct.py
-    """
 
     optional = {
         "server_epochs": 1,

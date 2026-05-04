@@ -8,10 +8,6 @@ from utils.parsing import str2bool
 
 
 class PatchTST(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2211.14730
-    Source: https://github.com/yuqinie98/PatchTST/blob/main/PatchTST_supervised/models/PatchTST.py
-    """
 
     optional = {
         "e_layers": 3,
@@ -71,7 +67,7 @@ class PatchTST(nn.Module):
         parser.add_argument("--d_k", type=int, default=None)
         parser.add_argument("--d_v", type=int, default=None)
         parser.add_argument(
-        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
+            "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
         )
         parser.add_argument("--attn_dropout", type=float, default=None)
         parser.add_argument("--act", type=str, default=None, choices=["relu", "gelu"])
@@ -82,27 +78,26 @@ class PatchTST(nn.Module):
         parser.add_argument("--pre_norm", type=str2bool, default=None)
         parser.add_argument("--store_attn", type=str2bool, default=None)
         parser.add_argument(
-        "--pe",
-        type=str,
-        default=None,
-        choices=[
-        "zeros",
-        "zero",
-        "normal",
-        "gauss",
-        "uniform",
-        "lin1d",
-        "exp1d",
-        "lin2d",
-        "exp2d",
-        "sincos",
-        ],
+            "--pe",
+            type=str,
+            default=None,
+            choices=[
+                "zeros",
+                "zero",
+                "normal",
+                "gauss",
+                "uniform",
+                "lin1d",
+                "exp1d",
+                "lin2d",
+                "exp2d",
+                "sincos",
+            ],
         )
         parser.add_argument("--learn_pe", type=str2bool, default=None)
         parser.add_argument("--pretrain_head", type=str2bool, default=None)
         parser.add_argument("--head_type", type=str, default=None, choices=["flatten"])
         parser.add_argument("--verbose", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

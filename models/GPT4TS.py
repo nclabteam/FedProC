@@ -8,10 +8,6 @@ from utils.parsing import str2bool
 
 
 class GPT4TS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2302.11939
-    Source: https://github.com/DAMO-DI-ML/NeurIPS2023-One-Fits-All/blob/main/Long-term_Forecasting/models/GPT4TS.py
-    """
 
     optional = {
         "is_gpt": True,
@@ -32,7 +28,6 @@ class GPT4TS(nn.Module):
         parser.add_argument("--gpt_layers", type=int, default=None)
         parser.add_argument("--d_model", type=int, default=None)
         parser.add_argument("--freeze", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

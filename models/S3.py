@@ -6,10 +6,6 @@ from utils.parsing import str2bool
 
 
 class S3(nn.Module):
-    """
-    Paper: https://arxiv.org/pdf/2405.20082
-    Source: https://github.com/shivam-grover/S3-TimeSeries/blob/main/S3/S3.py
-    """
 
     optional = {
         "num_layers": 3,
@@ -24,48 +20,47 @@ class S3(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--num_layers", type=int, default=None, help="Number of S3 layers to stack"
+            "--num_layers", type=int, default=None, help="Number of S3 layers to stack"
         )
         parser.add_argument(
-        "--initial_num_segments",
-        type=int,
-        default=None,
-        help="Number of segments for the first S3 layer",
+            "--initial_num_segments",
+            type=int,
+            default=None,
+            help="Number of segments for the first S3 layer",
         )
         parser.add_argument(
-        "--shuffle_vector_dim",
-        type=float,
-        default=None,
-        help="Dimensionality of the shuffle vector for each S3 layer",
+            "--shuffle_vector_dim",
+            type=float,
+            default=None,
+            help="Dimensionality of the shuffle vector for each S3 layer",
         )
         parser.add_argument(
-        "--segment_multiplier",
-        type=int,
-        default=None,
-        help="Multiplier for the number of segments in each consecutive layer",
+            "--segment_multiplier",
+            type=int,
+            default=None,
+            help="Multiplier for the number of segments in each consecutive layer",
         )
         parser.add_argument(
-        "--use_conv_w_avg",
-        type=str2bool,
-        default=None,
-        choices=[True, False],
-        help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
+            "--use_conv_w_avg",
+            type=str2bool,
+            default=None,
+            choices=[True, False],
+            help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
         )
         parser.add_argument(
-        "--initialization_type",
-        type=str,
-        default=None,
-        choices=["kaiming", "manual"],
-        help="Initialization type for shuffle vectors",
+            "--initialization_type",
+            type=str,
+            default=None,
+            choices=["kaiming", "manual"],
+            help="Initialization type for shuffle vectors",
         )
         parser.add_argument(
-        "--use_stitch",
-        type=str2bool,
-        default=None,
-        choices=[True, False],
-        help="If True, apply stitching to combine original and shuffled sequences",
+            "--use_stitch",
+            type=str2bool,
+            default=None,
+            choices=[True, False],
+            help="If True, apply stitching to combine original and shuffled sequences",
         )
-
 
     def __init__(self, configs):
         super(S3, self).__init__()
@@ -200,7 +195,7 @@ class S3Layer(nn.Module):
             self.shuffle_vector = self.shuffle_vector.to(x.device)
 
         # Total time steps means how many data points are there in the input sequence
-        total_time_steps = x.size(1)
+        x.size(1)
         # # Now we know the number of steps in the input sequence
         # # And we know how many segments to divide them into using num_segments hyperparameter passed to the model
         # # So we calculate how many steps should be in each segment

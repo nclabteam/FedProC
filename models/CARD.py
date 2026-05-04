@@ -8,10 +8,6 @@ from utils.parsing import str2bool
 
 
 class CARD(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2305.12095
-    Source: https://github.com/wxie9/CARD/blob/main/long_term_forecast_l720/models/CARD.py
-    """
 
     optional = {
         "patch_len": 16,
@@ -42,7 +38,6 @@ class CARD(nn.Module):
         parser.add_argument("--dp_rank", type=int, default=None)
         parser.add_argument("--alpha", type=float, default=None)
         parser.add_argument("--merge_size", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

@@ -4,11 +4,8 @@ import torch
 
 from .base import Client, Server
 
+
 class FedDyn(Server):
-    """
-    Paper: https://arxiv.org/abs/2111.04263
-    Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverdyn.py
-    """
 
     optional = {
         "alpha": 0.1,

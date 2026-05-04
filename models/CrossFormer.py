@@ -8,10 +8,6 @@ from utils.parsing import str2bool
 
 
 class CrossFormer(nn.Module):
-    """
-    Paper: https://openreview.net/forum?id=vSVLM2j9eie
-    Source: https://github.com/Thinklab-SJTU/Crossformer/blob/master/cross_models/cross_former.py
-    """
 
     optional = {
         "merge_win": 4,
@@ -36,7 +32,6 @@ class CrossFormer(nn.Module):
         parser.add_argument("--dropout", type=float, default=None)
         parser.add_argument("--baseline", type=str2bool, default=None)
         parser.add_argument("--seg_len", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

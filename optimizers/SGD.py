@@ -17,7 +17,6 @@ class SGD(SGD):
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--nesterov", default=None, action="store_true")
 
-
     def __init__(self, params, configs):
         super(SGD, self).__init__(
             params=params,

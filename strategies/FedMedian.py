@@ -4,10 +4,6 @@ from .base import Client, Server
 
 
 class FedMedian(Server):
-    """
-    Paper: https://arxiv.org/abs/1803.01498
-    Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedmedian.py
-    """
 
     def calculate_aggregation_weights(self):
         pass

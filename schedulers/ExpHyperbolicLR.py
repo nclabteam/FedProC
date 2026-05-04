@@ -6,10 +6,6 @@ from torch.optim.optimizer import Optimizer
 
 
 class ExpHyperbolicLR(_LRScheduler):
-    """
-    Paper: https://arxiv.org/abs/2407.15200
-    Source: https://github.com/Axect/HyperbolicLR/blob/main/hyperbolic_lr.py
-    """
 
     optional = {
         "upper_bound": 10,
@@ -20,12 +16,11 @@ class ExpHyperbolicLR(_LRScheduler):
     def args_update(cls, parser):
         parser.add_argument("--upper_bound", type=int, default=None)
         parser.add_argument(
-        "--infimum_lr",
-        type=float,
-        default=None,
-        help=f"HyperbolicLR: Minimum learning rate",
+            "--infimum_lr",
+            type=float,
+            default=None,
+            help=f"HyperbolicLR: Minimum learning rate",
         )
-
 
     def __init__(self, optimizer: Optimizer, configs, last_epoch: int = -1):
         # 1. Resolve parameter values from configs or defaults

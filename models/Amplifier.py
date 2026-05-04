@@ -6,10 +6,6 @@ from utils.parsing import str2bool
 
 
 class Amplifier(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2501.17216
-    Source: https://github.com/aikunyi/Amplifier/blob/main/models/Amplifier.py
-    """
 
     optional = {
         "moving_avg": 25,
@@ -24,7 +20,6 @@ class Amplifier(nn.Module):
         parser.add_argument("--stride", type=int, default=None)
         parser.add_argument("--hidden_size", type=int, default=None)
         parser.add_argument("--noSCI", type=str2bool, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

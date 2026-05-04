@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class SparseTSF(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2405.00946
-    Source: https://github.com/lss-1138/SparseTSF/blob/main/models/SparseTSF.py
-    """
 
     optional = {"d_model": 128, "period_len": 24, "sparse_type": "linear"}
 
@@ -15,9 +11,8 @@ class SparseTSF(nn.Module):
         parser.add_argument("--d_model", type=int, default=None)
         parser.add_argument("--period_len", type=int, default=None)
         parser.add_argument(
-        "--sparse_type", type=str, default=None, choices=["linear", "mlp"]
+            "--sparse_type", type=str, default=None, choices=["linear", "mlp"]
         )
-
 
     def __init__(self, configs):
         super().__init__()

@@ -20,39 +20,38 @@ class xPatch(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--alpha",
-        type=float,
-        default=None,
-        help="smoothing factor for EMA or DEMA",
+            "--alpha",
+            type=float,
+            default=None,
+            help="smoothing factor for EMA or DEMA",
         )
         parser.add_argument(
-        "--beta",
-        type=float,
-        default=None,
-        help="smoothing factor for DEMA",
+            "--beta",
+            type=float,
+            default=None,
+            help="smoothing factor for DEMA",
         )
         parser.add_argument("--patch_len", type=int, default=None)
         parser.add_argument("--stride", type=int, default=None)
         parser.add_argument(
-        "--padding_patch",
-        type=str,
-        default=None,
-        choices=["end", "None"],
-        help="None: None; end: padding on the end",
+            "--padding_patch",
+            type=str,
+            default=None,
+            choices=["end", "None"],
+            help="None: None; end: padding on the end",
         )
         parser.add_argument(
-        "--ma_type",
-        type=str,
-        default=None,
-        choices=["EMA", "DEMA", "None"],
+            "--ma_type",
+            type=str,
+            default=None,
+            choices=["EMA", "DEMA", "None"],
         )
         parser.add_argument(
-        "--learnable",
-        type=str2bool,
-        default=None,
-        help="learnable alpha and beta",
+            "--learnable",
+            type=str2bool,
+            default=None,
+            help="learnable alpha and beta",
         )
-
 
     def __init__(self, configs):
         super().__init__()

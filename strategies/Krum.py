@@ -2,11 +2,8 @@ import torch
 
 from .base import Client, Server
 
+
 class Krum(Server):
-    """
-    Paper: https://arxiv.org/abs/1703.02757
-    Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/krum.py
-    """
 
     optional = {
         "num_malicious_clients": 0,

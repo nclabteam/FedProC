@@ -33,7 +33,6 @@ class OneCycleLR(OneCycleLR):
         parser.add_argument("--final_div_factor", type=float, default=None)
         parser.add_argument("--three_phase", type=bool, default=None)
 
-
     def __init__(self, optimizer, configs, last_epoch=-1):
         super().__init__(
             optimizer=optimizer,

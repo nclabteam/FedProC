@@ -13,7 +13,6 @@ class StepLR(StepLR):
         parser.add_argument("--gamma", type=float, default=None)
         parser.add_argument("--step_size", type=int, default=None)
 
-
     def __init__(self, optimizer, configs, last_epoch=-1):
         super().__init__(
             optimizer=optimizer,

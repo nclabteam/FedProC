@@ -10,11 +10,6 @@ from utils.parsing import str2bool
 
 
 class MMK(nn.Module):
-    """
-    Multi-layer Mixture-of-KAN Network, MMK
-    Paper: https://arxiv.org/pdf/2408.11306
-    Source:https://github.com/2448845600/EasyTSF/blob/main/easytsf/model/MMK.py
-    """
 
     optional = {
         "use_norm": False,
@@ -35,22 +30,21 @@ class MMK(nn.Module):
         parser.add_argument("--layer_num", type=int, default=None, choices=[1, 2, 3, 5])
         parser.add_argument("--layer_hp", type=list, default=None)
         parser.add_argument(
-        "--layer_type",
-        type=str,
-        default=None,
-        choices=[
-        "MoK",
-        "KAN",
-        "WavKAN",
-        "FourierKAN",
-        "JacobiKAN",
-        "ChebyKAN",
-        "TaylorKAN",
-        "Linear",
-        ],
+            "--layer_type",
+            type=str,
+            default=None,
+            choices=[
+                "MoK",
+                "KAN",
+                "WavKAN",
+                "FourierKAN",
+                "JacobiKAN",
+                "ChebyKAN",
+                "TaylorKAN",
+                "Linear",
+            ],
         )
         parser.add_argument("--hidden_dim", type=int, default=None)
-
 
     def __init__(
         self,
@@ -451,7 +445,7 @@ class KANLayer(nn.Module):
             .reshape(batch, self.size)
             .permute(1, 0)
         )
-        preacts = x.permute(1, 0).clone().reshape(batch, self.out_dim, self.in_dim)
+        x.permute(1, 0).clone().reshape(batch, self.out_dim, self.in_dim)
         base = self.base_fun(x).permute(1, 0)  # shape (batch, size)
         y = coef2curve(
             x_eval=x,
@@ -461,10 +455,10 @@ class KANLayer(nn.Module):
             device=self.device,
         )  # shape (size, batch)
         y = y.permute(1, 0)  # shape (batch, size)
-        postspline = y.clone().reshape(batch, self.out_dim, self.in_dim)
+        y.clone().reshape(batch, self.out_dim, self.in_dim)
         y = self.scale_base.unsqueeze(dim=0) * base + self.scale_sp.unsqueeze(dim=0) * y
         y = self.mask[None, :] * y
-        postacts = y.clone().reshape(batch, self.out_dim, self.in_dim)
+        y.clone().reshape(batch, self.out_dim, self.in_dim)
         y = torch.sum(
             y.reshape(batch, self.out_dim, self.in_dim), dim=2
         )  # shape (batch, out_dim)
@@ -1009,7 +1003,7 @@ class WaveKANLayer(nn.Module):
         # wav_output = F.linear(wavelet_output, self.weight)
         # base_output = F.linear(self.base_activation(x), self.weight1)
 
-        base_output = F.linear(x, self.weight1)
+        F.linear(x, self.weight1)
         combined_output = wavelet_output  # + base_output
 
         # Apply batch normalization

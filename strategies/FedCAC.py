@@ -5,6 +5,7 @@ import torch
 
 from .base import Client, Server
 
+
 class FedCAC(Server):
     optional = {"tau": 0.5, "beta": 170}
 
@@ -12,6 +13,7 @@ class FedCAC(Server):
     def args_update(cls, parser):
         parser.add_argument("--tau", type=float, default=None)
         parser.add_argument("--beta", type=int, default=None)
+
     def get_customized_global_models(self):
         num_clients = len(self.client_data)
         overlap_buffer = [[] for i in range(num_clients)]

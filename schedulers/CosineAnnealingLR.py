@@ -11,7 +11,6 @@ class CosineAnnealingLR(CosineAnnealingLR):
     def args_update(cls, parser):
         parser.add_argument("--eta_min", type=float, default=None)
 
-
     def __init__(self, optimizer, configs, last_epoch=-1):
         super().__init__(
             optimizer=optimizer,

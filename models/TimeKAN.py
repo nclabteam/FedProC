@@ -6,10 +6,6 @@ from layers.SeriesDecompMA import SeriesDecompMA as series_decomp
 
 
 class TimeKAN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2502.06910
-    Source: https://github.com/huangst21/TimeKAN/blob/main/models/TimeKAN.py
-    """
 
     optional = {
         "e_layers": 2,
@@ -34,7 +30,6 @@ class TimeKAN(nn.Module):
         parser.add_argument("--moving_avg", type=int, default=None)
         parser.add_argument("--dropout", type=float, default=None)
         parser.add_argument("--embed", type=str, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

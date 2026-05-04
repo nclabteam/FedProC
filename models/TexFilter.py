@@ -6,10 +6,6 @@ from layers import RevIN
 
 
 class TexFilter(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2411.01623
-    Source: https://github.com/aikunyi/FilterNet/blob/main/models/TexFilter.py
-    """
 
     optional = {
         "embed_size": 256,
@@ -28,7 +24,6 @@ class TexFilter(nn.Module):
         parser.add_argument("--band_width", type=int, default=None)
         parser.add_argument("--scale", type=float, default=None)
         parser.add_argument("--sparsity_threshold", type=float, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

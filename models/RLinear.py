@@ -5,10 +5,6 @@ from layers import RevIN
 
 
 class RLinear(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2305.10721
-    Source: https://github.com/plumprc/RTSF/blob/main/models/RLinear.py
-    """
 
     def __init__(self, configs):
         super().__init__()

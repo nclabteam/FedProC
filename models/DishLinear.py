@@ -12,9 +12,8 @@ class DishLinear(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-        "--dishts", type=str, default=None, choices=["uniform", "avg", "standard"]
+            "--dishts", type=str, default=None, choices=["uniform", "avg", "standard"]
         )
-
 
     def __init__(self, configs):
         super().__init__()

@@ -7,10 +7,8 @@ from torch.utils.data import ConcatDataset, DataLoader, TensorDataset
 
 from .base import Client, Server
 
+
 class FedTrend(Server):
-    """
-    Paper: https://arxiv.org/abs/2411.15716
-    """
 
     optional = {
         "L_ct": 10,  # Interval for updating client-side synthetic data

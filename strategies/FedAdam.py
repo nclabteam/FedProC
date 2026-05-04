@@ -4,11 +4,8 @@ import torch
 
 from .base import Server
 
+
 class FedAdam(Server):
-    """
-    Paper: https://arxiv.org/abs/2003.00295
-    Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedadam.py
-    """
 
     optional = {
         "beta1_server": 1e-1,

@@ -14,7 +14,6 @@ class GRU(nn.Module):
         parser.add_argument("--hidden_size", type=int, default=None)
         parser.add_argument("--num_layers", type=int, default=None)
 
-
     def __init__(self, configs):
         super(GRU, self).__init__()
         self.hidden_size = configs.hidden_size

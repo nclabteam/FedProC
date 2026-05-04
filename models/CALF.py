@@ -10,10 +10,6 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
 
 class CALF(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2403.07300
-    Source: https://github.com/Hank0626/CALF/blob/main/models/CALF.py
-    """
 
     optional = {
         "lora_alpha": 32,
@@ -30,7 +26,6 @@ class CALF(nn.Module):
         parser.add_argument("--r", type=int, default=None)
         parser.add_argument("--gpt_layers", type=int, default=None)
         parser.add_argument("--d_model", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

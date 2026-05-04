@@ -16,7 +16,6 @@ class FLinear(nn.Module):
         parser.add_argument("--freq_topk", type=int, default=None)
         parser.add_argument("--rfft", type=str2bool, default=None)
 
-
     def __init__(self, configs):
         super().__init__()
         self.input_len = configs.input_len

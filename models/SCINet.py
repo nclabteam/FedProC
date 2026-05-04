@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class SCINet(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2106.09305
-    Source: https://github.com/plumprc/MTS-Mixers/blob/main/models/SCINet.py
-    """
 
     optional = {
         "d_model": 64,
@@ -15,7 +11,6 @@ class SCINet(nn.Module):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--d_model", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

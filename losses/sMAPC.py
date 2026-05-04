@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class sMAPC(nn.Module):
-    """
-    Symmetric Mean Absolute Percentage Change
-    Paper: https://www.sciencedirect.com/science/article/abs/pii/S016920702200098X
-    """
 
     eval_only = True
 

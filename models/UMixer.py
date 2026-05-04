@@ -6,10 +6,6 @@ from layers import PositionalEmbedding
 
 
 class UMixer(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2401.02236
-    Source: https://github.com/XiangMa-Shaun/U-Mixer/blob/main/models/UMixer.py
-    """
 
     optional = {
         "e_layers": 2,
@@ -26,7 +22,6 @@ class UMixer(nn.Module):
         parser.add_argument("--patch_len", type=int, default=None)
         parser.add_argument("--dropout", type=float, default=None)
         parser.add_argument("--stride", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

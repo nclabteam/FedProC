@@ -5,7 +5,6 @@ import torch.nn as nn
 from torch.fft import irfft, rfft
 from torch.optim.lr_scheduler import _LRScheduler
 
-
 _NEXT_FAST_LEN = {}
 
 
@@ -80,9 +79,6 @@ def autocorrelation(input, dim=0):
 
 
 class AutoCyclic(_LRScheduler):
-    """
-    Source: https://github.com/wtfish/AutoCyclic/blob/main/autoCyclic.ipynb
-    """
 
     optional = {
         "max_lr_multiplier": 7,
@@ -93,7 +89,6 @@ class AutoCyclic(_LRScheduler):
     def args_update(cls, parser):
         parser.add_argument("--max_lr_multiplier", type=float, default=None)
         parser.add_argument("--cycle_size", type=int, default=None)
-
 
     def __init__(self, optimizer, configs, last_epoch=-1):
         self.base_lr = configs.learning_rate

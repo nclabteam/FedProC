@@ -8,11 +8,8 @@ from losses import KLDivergence
 
 from .base import Client, Server
 
+
 class FML(Server):
-    """
-    Paper: https://arxiv.org/abs/2006.16765
-    Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/clients/clientfml.py
-    """
 
     optional = {
         "alpha": 0.9,

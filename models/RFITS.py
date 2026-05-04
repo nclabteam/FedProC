@@ -3,15 +3,6 @@ import torch.nn as nn
 
 
 class RFITS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2307.03756
-    Source: https://github.com/VEWOXIC/FITS/blob/main/models/Real_FITS.py
-    FITS: Frequency Interpolation Time Series Forecasting
-    This is the real value implementation of the original FITS.
-    Real_FITS simulates the complex value multiplication with two layer of real value linear layer following
-    Y_real = X_real*W_real - X_imag * W_imag
-    Y_imag = X_real*W_imag + X_imag * W_real
-    """
 
     optional = {"cut_freq": 0, "base_T": 24}
 
@@ -19,7 +10,6 @@ class RFITS(nn.Module):
     def args_update(cls, parser):
         parser.add_argument("--cut_freq", type=int, default=None)
         parser.add_argument("--base_T", type=int, default=None)
-
 
     def __init__(self, configs):
         super().__init__()

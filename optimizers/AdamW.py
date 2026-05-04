@@ -19,7 +19,6 @@ class AdamW(AdamW):
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--amsgrad", default=None, action="store_true")
 
-
     def __init__(self, params, configs):
         super().__init__(
             params=params,

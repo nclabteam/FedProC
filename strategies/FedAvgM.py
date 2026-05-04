@@ -2,11 +2,8 @@ import copy
 
 from .base import Server
 
+
 class FedAvgM(Server):
-    """
-    Paper: https://arxiv.org/abs/1909.06335
-    Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedavgm.py
-    """
 
     optional = {"server_momentum": 0.9, "server_learning_rate": 0.01}
 

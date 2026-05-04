@@ -5,9 +5,6 @@ from torch.optim.optimizer import Optimizer
 
 
 class PlainRAdam(Optimizer):
-    """
-    Source: https://github.com/LiyuanLucasLiu/RAdam/blob/master/radam/radam.py
-    """
 
     optional = {
         "eps": 1e-8,
@@ -24,7 +21,6 @@ class PlainRAdam(Optimizer):
         parser.add_argument("--degenerated_to_sgd", default=None, action="store_true")
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
-
 
     def __init__(self, params, configs):
         betas = (configs.beta1, configs.beta2)

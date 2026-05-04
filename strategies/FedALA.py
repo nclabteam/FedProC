@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from .base import Client, Server
 
+
 class FedALA(Server):
     optional = {
         "eta": 1.0,

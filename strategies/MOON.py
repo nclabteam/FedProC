@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from .base import Client, Server
 
+
 class MOON(Server):
     optional = {
         "mu": 1.0,

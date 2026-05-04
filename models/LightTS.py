@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class LightTS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2207.01186
-    Source: https://github.com/thuml/Time-Series-Library/blob/main/models/LightTS.py
-    """
 
     optional = {
         "d_model": 768,
@@ -17,12 +13,11 @@ class LightTS(nn.Module):
     def args_update(cls, parser):
         parser.add_argument("--d_model", type=int, default=None)
         parser.add_argument(
-        "--chunk_size",
-        type=int,
-        default=None,
-        help="reshape T into [num_chunks, chunk_size]",
+            "--chunk_size",
+            type=int,
+            default=None,
+            help="reshape T into [num_chunks, chunk_size]",
         )
-
 
     def __init__(self, configs):
         super().__init__()
