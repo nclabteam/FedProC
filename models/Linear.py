@@ -2,9 +2,6 @@ import torch.nn as nn
 
 
 class Linear(nn.Module):
-    """
-    Source: https://github.com/cure-lab/LTSF-Linear/blob/main/models/Linear.py
-    """
 
     def __init__(self, configs):
         super().__init__()

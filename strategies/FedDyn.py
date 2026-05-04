@@ -4,25 +4,21 @@ import torch
 
 from .base import Client, Server
 
-optional = {
-    "alpha": 0.1,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--alpha",
-        type=float,
-        default=None,
-        help="Alpha hyperparameter for FedDyn (regularization strength)",
-    )
-
 
 class FedDyn(Server):
-    """
-    Paper: https://arxiv.org/abs/2111.04263
-    Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverdyn.py
-    """
+
+    optional = {
+        "alpha": 0.1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--alpha",
+            type=float,
+            default=None,
+            help="Alpha hyperparameter for FedDyn (regularization strength)",
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

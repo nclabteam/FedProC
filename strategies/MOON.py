@@ -5,19 +5,17 @@ import torch.nn.functional as F
 
 from .base import Client, Server
 
-optional = {
-    "mu": 1.0,
-    "temperature": 0.5,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--mu", type=float, default=None)
-    parser.add_argument("--temperature", type=float, default=None)
-
 
 class MOON(Server):
-    pass
+    optional = {
+        "mu": 1.0,
+        "temperature": 0.5,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--mu", type=float, default=None)
+        parser.add_argument("--temperature", type=float, default=None)
 
 
 class MOON_Client(Client):

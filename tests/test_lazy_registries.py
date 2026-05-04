@@ -36,10 +36,11 @@ class TestLazyRegistries(unittest.TestCase):
         models = self.reload_module("models")
 
         fake_update = lambda parser: parser
+        fake_cls = type("FLinear", (), {"args_update": fake_update})
         with patch.object(
             models,
             "_load_module",
-            return_value=SimpleNamespace(args_update=fake_update),
+            return_value=SimpleNamespace(FLinear=fake_cls),
         ):
             update_func = models.args_update_functions["FLinear"]
 

@@ -4,10 +4,6 @@ import torch.nn.functional as F
 
 
 class DishTS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2302.14829
-    Source: https://github.com/weifantt/Dish-TS/blob/master/DishTS.py
-    """
 
     def __init__(self, num_features, seq_len, dish_init="uniform", eps=1e-8):
         super().__init__()

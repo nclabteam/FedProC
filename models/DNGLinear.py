@@ -3,22 +3,18 @@ import torch.nn as nn
 from .DLinear import DLinear
 from .NLinear import NLinear
 
-optional = {
-    "moving_avg": 25,
-    "stride": 1,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--moving_avg", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-
 
 class DNGLinear(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2501.01087
-    Source: https://github.com/t-rizvi/GLinear/blob/main/models/WIthout_Normalization/DNGLinear.py
-    """
+
+    optional = {
+        "moving_avg": 25,
+        "stride": 1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--moving_avg", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__()

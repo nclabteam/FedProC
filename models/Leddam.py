@@ -3,13 +3,6 @@ import torch.nn as nn
 
 from layers import DualAttention
 
-optional = {
-    "d_model": 512,
-    "n_layers": 1,
-    "dropout": 0,
-    "positional_encoding_type": "sincos",
-}
-
 
 def update_args(parser):
     parser.add_argument("--d_model", type=int, default=None)
@@ -36,10 +29,13 @@ def update_args(parser):
 
 
 class Leddam(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2402.12694
-    Source: https://github.com/Levi-Ackman/Leddam/blob/main/models/Leddam.py
-    """
+
+    optional = {
+        "d_model": 512,
+        "n_layers": 1,
+        "dropout": 0,
+        "positional_encoding_type": "sincos",
+    }
 
     def __init__(self, configs):
         super().__init__()

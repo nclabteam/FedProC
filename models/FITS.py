@@ -1,20 +1,15 @@
 import torch
 import torch.nn as nn
 
-optional = {"cut_freq": 0, "base_T": 24}
-
-
-def args_update(parser):
-    parser.add_argument("--cut_freq", type=int, default=None)
-    parser.add_argument("--base_T", type=int, default=None)
-
 
 class FITS(nn.Module):
-    """
-    FITS: Frequency Interpolation Time Series Forecasting
-    Paper: https://arxiv.org/abs/2307.03756
-    Source: https://github.com/VEWOXIC/FITS/blob/main/models/FITS.py
-    """
+
+    optional = {"cut_freq": 0, "base_T": 24}
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--cut_freq", type=int, default=None)
+        parser.add_argument("--base_T", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__()

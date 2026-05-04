@@ -53,6 +53,8 @@ class TestStrategies(unittest.TestCase):
                 self.output_channels = 2
                 self.train_samples = 1
 
+            import strategies.base as base_module
+
             with (
                 patch("strategies.base.ray.init"),
                 patch.object(
@@ -62,23 +64,27 @@ class TestStrategies(unittest.TestCase):
                 ),
                 patch.object(Server, "get_model_info", lambda self: None),
                 patch.object(Server, "make_logger", lambda self, name, path: None),
-                patch.object(Client, "__init__", fake_client_init),
+                patch.object(base_module.Client, "__init__", fake_client_init),
             ):
                 server = strategy_cls(configs=configs, times=0)
         return server
 
     def test_localonly_uses_strategy_specific_client_class(self):
+        from strategies.LocalOnly import LocalOnly_Client as CurrentClient
+
         server = self.build_server(LocalOnly)
         self.assertTrue(
-            all(isinstance(client, LocalOnly_Client) for client in server.clients)
+            all(isinstance(client, CurrentClient) for client in server.clients)
         )
         self.assertFalse(server.parallel)
         self.assertEqual(server.num_gpus, 0)
 
     def test_fedavg_uses_strategy_specific_client_class(self):
+        from strategies.FedAvg import FedAvg_Client as CurrentClient
+
         server = self.build_server(FedAvg)
         self.assertTrue(
-            all(isinstance(client, FedAvg_Client) for client in server.clients)
+            all(isinstance(client, CurrentClient) for client in server.clients)
         )
         self.assertFalse(server.parallel)
         self.assertEqual(server.num_gpus, 0)

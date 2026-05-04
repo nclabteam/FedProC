@@ -4,30 +4,26 @@ import torch.nn.functional as F
 
 from layers import RevIN
 
-optional = {
-    "embed_size": 256,
-    "hidden_size": 512,
-    "dropout": 0,
-    "band_width": 96,
-    "scale": 0.02,
-    "sparsity_threshold": 0.01,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--embed_size", type=int, default=None)
-    parser.add_argument("--hidden_size", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--band_width", type=int, default=None)
-    parser.add_argument("--scale", type=float, default=None)
-    parser.add_argument("--sparsity_threshold", type=float, default=None)
-
 
 class TexFilter(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2411.01623
-    Source: https://github.com/aikunyi/FilterNet/blob/main/models/TexFilter.py
-    """
+
+    optional = {
+        "embed_size": 256,
+        "hidden_size": 512,
+        "dropout": 0,
+        "band_width": 96,
+        "scale": 0.02,
+        "sparsity_threshold": 0.01,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--embed_size", type=int, default=None)
+        parser.add_argument("--hidden_size", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--band_width", type=int, default=None)
+        parser.add_argument("--scale", type=float, default=None)
+        parser.add_argument("--sparsity_threshold", type=float, default=None)
 
     def __init__(self, configs):
         super().__init__()

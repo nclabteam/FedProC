@@ -1,6 +1,6 @@
 # Losses
 | Abbreviation | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | Name | 
-| ------------ | - | - | - | - | - | - | - | - | - | - | -- | ----- | 
+| ------------ | - | - | - | - | - | - | - | - | - | - | -- | ----- | --- |
 | MAE          | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | ✗ | 🗸 | None | Mean Absolute Error | 
 | MSE          | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | ✗ | None | Mean Squared Error |
 | RMSE         | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | ✗ | None | Root Mean Squared Error |

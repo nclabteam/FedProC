@@ -4,36 +4,32 @@ import torch.nn as nn
 from layers.DataEmbedding import DataEmbedding_wo_pos
 from layers.SeriesDecompMA import SeriesDecompMA as series_decomp
 
-optional = {
-    "e_layers": 2,
-    "down_sampling_layers": 1,
-    "down_sampling_window": 2,
-    "d_model": 16,
-    "begin_order": 0,
-    "use_norm": 1,
-    "moving_avg": 25,
-    "dropout": 0.1,
-    "embed": "timeF",
-}
-
-
-def args_update(parser):
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--down_sampling_layers", type=int, default=None)
-    parser.add_argument("--down_sampling_window", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--begin_order", type=int, default=None)
-    parser.add_argument("--use_norm", type=int, default=None)
-    parser.add_argument("--moving_avg", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--embed", type=str, default=None)
-
 
 class TimeKAN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2502.06910
-    Source: https://github.com/huangst21/TimeKAN/blob/main/models/TimeKAN.py
-    """
+
+    optional = {
+        "e_layers": 2,
+        "down_sampling_layers": 1,
+        "down_sampling_window": 2,
+        "d_model": 16,
+        "begin_order": 0,
+        "use_norm": 1,
+        "moving_avg": 25,
+        "dropout": 0.1,
+        "embed": "timeF",
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--down_sampling_layers", type=int, default=None)
+        parser.add_argument("--down_sampling_window", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--begin_order", type=int, default=None)
+        parser.add_argument("--use_norm", type=int, default=None)
+        parser.add_argument("--moving_avg", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--embed", type=str, default=None)
 
     def __init__(self, configs):
         super().__init__()

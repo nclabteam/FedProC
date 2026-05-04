@@ -41,11 +41,14 @@ class _LazyModuleRegistry(Mapping):
         self.attribute_name = attribute_name
         self.default = default
 
+    def _resolve(self, key: str, fallback: Any) -> Any:
+        cls = _load_model_class(key)
+        return getattr(cls, self.attribute_name, fallback)
+
     def __getitem__(self, key):
         if key not in MODELS:
             raise KeyError(key)
-        module = _load_module(key)
-        return getattr(module, self.attribute_name, self.default)
+        return self._resolve(key, self.default)
 
     def __iter__(self):
         return iter(MODELS)
@@ -56,17 +59,12 @@ class _LazyModuleRegistry(Mapping):
     def get(self, key, default=None):
         if key not in MODELS:
             return default
-        module = _load_module(key)
-        return getattr(
-            module,
-            self.attribute_name,
-            self.default if default is None else default,
-        )
+        return self._resolve(key, self.default if default is None else default)
 
 
 optional: Mapping[Any, dict] = _LazyModuleRegistry("optional", {})
 compulsory: Mapping[Any, dict] = _LazyModuleRegistry("compulsory", {})
-args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry("args_update", {})
+args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry("args_update", None)
 
 
 def __getattr__(name: str):

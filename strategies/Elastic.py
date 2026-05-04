@@ -4,28 +4,24 @@ import torch
 
 from .base import Client, Server
 
-optional = {
-    "tau": 0.5,
-    "sample_ratio": 0.3,
-    "mu": 0.95,
-}
-
-compulsory = {
-    "return_diff": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--tau", type=float, default=None)
-    parser.add_argument("--sample_ratio", type=float, default=None)
-    parser.add_argument("--mu", type=float, default=None)
-
 
 class Elastic(Server):
-    """
-    Paper: https://openaccess.thecvf.com/content/CVPR2023/html/Chen_Elastic_Aggregation_for_Federated_Optimization_CVPR_2023_paper.html
-    Source: https://github.com/KarhouTam/FL-bench/blob/master/src/server/elastic.py
-    """
+
+    optional = {
+        "tau": 0.5,
+        "sample_ratio": 0.3,
+        "mu": 0.95,
+    }
+
+    compulsory = {
+        "return_diff": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--tau", type=float, default=None)
+        parser.add_argument("--sample_ratio", type=float, default=None)
+        parser.add_argument("--mu", type=float, default=None)
 
     def calculate_aggregation_weights(self):
         super().calculate_aggregation_weights()

@@ -2,18 +2,19 @@ import torch.nn as nn
 
 from layers import DishTS
 
-optional = {
-    "dishts": "uniform",
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--dishts", type=str, default=None, choices=["uniform", "avg", "standard"]
-    )
-
 
 class DishLinear(nn.Module):
+
+    optional = {
+        "dishts": "uniform",
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--dishts", type=str, default=None, choices=["uniform", "avg", "standard"]
+        )
+
     def __init__(self, configs):
         super().__init__()
         self.Linear = nn.Linear(configs.input_len, configs.output_len)

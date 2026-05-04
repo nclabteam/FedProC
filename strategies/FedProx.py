@@ -5,24 +5,17 @@ from topologies import TOPOLOGIES
 from .base import Client, Server
 from .DFL import DFL, DFL_Client
 
-optional = {
-    "mu": 0.01,
-    "topology": "FullyConnected",
-}
-
-DFedProx_compulsory = {
-    "save_local_model": True,
-    "exclude_server_model_processes": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--mu", type=float, default=None)
-    parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
-
 
 class FedProx(Server):
-    pass
+    optional = {
+        "mu": 0.01,
+        "topology": "FullyConnected",
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--mu", type=float, default=None)
+        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
 
 
 class FedProx_Client(Client):
@@ -63,6 +56,21 @@ class FedProx_Client(Client):
 
 class DFedProx(DFL):
     """Decentralized FedProx: DFL aggregation plus local proximal training."""
+
+    optional = {
+        "mu": 0.01,
+        "topology": "FullyConnected",
+    }
+
+    compulsory = {
+        "save_local_model": True,
+        "exclude_server_model_processes": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--mu", type=float, default=None)
+        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
 
 
 class DFedProx_Client(DFL_Client):

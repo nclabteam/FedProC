@@ -6,48 +6,44 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-optional = {
-    "encoder_dims": [64, 64, 128, 128],
-    "encoder_type": "wtconv",
-    "descriptor_dim": 256,
-    "stride": 2,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--encoder_dims",
-        type=int,
-        nargs="+",
-        default=None,
-        help="Dimensions of the encoder layers.",
-    )
-    parser.add_argument(
-        "--encoder_type",
-        type=str,
-        default=None,
-        choices=["dense", "wtconv"],
-        help="Type of encoder to use: 'dense' for dense convolutional layers, 'wtconv' for wavelet transform convolutional layers.",
-    )
-    parser.add_argument(
-        "--descriptor_dim",
-        type=int,
-        default=None,
-        help="Dimension of the descriptor output.",
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=None,
-        help="Stride for the convolutional layers in the encoder.",
-    )
-
 
 class TimePoint(nn.Module):
-    """
-    Paper: https://arxiv.org/pdf/2505.23475
-    Source: https://github.com/BGU-CS-VIL/TimePoint/blob/main/TimePoint/models/timepoint.py
-    """
+
+    optional = {
+        "encoder_dims": [64, 64, 128, 128],
+        "encoder_type": "wtconv",
+        "descriptor_dim": 256,
+        "stride": 2,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--encoder_dims",
+            type=int,
+            nargs="+",
+            default=None,
+            help="Dimensions of the encoder layers.",
+        )
+        parser.add_argument(
+            "--encoder_type",
+            type=str,
+            default=None,
+            choices=["dense", "wtconv"],
+            help="Type of encoder to use: 'dense' for dense convolutional layers, 'wtconv' for wavelet transform convolutional layers.",
+        )
+        parser.add_argument(
+            "--descriptor_dim",
+            type=int,
+            default=None,
+            help="Dimension of the descriptor output.",
+        )
+        parser.add_argument(
+            "--stride",
+            type=int,
+            default=None,
+            help="Stride for the convolutional layers in the encoder.",
+        )
 
     def __init__(self, configs):
         super().__init__()
@@ -468,7 +464,7 @@ def get_topk_in_original_order(X_desc, X_probas, K):
     N, C, L = X_desc.shape
     assert X_probas.shape == (N, L), "X_keypoints must have shape (N, L)"
 
-    device = X_probas.device
+    X_probas.device
     if K >= L:
         return X_probas, X_desc
 

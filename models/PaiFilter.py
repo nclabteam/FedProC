@@ -3,22 +3,18 @@ import torch.nn as nn
 
 from layers import RevIN
 
-optional = {
-    "scale": 0.02,
-    "hidden_size": 256,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--scale", type=float, default=None)
-    parser.add_argument("--hidden_size", type=int, default=None)
-
 
 class PaiFilter(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2411.01623
-    Source: https://github.com/aikunyi/FilterNet/blob/main/models/PaiFilter.py
-    """
+
+    optional = {
+        "scale": 0.02,
+        "hidden_size": 256,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--scale", type=float, default=None)
+        parser.add_argument("--hidden_size", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__()

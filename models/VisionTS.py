@@ -49,52 +49,51 @@ POSSIBLE_SEASONALITIES = {
 
 MAE_DOWNLOAD_URL = "https://dl.fbaipublicfiles.com/mae/visualize/"
 
-optional = {
-    "arch": "mae_base",
-    "finetune_type": "ln",
-    "ckpt_dir": "./ckpt/",
-    "load_ckpt": True,
-    "context_len": 1152,
-    "periodicity": 24,
-    "norm_const": 0.4,
-    "align_const": 0.4,
-    "interpolation": "bilinear",
-    "export_image": False,
-    "fp64": False,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--arch", type=str, default=None, choices=["mae_base", "mae_large", "mae_huge"]
-    )
-    parser.add_argument(
-        "--finetune_type",
-        type=str,
-        default=None,
-        choices=["full", "ln", "bias", "none", "mlp", "attn"],
-    )
-    parser.add_argument("--ckpt_dir", type=str, default=None)
-    parser.add_argument("--load_ckpt", type=str2bool, default=None)
-    parser.add_argument("--context_len", type=int, default=None)
-    parser.add_argument("--periodicity", type=int, default=None)
-    parser.add_argument("--norm_const", type=float, default=None)
-    parser.add_argument("--align_const", type=float, default=None)
-    parser.add_argument(
-        "--interpolation",
-        type=str,
-        default=None,
-        choices=["bilinear", "nearest", "bicubic"],
-    )
-    parser.add_argument("--export_image", type=str2bool, default=None)
-    parser.add_argument("--fp64", type=str2bool, default=None)
-
 
 class VisionTS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2408.17253
-    Source: https://github.com/Keytoyze/VisionTS/blob/main/visionts/model.py
-    """
+
+    optional = {
+        "arch": "mae_base",
+        "finetune_type": "ln",
+        "ckpt_dir": "./ckpt/",
+        "load_ckpt": True,
+        "context_len": 1152,
+        "periodicity": 24,
+        "norm_const": 0.4,
+        "align_const": 0.4,
+        "interpolation": "bilinear",
+        "export_image": False,
+        "fp64": False,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--arch",
+            type=str,
+            default=None,
+            choices=["mae_base", "mae_large", "mae_huge"],
+        )
+        parser.add_argument(
+            "--finetune_type",
+            type=str,
+            default=None,
+            choices=["full", "ln", "bias", "none", "mlp", "attn"],
+        )
+        parser.add_argument("--ckpt_dir", type=str, default=None)
+        parser.add_argument("--load_ckpt", type=str2bool, default=None)
+        parser.add_argument("--context_len", type=int, default=None)
+        parser.add_argument("--periodicity", type=int, default=None)
+        parser.add_argument("--norm_const", type=float, default=None)
+        parser.add_argument("--align_const", type=float, default=None)
+        parser.add_argument(
+            "--interpolation",
+            type=str,
+            default=None,
+            choices=["bilinear", "nearest", "bicubic"],
+        )
+        parser.add_argument("--export_image", type=str2bool, default=None)
+        parser.add_argument("--fp64", type=str2bool, default=None)
 
     def __init__(self, configs):
         super().__init__()

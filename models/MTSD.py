@@ -2,25 +2,19 @@ import torch
 from torch import nn
 
 from .DLinear import DLinear
-from .DLinear import args_update as DLinear_args_update
-from .DLinear import optional as DLinear_optional
-
-optional = {
-    **DLinear_optional,
-    "d_model": 512,
-}
-
-
-def args_update(parser):
-    DLinear_args_update(parser)
-    parser.add_argument("--d_model", type=int, default=None)
 
 
 class MTSD(DLinear):
-    """
-    Paper: https://arxiv.org/abs/2302.04501
-    Source: https://github.com/plumprc/MTS-Mixers/blob/main/models/MTSD.py
-    """
+
+    optional = {
+        **DLinear.optional,
+        "d_model": 512,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        DLinear.args_update(parser)
+        parser.add_argument("--d_model", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__(configs)

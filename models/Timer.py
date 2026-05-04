@@ -7,72 +7,68 @@ from torch import nn
 
 from layers import PositionalEmbedding
 
-optional = {
-    "patch_len": 24,
-    "d_model": 512,
-    "d_ff": 2048,
-    "e_layers": 2,
-    "n_heads": 8,
-    "dropout": 0.1,
-    "factor": 1,
-    "activation": "gelu",
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--patch_len",
-        type=int,
-        default=None,
-        help="input sequence length",
-    )
-    parser.add_argument(
-        "--d_model",
-        type=int,
-        default=None,
-        help="dimension of model",
-    )
-    parser.add_argument(
-        "--d_ff",
-        type=int,
-        default=None,
-        help="dimension of fcn",
-    )
-    parser.add_argument(
-        "--e_layers", type=int, default=None, help="num of encoder layers"
-    )
-    parser.add_argument(
-        "--n_heads",
-        type=int,
-        default=None,
-        help="num of attention heads",
-    )
-    parser.add_argument(
-        "--dropout",
-        type=float,
-        default=None,
-        help="dropout rate",
-    )
-    parser.add_argument(
-        "--factor",
-        type=int,
-        default=None,
-        help="attention factor",
-    )
-    parser.add_argument(
-        "--activation",
-        type=str,
-        default=None,
-        choices=["gelu", "relu"],
-        help="activation function",
-    )
-
 
 class Timer(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2402.02368
-    Source: https://github.com/thuml/Large-Time-Series-Model/blob/main/models/Timer.py
-    """
+
+    optional = {
+        "patch_len": 24,
+        "d_model": 512,
+        "d_ff": 2048,
+        "e_layers": 2,
+        "n_heads": 8,
+        "dropout": 0.1,
+        "factor": 1,
+        "activation": "gelu",
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--patch_len",
+            type=int,
+            default=None,
+            help="input sequence length",
+        )
+        parser.add_argument(
+            "--d_model",
+            type=int,
+            default=None,
+            help="dimension of model",
+        )
+        parser.add_argument(
+            "--d_ff",
+            type=int,
+            default=None,
+            help="dimension of fcn",
+        )
+        parser.add_argument(
+            "--e_layers", type=int, default=None, help="num of encoder layers"
+        )
+        parser.add_argument(
+            "--n_heads",
+            type=int,
+            default=None,
+            help="num of attention heads",
+        )
+        parser.add_argument(
+            "--dropout",
+            type=float,
+            default=None,
+            help="dropout rate",
+        )
+        parser.add_argument(
+            "--factor",
+            type=int,
+            default=None,
+            help="attention factor",
+        )
+        parser.add_argument(
+            "--activation",
+            type=str,
+            default=None,
+            choices=["gelu", "relu"],
+            help="activation function",
+        )
 
     def __init__(self, configs):
         super().__init__()

@@ -8,21 +8,21 @@ from topologies import TOPOLOGIES
 
 from .base import Client, Server
 
-optional = {
-    "topology": "FullyConnected",
-}
-
-compulsory = {
-    "save_local_model": True,
-    "exclude_server_model_processes": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
-
 
 class DFL(Server):
+    optional = {
+        "topology": "FullyConnected",
+    }
+
+    compulsory = {
+        "save_local_model": True,
+        "exclude_server_model_processes": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
+
     def __init__(self, configs, times):
         self.set_configs(configs=configs, times=times)
         self.mkdir()
@@ -71,7 +71,7 @@ class DFL(Server):
 
     def receive_from_clients(self):
         for node in self.clients:
-            start = time.time()
+            time.time()
             receive_mb = 0
             all_to_be_received = {}
 

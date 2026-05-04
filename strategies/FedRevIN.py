@@ -4,10 +4,6 @@ from layers import RevIN
 
 from .base import Client, Server, SharedMethods
 
-compulsory = {
-    "save_local_model": True,
-}
-
 
 class ModelWithRevIN(nn.Module):
     def __init__(self, base_model, in_channels):
@@ -41,7 +37,9 @@ class FedRevINShared(SharedMethods):
 
 
 class FedRevIN(Server, FedRevINShared):
-    pass
+    compulsory = {
+        "save_local_model": True,
+    }
 
 
 class FedRevIN_Client(Client, FedRevINShared):

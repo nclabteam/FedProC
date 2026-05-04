@@ -4,9 +4,6 @@ import torch.nn.functional as F
 
 
 class AutoAttention(nn.Module):
-    """
-    Source:https://github.com/Levi-Ackman/Leddam/blob/main/layers/Leddam.py
-    """
 
     def __init__(self, P, d_model, proj_dropout=0.2):
         """

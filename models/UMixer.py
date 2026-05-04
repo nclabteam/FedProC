@@ -4,28 +4,24 @@ import torch.nn as nn
 
 from layers import PositionalEmbedding
 
-optional = {
-    "e_layers": 2,
-    "d_model": 512,
-    "patch_len": 16,
-    "dropout": 0.25,
-    "stride": 8,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--patch_len", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-
 
 class UMixer(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2401.02236
-    Source: https://github.com/XiangMa-Shaun/U-Mixer/blob/main/models/UMixer.py
-    """
+
+    optional = {
+        "e_layers": 2,
+        "d_model": 512,
+        "patch_len": 16,
+        "dropout": 0.25,
+        "stride": 8,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--patch_len", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--stride", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__()

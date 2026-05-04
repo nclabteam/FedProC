@@ -6,49 +6,30 @@ from topologies import TOPOLOGIES
 from .base import Server
 from .DFL import DFL, DFL_Client
 
-optional = {
-    "server_epochs": 1,
-    "reg_distance": "cos",
-    "server_lr": 0.01,
-    "server_optimizer": "Adam",
-    "fedawa_gamma": 1.0,
-}
-
-DFedAWA_optional = {
-    "topology": "FullyConnected",
-    **optional,
-}
-
-DFedAWA_compulsory = {
-    "save_local_model": True,
-    "exclude_server_model_processes": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--server_epochs", type=int, default=None)
-    parser.add_argument(
-        "--reg_distance", type=str, default=None, choices=["cos", "euc"]
-    )
-    parser.add_argument("--server_lr", type=float, default=None)
-    parser.add_argument(
-        "--server_optimizer", type=str, default=None, choices=["SGD", "Adam"]
-    )
-    parser.add_argument("--fedawa_gamma", type=float, default=None)
-
-
-def DFedAWA_args_update(parser):
-    parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
-    args_update(parser)
-
 
 class FedAWA(Server):
-    """
-    Paper: https://arxiv.org/abs/2503.15842
-    Source: https://github.com/ChanglongShi/FedAWA/blob/main/server_funct.py
-    """
+
+    optional = {
+        "server_epochs": 1,
+        "reg_distance": "cos",
+        "server_lr": 0.01,
+        "server_optimizer": "Adam",
+        "fedawa_gamma": 1.0,
+    }
 
     awa_weights = None
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--server_epochs", type=int, default=None)
+        parser.add_argument(
+            "--reg_distance", type=str, default=None, choices=["cos", "euc"]
+        )
+        parser.add_argument("--server_lr", type=float, default=None)
+        parser.add_argument(
+            "--server_optimizer", type=str, default=None, choices=["SGD", "Adam"]
+        )
+        parser.add_argument("--fedawa_gamma", type=float, default=None)
 
     @staticmethod
     def _flatten_params(model):
@@ -217,6 +198,25 @@ class FedAWA(Server):
 
 class DFedAWA(DFL):
     """Decentralized FedAWA: learn adaptive aggregation weights per receiver."""
+
+    optional = {
+        "topology": "FullyConnected",
+        "server_epochs": 1,
+        "reg_distance": "cos",
+        "server_lr": 0.01,
+        "server_optimizer": "Adam",
+        "fedawa_gamma": 1.0,
+    }
+
+    compulsory = {
+        "save_local_model": True,
+        "exclude_server_model_processes": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
+        FedAWA.args_update(parser)
 
 
 class DFedAWA_Client(DFL_Client):

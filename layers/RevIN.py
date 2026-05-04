@@ -4,12 +4,7 @@ import torch.nn as nn
 
 class RevIN(nn.Module):
     def __init__(self, num_features: int, eps=1e-5, affine=True, subtract_last=False):
-        """
-        Source: https://github.com/ts-kim/RevIN/blob/master/RevIN.py
-        :param num_features: the number of features or channels
-        :param eps: a value added for numerical stability
-        :param affine: if True, RevIN has learnable affine parameters
-        """
+
         super(RevIN, self).__init__()
         self.num_features = num_features
         self.eps = eps

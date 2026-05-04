@@ -2,26 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-optional = {
-    "embed_size": 128,
-    "hidden_size": 256,
-    "sparsity_threshold": 0.01,
-    "scale": 0.02,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--embed_size", type=int, default=None)
-    parser.add_argument("--hidden_size", type=int, default=None)
-    parser.add_argument("--sparsity_threshold", type=float, default=None)
-    parser.add_argument("--scale", type=float, default=None)
-
 
 class FreTS(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2311.06184
-    Source: https://github.com/aikunyi/FilterNet/blob/main/models/FreTS.py
-    """
+
+    optional = {
+        "embed_size": 128,
+        "hidden_size": 256,
+        "sparsity_threshold": 0.01,
+        "scale": 0.02,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--embed_size", type=int, default=None)
+        parser.add_argument("--hidden_size", type=int, default=None)
+        parser.add_argument("--sparsity_threshold", type=float, default=None)
+        parser.add_argument("--scale", type=float, default=None)
 
     def __init__(self, configs):
         super().__init__()

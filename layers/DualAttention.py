@@ -9,9 +9,6 @@ from .PositionalEncoding import PositionalEncoding
 
 
 class DualAttention(nn.Module):
-    """
-    Source:https://github.com/Levi-Ackman/Leddam/blob/main/layers/Leddam.py
-    """
 
     def __init__(
         self, enc_in, seq_len, d_model, dropout, pe_type, kernel_size, n_layers=3

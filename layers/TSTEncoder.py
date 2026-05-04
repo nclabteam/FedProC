@@ -9,10 +9,6 @@ from .Transpose import Transpose
 
 
 class TSTEncoder(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2211.14730
-    Source: https://github.com/yuqinie98/PatchTST/blob/main/PatchTST_supervised/layers/PatchTST_backbone.py
-    """
 
     def __init__(
         self,

@@ -3,23 +3,18 @@ import torch.nn as nn
 
 from layers import SeriesDecompMA
 
-optional = {
-    "kernel_size": 25,
-    "hidden_size": 200,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--kernel_size", type=int, default=None)
-    parser.add_argument("--hidden_size", type=int, default=None)
-
 
 class DSSRNN(nn.Module):
-    """
-    Decomposition-Enhanced State-Space Recurrent Neural Network
-    Paper: https://arxiv.org/abs/2412.00994
-    Source: https://github.com/ahmad-shirazi/DSSRNN/blob/main/models/DSSRNN.py
-    """
+
+    optional = {
+        "kernel_size": 25,
+        "hidden_size": 200,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--kernel_size", type=int, default=None)
+        parser.add_argument("--hidden_size", type=int, default=None)
 
     def __init__(self, configs):
         super().__init__()

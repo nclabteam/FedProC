@@ -4,34 +4,6 @@ from topologies import TOPOLOGIES
 
 from .DFL import DFL, DFL_Client
 
-optional = {
-    "topology": "FullyConnected",
-    "use_mgs": True,
-    "mgs_steps": 2,
-    "rho": 0.05,
-}
-
-compulsory = {
-    "save_local_model": True,
-    "exclude_server_model_processes": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
-    parser.add_argument("--rho", type=float, default=0.05, help="SAM radius")
-    parser.add_argument(
-        "--use_mgs",
-        action="store_true",
-        help="Enable Multiple Gossip Steps (MGS) during aggregation",
-    )
-    parser.add_argument(
-        "--mgs_steps",
-        type=int,
-        default=2,
-        help="Number of gossip/consensus steps when --use_mgs is enabled (>=1)",
-    )
-
 
 class DFedSAM(DFL):
     """DFedSAM / DFedSAM-MGS server orchestrator.
@@ -39,6 +11,34 @@ class DFedSAM(DFL):
     Inherits DFL topology-based communication. Overrides aggregate_models
     to support Q gossip steps (MGS variant) for improved model consistency.
     """
+
+    optional = {
+        "topology": "FullyConnected",
+        "use_mgs": True,
+        "mgs_steps": 2,
+        "rho": 0.05,
+    }
+
+    compulsory = {
+        "save_local_model": True,
+        "exclude_server_model_processes": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
+        parser.add_argument("--rho", type=float, default=0.05, help="SAM radius")
+        parser.add_argument(
+            "--use_mgs",
+            action="store_true",
+            help="Enable Multiple Gossip Steps (MGS) during aggregation",
+        )
+        parser.add_argument(
+            "--mgs_steps",
+            type=int,
+            default=2,
+            help="Number of gossip/consensus steps when --use_mgs is enabled (>=1)",
+        )
 
     def aggregate_models(self, *args, **kwargs):
         """One gossip step (DFedSAM) or Q gossip steps (DFedSAM-MGS).

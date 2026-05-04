@@ -5,12 +5,6 @@ import torch.nn as nn
 
 
 class PositionalEmbedding(nn.Module):
-    """
-    Source:
-        https://github.com/huangst21/TimeKAN/blob/main/layers/Embed.py
-        https://github.com/thuml/Large-Time-Series-Model/blob/main/layers/Embed.py
-        https://github.com/XiangMa-Shaun/U-Mixer/blob/main/layers/Embed.py
-    """
 
     def __init__(self, d_model, max_len=5000):
         super().__init__()

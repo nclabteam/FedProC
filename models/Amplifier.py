@@ -4,26 +4,22 @@ import torch.nn as nn
 from layers import RevIN, SeriesDecompMA
 from utils.parsing import str2bool
 
-optional = {
-    "moving_avg": 25,
-    "stride": 1,
-    "hidden_size": 512,
-    "noSCI": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--moving_avg", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument("--hidden_size", type=int, default=None)
-    parser.add_argument("--noSCI", type=str2bool, default=None)
-
 
 class Amplifier(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/2501.17216
-    Source: https://github.com/aikunyi/Amplifier/blob/main/models/Amplifier.py
-    """
+
+    optional = {
+        "moving_avg": 25,
+        "stride": 1,
+        "hidden_size": 512,
+        "noSCI": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--moving_avg", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument("--hidden_size", type=int, default=None)
+        parser.add_argument("--noSCI", type=str2bool, default=None)
 
     def __init__(self, configs):
         super().__init__()

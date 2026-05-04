@@ -5,31 +5,26 @@ import torch.nn.functional as F
 
 from .base import Server
 
-optional = {
-    "first_stage_bound": 0.0,
-    "cross_alpha": 0.99,
-    "collaborative_model_select_strategy": 1,
-}
-
-
-# Argument parser update function
-def args_update(parser):
-    parser.add_argument("--first_stage_bound", type=float, default=None)
-    parser.add_argument("--cross_alpha", type=float, default=None)
-    parser.add_argument(
-        "-cmss",
-        "--collaborative_model_select_strategy",
-        type=int,
-        default=None,
-        choices=[0, 1, 2],
-    )
-
 
 class FedCross(Server):
-    """
-    Paper: https://arxiv.org/abs/2210.08285
-    Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/servercross.py
-    """
+
+    optional = {
+        "first_stage_bound": 0.0,
+        "cross_alpha": 0.99,
+        "collaborative_model_select_strategy": 1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--first_stage_bound", type=float, default=None)
+        parser.add_argument("--cross_alpha", type=float, default=None)
+        parser.add_argument(
+            "-cmss",
+            "--collaborative_model_select_strategy",
+            type=int,
+            default=None,
+            choices=[0, 1, 2],
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -7,82 +7,79 @@ from torch.utils.data import ConcatDataset, DataLoader, TensorDataset
 
 from .base import Client, Server
 
-optional = {
-    "L_ct": 10,  # Interval for updating client-side synthetic data
-    "synthetic_data_size_ct": 100,  # Size of client-side synthetic data
-    "L_gt": 10,  # Interval for updating server-side synthetic data
-    "synthetic_data_size_gt": 100,  # Size of server-side synthetic data
-    "synthetic_epochs": 300,  # Outer-loop epochs for synthetic data generation
-    "synthetic_inner_epochs": 1,  # Inner-loop epochs for training on synthetic data
-    "synthetic_lr": 3e-4,  # Learning rate for synthetic data optimization
-    "refine_epochs": 1,  # Epochs to refine global model on D_gt after aggregation
-}
-
-
-def args_update(parser):
-    # --- Client-side Synthetic Data (D_ct) Parameters ---
-    parser.add_argument(
-        "--L_ct",
-        type=int,
-        default=None,
-        help="Interval in rounds for updating the client-side synthetic data (D_ct).",
-    )
-    parser.add_argument(
-        "--synthetic_data_size_ct",
-        type=int,
-        default=None,
-        help="Number of synthetic data samples to create for D_ct.",
-    )
-
-    # --- Server-side Synthetic Data (D_gt) Parameters ---
-    parser.add_argument(
-        "--L_gt",
-        type=int,
-        default=None,
-        help="Interval in rounds for updating the server-side synthetic data (D_gt).",
-    )
-    parser.add_argument(
-        "--synthetic_data_size_gt",
-        type=int,
-        default=None,
-        help="Number of synthetic data samples to create for D_gt.",
-    )
-
-    # --- Synthetic Data Generation Parameters (for both D_ct and D_gt) ---
-    parser.add_argument(
-        "--synthetic_epochs",
-        type=int,
-        default=None,
-        help="Outer-loop training epochs for generating the synthetic datasets.",
-    )
-    parser.add_argument(
-        "--synthetic_inner_epochs",
-        type=int,
-        default=None,
-        help="Inner-loop epochs for training a temporary model on synthetic data during its generation.",
-    )
-    parser.add_argument(
-        "--synthetic_lr",
-        type=float,
-        default=None,
-        help="Learning rate for optimizing the synthetic data itself.",
-    )
-
-    # --- Global Model Refinement Parameter ---
-    parser.add_argument(
-        "--refine_epochs",
-        type=int,
-        default=None,
-        help="Number of epochs to refine the global model on D_gt after aggregation.",
-    )
-
-    return parser
-
 
 class FedTrend(Server):
-    """
-    Paper: https://arxiv.org/abs/2411.15716
-    """
+
+    optional = {
+        "L_ct": 10,  # Interval for updating client-side synthetic data
+        "synthetic_data_size_ct": 100,  # Size of client-side synthetic data
+        "L_gt": 10,  # Interval for updating server-side synthetic data
+        "synthetic_data_size_gt": 100,  # Size of server-side synthetic data
+        "synthetic_epochs": 300,  # Outer-loop epochs for synthetic data generation
+        "synthetic_inner_epochs": 1,  # Inner-loop epochs for training on synthetic data
+        "synthetic_lr": 3e-4,  # Learning rate for synthetic data optimization
+        "refine_epochs": 1,  # Epochs to refine global model on D_gt after aggregation
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        # --- Client-side Synthetic Data (D_ct) Parameters ---
+        parser.add_argument(
+            "--L_ct",
+            type=int,
+            default=None,
+            help="Interval in rounds for updating the client-side synthetic data (D_ct).",
+        )
+        parser.add_argument(
+            "--synthetic_data_size_ct",
+            type=int,
+            default=None,
+            help="Number of synthetic data samples to create for D_ct.",
+        )
+
+        # --- Server-side Synthetic Data (D_gt) Parameters ---
+        parser.add_argument(
+            "--L_gt",
+            type=int,
+            default=None,
+            help="Interval in rounds for updating the server-side synthetic data (D_gt).",
+        )
+        parser.add_argument(
+            "--synthetic_data_size_gt",
+            type=int,
+            default=None,
+            help="Number of synthetic data samples to create for D_gt.",
+        )
+
+        # --- Synthetic Data Generation Parameters (for both D_ct and D_gt) ---
+        parser.add_argument(
+            "--synthetic_epochs",
+            type=int,
+            default=None,
+            help="Outer-loop training epochs for generating the synthetic datasets.",
+        )
+        parser.add_argument(
+            "--synthetic_inner_epochs",
+            type=int,
+            default=None,
+            help="Inner-loop epochs for training a temporary model on synthetic data during its generation.",
+        )
+        parser.add_argument(
+            "--synthetic_lr",
+            type=float,
+            default=None,
+            help="Learning rate for optimizing the synthetic data itself.",
+        )
+
+        # --- Global Model Refinement Parameter ---
+        parser.add_argument(
+            "--refine_epochs",
+            type=int,
+            default=None,
+            help="Number of epochs to refine the global model on D_gt after aggregation.",
+        )
+
+        return parser
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

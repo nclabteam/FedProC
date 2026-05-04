@@ -3,10 +3,6 @@ import torch.nn as nn
 
 
 class MQC(nn.Module):
-    """
-    Multi-Quantile Loss Change
-    Paper: https://arxiv.org/abs/2506.05776
-    """
 
     def __init__(self, quantiles=None):
         """

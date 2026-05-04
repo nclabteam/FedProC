@@ -2,32 +2,28 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-optional = {
-    "kernel_size": 3,
-    "hidCNN": 10,
-    "hidRNN": 25,
-    "highway_window": 8,
-    "collaborate_span": 2,
-    "n_CNN": 5,
-    "dropout": 0.3,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--kernel_size", type=int, default=None)
-    parser.add_argument("--hidCNN", type=int, default=None)
-    parser.add_argument("--hidRNN", type=int, default=None)
-    parser.add_argument("--highway_window", type=int, default=None)
-    parser.add_argument("--collaborate_span", type=int, default=None)
-    parser.add_argument("--n_CNN", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-
 
 class MLCNN(nn.Module):
-    """
-    Paper: https://arxiv.org/abs/1912.05122
-    Source: https://github.com/smallGum/MLCNN-Multivariate-Time-Series/blob/master/models/models.py
-    """
+
+    optional = {
+        "kernel_size": 3,
+        "hidCNN": 10,
+        "hidRNN": 25,
+        "highway_window": 8,
+        "collaborate_span": 2,
+        "n_CNN": 5,
+        "dropout": 0.3,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--kernel_size", type=int, default=None)
+        parser.add_argument("--hidCNN", type=int, default=None)
+        parser.add_argument("--hidRNN", type=int, default=None)
+        parser.add_argument("--highway_window", type=int, default=None)
+        parser.add_argument("--collaborate_span", type=int, default=None)
+        parser.add_argument("--n_CNN", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
 
     def __init__(self, configs):
         super().__init__()
