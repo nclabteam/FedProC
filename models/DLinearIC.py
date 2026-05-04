@@ -3,22 +3,23 @@ import torch.nn as nn
 
 from layers import SeriesDecompMA
 
-optional = {
-    "moving_avg": 25,
-    "stride": 1,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--moving_avg", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-
 
 class DLinearIC(nn.Module):
     """
     Paper: https://arxiv.org/abs/2205.13504
     Source: https://github.com/cure-lab/LTSF-Linear/blob/main/models/DLinear.py
     """
+
+    optional = {
+        "moving_avg": 25,
+        "stride": 1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--moving_avg", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

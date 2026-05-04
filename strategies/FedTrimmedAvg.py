@@ -2,25 +2,24 @@ import torch
 
 from .base import Client, Server
 
-optional = {
-    "beta": 0.2,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--beta",
-        type=float,
-        default=None,
-        help="Fraction to cut off of both tails of the distribution",
-    )
-
-
 class FedTrimmedAvg(Server):
     """
     Paper: https://arxiv.org/abs/1803.01498
     Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedtrimmedavg.py
     """
+
+    optional = {
+        "beta": 0.2,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--beta",
+            type=float,
+            default=None,
+            help="Fraction to cut off of both tails of the distribution",
+        )
 
     def calculate_aggregation_weights(self):
         pass

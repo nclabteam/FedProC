@@ -6,31 +6,26 @@ import torch.nn as nn
 
 from .base import Client, Server
 
-# Default options
-optional = {
-    "eta": 1.0,
-    "sample_ratio": 0.8,
-    "layer_idx": 2,
-    "threshold": 0.1,
-    "local_patience": 10,
-}
-
-compulsory = {
-    "save_local_model": True,
-}
-
-
-# Argument parser update function
-def args_update(parser):
-    parser.add_argument("--eta", type=float, default=None)
-    parser.add_argument("--sample_ratio", type=float, default=None)
-    parser.add_argument("--layer_idx", type=int, default=None)
-    parser.add_argument("--threshold", type=float, default=None)
-    parser.add_argument("--local_patience", type=int, default=None)
-
-
 class FedALA(Server):
-    pass
+    optional = {
+        "eta": 1.0,
+        "sample_ratio": 0.8,
+        "layer_idx": 2,
+        "threshold": 0.1,
+        "local_patience": 10,
+    }
+
+    compulsory = {
+        "save_local_model": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--eta", type=float, default=None)
+        parser.add_argument("--sample_ratio", type=float, default=None)
+        parser.add_argument("--layer_idx", type=int, default=None)
+        parser.add_argument("--threshold", type=float, default=None)
+        parser.add_argument("--local_patience", type=int, default=None)
 
 
 class FedALA_Client(Client):

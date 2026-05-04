@@ -5,20 +5,21 @@ import torch.nn.functional as F
 from scipy import signal
 from scipy import special as ss
 
-optional = {
-    "ratio": 0.5,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--ratio", type=float, default=None)
-
 
 class FiLM(nn.Module):
     """
     Paper link: https://arxiv.org/abs/2205.08897
     Source: https://github.com/decisionintelligence/TFB/blob/master/ts_benchmark/baselines/time_series_library/models/FiLM.py
     """
+
+    optional = {
+        "ratio": 0.5,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--ratio", type=float, default=None)
+
 
     def __init__(self, configs):
         super(FiLM, self).__init__()

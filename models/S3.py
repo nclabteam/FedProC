@@ -4,67 +4,68 @@ from torch import nn
 
 from utils.parsing import str2bool
 
-optional = {
-    "num_layers": 3,
-    "initial_num_segments": 4,
-    "shuffle_vector_dim": 1,
-    "segment_multiplier": 2,
-    "use_conv_w_avg": True,
-    "initialization_type": "kaiming",
-    "use_stitch": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--num_layers", type=int, default=None, help="Number of S3 layers to stack"
-    )
-    parser.add_argument(
-        "--initial_num_segments",
-        type=int,
-        default=None,
-        help="Number of segments for the first S3 layer",
-    )
-    parser.add_argument(
-        "--shuffle_vector_dim",
-        type=float,
-        default=None,
-        help="Dimensionality of the shuffle vector for each S3 layer",
-    )
-    parser.add_argument(
-        "--segment_multiplier",
-        type=int,
-        default=None,
-        help="Multiplier for the number of segments in each consecutive layer",
-    )
-    parser.add_argument(
-        "--use_conv_w_avg",
-        type=str2bool,
-        default=None,
-        choices=[True, False],
-        help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
-    )
-    parser.add_argument(
-        "--initialization_type",
-        type=str,
-        default=None,
-        choices=["kaiming", "manual"],
-        help="Initialization type for shuffle vectors",
-    )
-    parser.add_argument(
-        "--use_stitch",
-        type=str2bool,
-        default=None,
-        choices=[True, False],
-        help="If True, apply stitching to combine original and shuffled sequences",
-    )
-
 
 class S3(nn.Module):
     """
     Paper: https://arxiv.org/pdf/2405.20082
     Source: https://github.com/shivam-grover/S3-TimeSeries/blob/main/S3/S3.py
     """
+
+    optional = {
+        "num_layers": 3,
+        "initial_num_segments": 4,
+        "shuffle_vector_dim": 1,
+        "segment_multiplier": 2,
+        "use_conv_w_avg": True,
+        "initialization_type": "kaiming",
+        "use_stitch": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+        "--num_layers", type=int, default=None, help="Number of S3 layers to stack"
+        )
+        parser.add_argument(
+        "--initial_num_segments",
+        type=int,
+        default=None,
+        help="Number of segments for the first S3 layer",
+        )
+        parser.add_argument(
+        "--shuffle_vector_dim",
+        type=float,
+        default=None,
+        help="Dimensionality of the shuffle vector for each S3 layer",
+        )
+        parser.add_argument(
+        "--segment_multiplier",
+        type=int,
+        default=None,
+        help="Multiplier for the number of segments in each consecutive layer",
+        )
+        parser.add_argument(
+        "--use_conv_w_avg",
+        type=str2bool,
+        default=None,
+        choices=[True, False],
+        help="If True, use convolution-based weighted average. Otherwise, use learnable parameters for weighted averaging",
+        )
+        parser.add_argument(
+        "--initialization_type",
+        type=str,
+        default=None,
+        choices=["kaiming", "manual"],
+        help="Initialization type for shuffle vectors",
+        )
+        parser.add_argument(
+        "--use_stitch",
+        type=str2bool,
+        default=None,
+        choices=[True, False],
+        help="If True, apply stitching to combine original and shuffled sequences",
+        )
+
 
     def __init__(self, configs):
         super(S3, self).__init__()

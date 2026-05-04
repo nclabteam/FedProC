@@ -6,36 +6,37 @@ from einops import rearrange, repeat
 
 from utils.parsing import str2bool
 
-optional = {
-    "merge_win": 4,
-    "factor": 10,
-    "d_model": 512,
-    "d_ff": 1024,
-    "n_heads": 8,
-    "e_layers": 3,
-    "dropout": 0.0,
-    "baseline": False,
-    "seg_len": 12,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--merge_win", type=int, default=None)
-    parser.add_argument("--factor", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--d_ff", type=int, default=None)
-    parser.add_argument("--n_heads", type=int, default=None)
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--baseline", type=str2bool, default=None)
-    parser.add_argument("--seg_len", type=int, default=None)
-
 
 class CrossFormer(nn.Module):
     """
     Paper: https://openreview.net/forum?id=vSVLM2j9eie
     Source: https://github.com/Thinklab-SJTU/Crossformer/blob/master/cross_models/cross_former.py
     """
+
+    optional = {
+        "merge_win": 4,
+        "factor": 10,
+        "d_model": 512,
+        "d_ff": 1024,
+        "n_heads": 8,
+        "e_layers": 3,
+        "dropout": 0.0,
+        "baseline": False,
+        "seg_len": 12,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--merge_win", type=int, default=None)
+        parser.add_argument("--factor", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--d_ff", type=int, default=None)
+        parser.add_argument("--n_heads", type=int, default=None)
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--baseline", type=str2bool, default=None)
+        parser.add_argument("--seg_len", type=int, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

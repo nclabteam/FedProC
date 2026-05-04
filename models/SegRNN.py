@@ -1,23 +1,24 @@
 import torch
 import torch.nn as nn
 
-optional = {
-    "d_model": 512,
-    "seg_len": 24,
-    "dropout": 0.0,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--seg_len", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-
 
 class SegRNN(nn.Module):
     """
     Paper: https://arxiv.org/abs/2308.11200
     """
+
+    optional = {
+        "d_model": 512,
+        "seg_len": 24,
+        "dropout": 0.0,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--seg_len", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

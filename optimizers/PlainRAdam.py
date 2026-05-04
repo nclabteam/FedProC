@@ -3,27 +3,28 @@ import math
 import torch
 from torch.optim.optimizer import Optimizer
 
-optional = {
-    "eps": 1e-8,
-    "weight_decay": 0,
-    "degenerated_to_sgd": False,
-    "beta1": 0.9,
-    "beta2": 0.999,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--eps", type=float, default=None)
-    parser.add_argument("--weight_decay", type=float, default=None)
-    parser.add_argument("--degenerated_to_sgd", default=None, action="store_true")
-    parser.add_argument("--beta1", type=float, default=None)
-    parser.add_argument("--beta2", type=float, default=None)
-
 
 class PlainRAdam(Optimizer):
     """
     Source: https://github.com/LiyuanLucasLiu/RAdam/blob/master/radam/radam.py
     """
+
+    optional = {
+        "eps": 1e-8,
+        "weight_decay": 0,
+        "degenerated_to_sgd": False,
+        "beta1": 0.9,
+        "beta2": 0.999,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--eps", type=float, default=None)
+        parser.add_argument("--weight_decay", type=float, default=None)
+        parser.add_argument("--degenerated_to_sgd", default=None, action="store_true")
+        parser.add_argument("--beta1", type=float, default=None)
+        parser.add_argument("--beta2", type=float, default=None)
+
 
     def __init__(self, params, configs):
         betas = (configs.beta1, configs.beta2)

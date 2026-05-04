@@ -1,12 +1,12 @@
 from .base import Client, Server
 
-compulsory = {
-    "save_local_model": True,
-    "exclude_server_model_processes": True,
-}
-
 
 class LocalOnly(Server):
+    compulsory = {
+        "save_local_model": True,
+        "exclude_server_model_processes": True,
+    }
+
     def receive_from_clients(self, *args, **kwargs):
         pass
 

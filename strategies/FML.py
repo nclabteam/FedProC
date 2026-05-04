@@ -8,26 +8,25 @@ from losses import KLDivergence
 
 from .base import Client, Server
 
-optional = {
-    "alpha": 0.9,
-    "beta": 0.1,
-}
-
-compulsory = {
-    "save_local_model": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--alpha", type=float, default=None)
-    parser.add_argument("--beta", type=float, default=None)
-
-
 class FML(Server):
     """
     Paper: https://arxiv.org/abs/2006.16765
     Source: https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/clients/clientfml.py
     """
+
+    optional = {
+        "alpha": 0.9,
+        "beta": 0.1,
+    }
+
+    compulsory = {
+        "save_local_model": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--alpha", type=float, default=None)
+        parser.add_argument("--beta", type=float, default=None)
 
     def calculate_aggregation_weights(self):
         self.weights = torch.tensor([1 / len(self.client_data)] * len(self.client_data))

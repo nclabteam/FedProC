@@ -23,19 +23,13 @@ for filename in os.listdir(current_dir):
             schedulers[class_name] = class_obj
 
             # Import optional dictionary
-            optional[class_name] = (
-                getattr(module, "optional") if hasattr(module, "optional") else {}
-            )
+            optional[class_name] = getattr(class_obj, "optional", {})
 
             # Import compulsory dictionary
-            compulsory[class_name] = (
-                getattr(module, "compulsory") if hasattr(module, "compulsory") else {}
-            )
+            compulsory[class_name] = getattr(class_obj, "compulsory", {})
 
             # Import args_update function
-            args_update_functions[class_name] = (
-                getattr(module, "args_update") if hasattr(module, "args_update") else {}
-            )
+            args_update_functions[class_name] = getattr(class_obj, "args_update", None)
 
 # Add the imported classes to the module's namespace
 globals().update(schedulers)

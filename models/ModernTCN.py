@@ -5,61 +5,62 @@ from torch import nn
 from layers import RevIN, SeriesDecompMA
 from utils.parsing import str2bool
 
-optional = {
-    "stem_ratio": 6,
-    "downsample_ratio": 2,
-    "ffn_ratio": 1,
-    "num_blocks": [1, 1, 1, 1],
-    "large_size": [31, 29, 27, 13],
-    "small_size": [5, 5, 5, 5],
-    "dims": [64, 64, 64, 64],
-    "dw_dims": [256, 256, 256, 256],
-    "small_kernel_merged": False,
-    "dropout": 0.3,
-    "head_dropout": 0.0,
-    "use_multi_scale": False,
-    "revin": True,
-    "affine": False,
-    "subtract_last": 0,
-    "kernel_size": 25,
-    "patch_size": 8,
-    "patch_stride": 4,
-    "decomposition": False,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--stem_ratio", type=int, default=None)
-    parser.add_argument("--downsample_ratio", type=int, default=None)
-    parser.add_argument("--ffn_ratio", type=int, default=None)
-    parser.add_argument("--num_blocks", type=int, nargs="+", default=None)
-    parser.add_argument("--large_size", type=int, nargs="+", default=None)
-    parser.add_argument("--small_size", type=int, nargs="+", default=None)
-    parser.add_argument("--dims", type=int, nargs="+", default=None)
-    parser.add_argument("--dw_dims", type=int, nargs="+", default=None)
-    parser.add_argument("--small_kernel_merged", type=str2bool, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--head_dropout", type=float, default=None)
-    parser.add_argument("--use_multi_scale", type=str2bool, default=None)
-    parser.add_argument("--revin", type=str2bool, default=None)
-    parser.add_argument("--affine", type=str2bool, default=None)
-    parser.add_argument(
-        "--subtract_last",
-        type=int,
-        default=0,
-        help="0: subtract mean; 1: subtract last",
-    )
-    parser.add_argument("--kernel_size", type=int, default=None)
-    parser.add_argument("--patch_size", type=int, default=None)
-    parser.add_argument("--patch_stride", type=int, default=None)
-    parser.add_argument("--decomposition", type=str2bool, default=None)
-
 
 class ModernTCN(nn.Module):
     """
     Paper: https://openreview.net/pdf?id=vpJMJerXHU
     Source: https://github.com/luodhhh/ModernTCN/blob/main/ModernTCN-Long-term-forecasting/models/ModernTCN.py
     """
+
+    optional = {
+        "stem_ratio": 6,
+        "downsample_ratio": 2,
+        "ffn_ratio": 1,
+        "num_blocks": [1, 1, 1, 1],
+        "large_size": [31, 29, 27, 13],
+        "small_size": [5, 5, 5, 5],
+        "dims": [64, 64, 64, 64],
+        "dw_dims": [256, 256, 256, 256],
+        "small_kernel_merged": False,
+        "dropout": 0.3,
+        "head_dropout": 0.0,
+        "use_multi_scale": False,
+        "revin": True,
+        "affine": False,
+        "subtract_last": 0,
+        "kernel_size": 25,
+        "patch_size": 8,
+        "patch_stride": 4,
+        "decomposition": False,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--stem_ratio", type=int, default=None)
+        parser.add_argument("--downsample_ratio", type=int, default=None)
+        parser.add_argument("--ffn_ratio", type=int, default=None)
+        parser.add_argument("--num_blocks", type=int, nargs="+", default=None)
+        parser.add_argument("--large_size", type=int, nargs="+", default=None)
+        parser.add_argument("--small_size", type=int, nargs="+", default=None)
+        parser.add_argument("--dims", type=int, nargs="+", default=None)
+        parser.add_argument("--dw_dims", type=int, nargs="+", default=None)
+        parser.add_argument("--small_kernel_merged", type=str2bool, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--head_dropout", type=float, default=None)
+        parser.add_argument("--use_multi_scale", type=str2bool, default=None)
+        parser.add_argument("--revin", type=str2bool, default=None)
+        parser.add_argument("--affine", type=str2bool, default=None)
+        parser.add_argument(
+        "--subtract_last",
+        type=int,
+        default=0,
+        help="0: subtract mean; 1: subtract last",
+        )
+        parser.add_argument("--kernel_size", type=int, default=None)
+        parser.add_argument("--patch_size", type=int, default=None)
+        parser.add_argument("--patch_stride", type=int, default=None)
+        parser.add_argument("--decomposition", type=str2bool, default=None)
+
 
     def __init__(self, configs):
         super(ModernTCN, self).__init__()

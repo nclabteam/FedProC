@@ -55,29 +55,23 @@ class TestCompactResults(unittest.TestCase):
 
         summary = compact_experiment_runs(experiment_dir)
 
-        server_compact = pl.read_csv(experiment_dir / "compact" / "server.csv")
-        clients_compact = pl.read_csv(experiment_dir / "compact" / "clients.csv")
-        manifest = json.loads(
-            (experiment_dir / "compact" / "manifest.json").read_text(encoding="utf-8")
-        )
+        server_compact = pl.read_csv(experiment_dir / "server.csv")
+        clients_compact = pl.read_csv(experiment_dir / "client.csv")
 
         self.assertEqual(summary["runs"], 2)
         self.assertEqual(server_compact.height, 4)
         self.assertEqual(clients_compact.height, 2)
-        self.assertEqual(sorted(server_compact["seed"].to_list()), [0, 0, 1, 1])
+        self.assertEqual(sorted(server_compact["run"].to_list()), [0, 0, 1, 1])
         self.assertEqual(
             sorted(clients_compact["client"].to_list()), ["client_000", "client_000"]
         )
-        self.assertEqual(manifest["runs"], 2)
 
+        # Run dirs and info.json should be deleted
         for seed in (0, 1):
             run_dir = experiment_dir / str(seed)
-            self.assertTrue((run_dir / "results" / "server.csv").exists())
-            self.assertFalse((run_dir / "results" / "client_000.csv").exists())
-            self.assertFalse((run_dir / "logs").exists())
-            self.assertFalse((run_dir / "models_info").exists())
-            self.assertTrue((run_dir / "models" / "server_last.pt").exists())
+            self.assertFalse(run_dir.exists())
 
+        # Top-level files preserved
         self.assertTrue((experiment_dir / "results.csv").exists())
         self.assertTrue((experiment_dir / "config.json").exists())
 
@@ -90,7 +84,6 @@ class TestCompactResults(unittest.TestCase):
         self.assertEqual(summary["client_rows"], 0)
         self.assertEqual(summary["generated_files"], [])
         self.assertEqual(summary["deleted_paths"], [])
-        self.assertTrue((experiment_dir / "compact" / "manifest.json").exists())
 
 
 if __name__ == "__main__":

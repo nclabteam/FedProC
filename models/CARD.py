@@ -6,42 +6,43 @@ from torch import nn
 from layers import Transpose
 from utils.parsing import str2bool
 
-optional = {
-    "patch_len": 16,
-    "stride": 8,
-    "d_model": 16,
-    "dropout": 0.3,
-    "use_statistic": False,
-    "e_layers": 2,
-    "momentum": 0.1,
-    "n_heads": 2,
-    "d_ff": 32,
-    "dp_rank": 8,
-    "alpha": 0.5,
-    "merge_size": 2,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--patch_len", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--use_statistic", type=str2bool, default=None)
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--momentum", type=float, default=None)
-    parser.add_argument("--n_heads", type=int, default=None)
-    parser.add_argument("--d_ff", type=int, default=None)
-    parser.add_argument("--dp_rank", type=int, default=None)
-    parser.add_argument("--alpha", type=float, default=None)
-    parser.add_argument("--merge_size", type=int, default=None)
-
 
 class CARD(nn.Module):
     """
     Paper: https://arxiv.org/abs/2305.12095
     Source: https://github.com/wxie9/CARD/blob/main/long_term_forecast_l720/models/CARD.py
     """
+
+    optional = {
+        "patch_len": 16,
+        "stride": 8,
+        "d_model": 16,
+        "dropout": 0.3,
+        "use_statistic": False,
+        "e_layers": 2,
+        "momentum": 0.1,
+        "n_heads": 2,
+        "d_ff": 32,
+        "dp_rank": 8,
+        "alpha": 0.5,
+        "merge_size": 2,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--patch_len", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--use_statistic", type=str2bool, default=None)
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--momentum", type=float, default=None)
+        parser.add_argument("--n_heads", type=int, default=None)
+        parser.add_argument("--d_ff", type=int, default=None)
+        parser.add_argument("--dp_rank", type=int, default=None)
+        parser.add_argument("--alpha", type=float, default=None)
+        parser.add_argument("--merge_size", type=int, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

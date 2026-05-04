@@ -4,46 +4,45 @@ import torch
 
 from .base import Server
 
-optional = {
-    "beta1_server": 0.9,
-    "beta2_server": 0.999,
-    "eta_server": 1e-2,
-    "tau_server": 1e-3,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--beta1_server",
-        type=float,
-        default=None,
-        help="Beta1 parameter for Adam optimizer on the server",
-    )
-    parser.add_argument(
-        "--beta2_server",
-        type=float,
-        default=None,
-        help="Beta2 parameter for Adam optimizer on the server",
-    )
-    parser.add_argument(
-        "--eta_server",
-        type=float,
-        default=None,
-        help="Learning rate for Adam optimizer on the server",
-    )
-    parser.add_argument(
-        "--tau_server",
-        type=float,
-        default=None,
-        help="Controls the algorithm's degree of adaptability",
-    )
-
-
 class FedYogi(Server):
     """
     Paper: https://arxiv.org/abs/2003.00295
     Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedyogi.py
     """
+
+    optional = {
+        "beta1_server": 0.9,
+        "beta2_server": 0.999,
+        "eta_server": 1e-2,
+        "tau_server": 1e-3,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--beta1_server",
+            type=float,
+            default=None,
+            help="Beta1 parameter for Adam optimizer on the server",
+        )
+        parser.add_argument(
+            "--beta2_server",
+            type=float,
+            default=None,
+            help="Beta2 parameter for Adam optimizer on the server",
+        )
+        parser.add_argument(
+            "--eta_server",
+            type=float,
+            default=None,
+            help="Learning rate for Adam optimizer on the server",
+        )
+        parser.add_argument(
+            "--tau_server",
+            type=float,
+            default=None,
+            help="Controls the algorithm's degree of adaptability",
+        )
 
     def aggregate_models(self):
         prev_model = copy.deepcopy(self.model)

@@ -2,32 +2,31 @@ import torch
 
 from .base import Client, Server
 
-optional = {
-    "num_malicious_clients": 0,
-    "num_clients_to_keep": 0,
-}
-
-
-def args_update(parser):
-    parser.add_argument(
-        "--num_malicious_clients",
-        type=int,
-        default=None,
-        help="Number of malicious clients in the system",
-    )
-    parser.add_argument(
-        "--num_clients_to_keep",
-        type=int,
-        default=None,
-        help="Number of clients to keep before averaging (MultiKrum). Defaults to 0, inthat case classical Krum is applied.",
-    )
-
-
 class Krum(Server):
     """
     Paper: https://arxiv.org/abs/1703.02757
     Source: https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/krum.py
     """
+
+    optional = {
+        "num_malicious_clients": 0,
+        "num_clients_to_keep": 0,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
+            "--num_malicious_clients",
+            type=int,
+            default=None,
+            help="Number of malicious clients in the system",
+        )
+        parser.add_argument(
+            "--num_clients_to_keep",
+            type=int,
+            default=None,
+            help="Number of clients to keep before averaging (MultiKrum). Defaults to 0, inthat case classical Krum is applied.",
+        )
 
     def calculate_aggregation_weights(self):
         pass

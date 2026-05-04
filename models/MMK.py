@@ -8,41 +8,6 @@ import torch.nn.functional as F
 from layers import RevIN
 from utils.parsing import str2bool
 
-optional = {
-    "use_norm": False,
-    "layer_num": 3,
-    "layer_hp": [
-        ["TaylorKAN", 4],
-        ["TaylorKAN", 4],
-        ["JacobiKAN", 4],
-        ["JacobiKAN", 4],
-    ],
-    "layer_type": "MoK",
-    "hidden_dim": 64,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--use_norm", type=str2bool, default=None)
-    parser.add_argument("--layer_num", type=int, default=None, choices=[1, 2, 3, 5])
-    parser.add_argument("--layer_hp", type=list, default=None)
-    parser.add_argument(
-        "--layer_type",
-        type=str,
-        default=None,
-        choices=[
-            "MoK",
-            "KAN",
-            "WavKAN",
-            "FourierKAN",
-            "JacobiKAN",
-            "ChebyKAN",
-            "TaylorKAN",
-            "Linear",
-        ],
-    )
-    parser.add_argument("--hidden_dim", type=int, default=None)
-
 
 class MMK(nn.Module):
     """
@@ -50,6 +15,42 @@ class MMK(nn.Module):
     Paper: https://arxiv.org/pdf/2408.11306
     Source:https://github.com/2448845600/EasyTSF/blob/main/easytsf/model/MMK.py
     """
+
+    optional = {
+        "use_norm": False,
+        "layer_num": 3,
+        "layer_hp": [
+            ["TaylorKAN", 4],
+            ["TaylorKAN", 4],
+            ["JacobiKAN", 4],
+            ["JacobiKAN", 4],
+        ],
+        "layer_type": "MoK",
+        "hidden_dim": 64,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--use_norm", type=str2bool, default=None)
+        parser.add_argument("--layer_num", type=int, default=None, choices=[1, 2, 3, 5])
+        parser.add_argument("--layer_hp", type=list, default=None)
+        parser.add_argument(
+        "--layer_type",
+        type=str,
+        default=None,
+        choices=[
+        "MoK",
+        "KAN",
+        "WavKAN",
+        "FourierKAN",
+        "JacobiKAN",
+        "ChebyKAN",
+        "TaylorKAN",
+        "Linear",
+        ],
+        )
+        parser.add_argument("--hidden_dim", type=int, default=None)
+
 
     def __init__(
         self,

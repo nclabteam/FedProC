@@ -1,53 +1,54 @@
 import torch
 import torch.nn as nn
 
-optional = {
-    "d_model": 512,
-    "d_ff": 2048,
-    "fac_T": False,
-    "fac_C": False,
-    "sampling": 2,
-    "norm": True,
-    "e_layers": 2,
-    "individual": False,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--d_model", type=int, default=None, help="dimension of model")
-    parser.add_argument("--d_ff", type=int, default=None, help="dimension of fcn")
-    parser.add_argument(
-        "--fac_T",
-        action="store_true",
-        default=None,
-        help="whether to apply factorized temporal interaction",
-    )
-    parser.add_argument(
-        "--fac_C",
-        action="store_true",
-        default=None,
-        help="whether to apply factorized channel interaction",
-    )
-    parser.add_argument(
-        "--sampling",
-        type=int,
-        default=None,
-        help="the number of downsampling in factorized temporal interaction",
-    )
-    parser.add_argument(
-        "--norm", action="store_false", default=None, help="whether to apply LayerNorm"
-    )
-    parser.add_argument(
-        "--e_layers", type=int, default=None, help="num of encoder layers"
-    )
-    parser.add_argument("--individual", action="store_true", default=None)
-
 
 class MTSMixer(nn.Module):
     """
     Paper: https://arxiv.org/abs/2302.04501
     Source: https://github.com/plumprc/MTS-Mixers/blob/main/models/MTSMixer.py
     """
+
+    optional = {
+        "d_model": 512,
+        "d_ff": 2048,
+        "fac_T": False,
+        "fac_C": False,
+        "sampling": 2,
+        "norm": True,
+        "e_layers": 2,
+        "individual": False,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--d_model", type=int, default=None, help="dimension of model")
+        parser.add_argument("--d_ff", type=int, default=None, help="dimension of fcn")
+        parser.add_argument(
+        "--fac_T",
+        action="store_true",
+        default=None,
+        help="whether to apply factorized temporal interaction",
+        )
+        parser.add_argument(
+        "--fac_C",
+        action="store_true",
+        default=None,
+        help="whether to apply factorized channel interaction",
+        )
+        parser.add_argument(
+        "--sampling",
+        type=int,
+        default=None,
+        help="the number of downsampling in factorized temporal interaction",
+        )
+        parser.add_argument(
+        "--norm", action="store_false", default=None, help="whether to apply LayerNorm"
+        )
+        parser.add_argument(
+        "--e_layers", type=int, default=None, help="num of encoder layers"
+        )
+        parser.add_argument("--individual", action="store_true", default=None)
+
 
     def __init__(self, configs):
         super().__init__()

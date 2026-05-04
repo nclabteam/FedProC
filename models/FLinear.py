@@ -3,18 +3,20 @@ import torch.nn as nn
 from layers import FAN
 from utils.parsing import str2bool
 
-optional = {
-    "freq_topk": 20,
-    "rfft": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--freq_topk", type=int, default=None)
-    parser.add_argument("--rfft", type=str2bool, default=None)
-
 
 class FLinear(nn.Module):
+
+    optional = {
+        "freq_topk": 20,
+        "rfft": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--freq_topk", type=int, default=None)
+        parser.add_argument("--rfft", type=str2bool, default=None)
+
+
     def __init__(self, configs):
         super().__init__()
         self.input_len = configs.input_len

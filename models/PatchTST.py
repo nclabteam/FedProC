@@ -6,102 +6,103 @@ from torch import Tensor, nn
 from layers import RevIN, SeriesDecompMA, TSTiEncoder
 from utils.parsing import str2bool
 
-optional = {
-    "e_layers": 3,
-    "n_heads": 4,
-    "d_model": 16,
-    "d_ff": 128,
-    "dropout": 0.3,
-    "fc_dropout": 0.3,
-    "head_dropout": 0.0,
-    "patch_len": 16,
-    "stride": 8,
-    "padding_patch": "end",
-    "individual": False,
-    "decomposition": False,
-    "kernel_size": 25,
-    "revin": True,
-    "affine": False,
-    "subtract_last": False,
-    "max_seq_len": 1024,
-    "d_k": None,
-    "d_v": None,
-    "norm": "BatchNorm",
-    "attn_dropout": 0.0,
-    "act": "gelu",
-    "key_padding_mask": "auto",
-    "padding_var": None,
-    "attn_mask": None,
-    "res_attention": True,
-    "pre_norm": False,
-    "store_attn": False,
-    "pe": "zeros",
-    "learn_pe": True,
-    "pretrain_head": False,
-    "head_type": "flatten",
-    "verbose": False,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--n_heads", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--d_ff", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--fc_dropout", type=float, default=None)
-    parser.add_argument("--head_dropout", type=float, default=None)
-    parser.add_argument("--patch_len", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument("--padding_patch", type=str, default=None, choices=["end"])
-    parser.add_argument("--individual", type=str2bool, default=None)
-    parser.add_argument("--decomposition", type=str2bool, default=None)
-    parser.add_argument("--kernel_size", type=int, default=None)
-    parser.add_argument("--revin", type=str2bool, default=None)
-    parser.add_argument("--affine", type=str2bool, default=None)
-    parser.add_argument("--subtract_last", type=str2bool, default=None)
-    parser.add_argument("--max_seq_len", type=int, default=None)
-    parser.add_argument("--d_k", type=int, default=None)
-    parser.add_argument("--d_v", type=int, default=None)
-    parser.add_argument(
-        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
-    )
-    parser.add_argument("--attn_dropout", type=float, default=None)
-    parser.add_argument("--act", type=str, default=None, choices=["relu", "gelu"])
-    parser.add_argument("--key_padding_mask", type=str, default=None)
-    parser.add_argument("--padding_var", type=int, default=None)
-    parser.add_argument("--attn_mask", type=str, default=None)
-    parser.add_argument("--res_attention", type=str2bool, default=None)
-    parser.add_argument("--pre_norm", type=str2bool, default=None)
-    parser.add_argument("--store_attn", type=str2bool, default=None)
-    parser.add_argument(
-        "--pe",
-        type=str,
-        default=None,
-        choices=[
-            "zeros",
-            "zero",
-            "normal",
-            "gauss",
-            "uniform",
-            "lin1d",
-            "exp1d",
-            "lin2d",
-            "exp2d",
-            "sincos",
-        ],
-    )
-    parser.add_argument("--learn_pe", type=str2bool, default=None)
-    parser.add_argument("--pretrain_head", type=str2bool, default=None)
-    parser.add_argument("--head_type", type=str, default=None, choices=["flatten"])
-    parser.add_argument("--verbose", type=str2bool, default=None)
-
 
 class PatchTST(nn.Module):
     """
     Paper: https://arxiv.org/abs/2211.14730
     Source: https://github.com/yuqinie98/PatchTST/blob/main/PatchTST_supervised/models/PatchTST.py
     """
+
+    optional = {
+        "e_layers": 3,
+        "n_heads": 4,
+        "d_model": 16,
+        "d_ff": 128,
+        "dropout": 0.3,
+        "fc_dropout": 0.3,
+        "head_dropout": 0.0,
+        "patch_len": 16,
+        "stride": 8,
+        "padding_patch": "end",
+        "individual": False,
+        "decomposition": False,
+        "kernel_size": 25,
+        "revin": True,
+        "affine": False,
+        "subtract_last": False,
+        "max_seq_len": 1024,
+        "d_k": None,
+        "d_v": None,
+        "norm": "BatchNorm",
+        "attn_dropout": 0.0,
+        "act": "gelu",
+        "key_padding_mask": "auto",
+        "padding_var": None,
+        "attn_mask": None,
+        "res_attention": True,
+        "pre_norm": False,
+        "store_attn": False,
+        "pe": "zeros",
+        "learn_pe": True,
+        "pretrain_head": False,
+        "head_type": "flatten",
+        "verbose": False,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--n_heads", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--d_ff", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--fc_dropout", type=float, default=None)
+        parser.add_argument("--head_dropout", type=float, default=None)
+        parser.add_argument("--patch_len", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument("--padding_patch", type=str, default=None, choices=["end"])
+        parser.add_argument("--individual", type=str2bool, default=None)
+        parser.add_argument("--decomposition", type=str2bool, default=None)
+        parser.add_argument("--kernel_size", type=int, default=None)
+        parser.add_argument("--revin", type=str2bool, default=None)
+        parser.add_argument("--affine", type=str2bool, default=None)
+        parser.add_argument("--subtract_last", type=str2bool, default=None)
+        parser.add_argument("--max_seq_len", type=int, default=None)
+        parser.add_argument("--d_k", type=int, default=None)
+        parser.add_argument("--d_v", type=int, default=None)
+        parser.add_argument(
+        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
+        )
+        parser.add_argument("--attn_dropout", type=float, default=None)
+        parser.add_argument("--act", type=str, default=None, choices=["relu", "gelu"])
+        parser.add_argument("--key_padding_mask", type=str, default=None)
+        parser.add_argument("--padding_var", type=int, default=None)
+        parser.add_argument("--attn_mask", type=str, default=None)
+        parser.add_argument("--res_attention", type=str2bool, default=None)
+        parser.add_argument("--pre_norm", type=str2bool, default=None)
+        parser.add_argument("--store_attn", type=str2bool, default=None)
+        parser.add_argument(
+        "--pe",
+        type=str,
+        default=None,
+        choices=[
+        "zeros",
+        "zero",
+        "normal",
+        "gauss",
+        "uniform",
+        "lin1d",
+        "exp1d",
+        "lin2d",
+        "exp2d",
+        "sincos",
+        ],
+        )
+        parser.add_argument("--learn_pe", type=str2bool, default=None)
+        parser.add_argument("--pretrain_head", type=str2bool, default=None)
+        parser.add_argument("--head_type", type=str, default=None, choices=["flatten"])
+        parser.add_argument("--verbose", type=str2bool, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

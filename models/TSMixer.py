@@ -1,22 +1,23 @@
 import torch.nn as nn
 
-optional = {
-    "d_model": 128,
-    "num_layers": 5,
-    "dropout": 0.2,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--num_layers", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-
 
 class TSMixer(nn.Module):
     """
     Source: https://github.com/decisionintelligence/TFB/blob/master/ts_benchmark/baselines/time_series_library/models/TSMixer.py
     """
+
+    optional = {
+        "d_model": 128,
+        "num_layers": 5,
+        "dropout": 0.2,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--num_layers", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

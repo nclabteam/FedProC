@@ -1,18 +1,21 @@
 from torch.optim.lr_scheduler import StepLR as TorchStepLR
 
 # Default optional configs
-optional = {
-    "gamma": 0.5,
-    "step_size": 1,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--gamma", type=float, default=None)
-    parser.add_argument("--step_size", type=int, default=None)
 
 
 class ResetStepLR(TorchStepLR):
+
+    optional = {
+        "gamma": 0.5,
+        "step_size": 1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--gamma", type=float, default=None)
+        parser.add_argument("--step_size", type=int, default=None)
+
+
     def __init__(self, optimizer, configs, last_epoch=-1):
         self.optimizer = optimizer
         self.base_lrs = [group["lr"] for group in optimizer.param_groups]

@@ -15,9 +15,11 @@
 | FedYogi | ICLR | 2021 | Adaptive Federated Optimization |  [Arxiv](https://arxiv.org/abs/2003.00295) |
 | Krum | | | Byzantine-Tolerant Machine Learning | [Arxiv](https://arxiv.org/abs/1703.02757) |
 | FedAvgM | | | Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification | [Arxiv](https://arxiv.org/abs/1909.06335) |
-| FedProx | MLsys | 2020| Federated Optimization in Heterogeneous Networks | [Arxiv](https://arxiv.org/abs/1812.06127) |
+| FedProx / DFedProx | MLsys | 2020 | Federated Optimization in Heterogeneous Networks | [Arxiv](https://arxiv.org/abs/1812.06127) |
+| FML | NeurIPS | 2020 | Federated Mutual Learning | [Arxiv](https://arxiv.org/abs/2006.16765) |
+| FedDyn | ICLR | 2021 | Federated Learning Based on Dynamic Regularization | [Arxiv](https://arxiv.org/abs/2111.04263) |
 | FedCross | ICDE | 2024 | FedCross: Towards Accurate Federated Learning via Multi-Model Cross-Aggregation | [IEEE](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=10597740) - [Arxiv](https://arxiv.org/abs/2210.08285) |
-| FedAWA | CVPR | 2025 | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
+| FedAWA / DFedAWA | CVPR | 2025 | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
 | Elastic | CVPR | 2023 | Elastic Aggregation for Federated Optimization | [OpenAccess](https://openaccess.thecvf.com/content/CVPR2023/html/Chen_Elastic_Aggregation_for_Federated_Optimization_CVPR_2023_paper.html) |
 | FedRCL | CVPR | 2024 | Relaxed Contrastive Learning for Federated Learning | [OpenAccess](https://openaccess.thecvf.com/content/CVPR2024/html/Seo_Relaxed_Contrastive_Learning_for_Federated_Learning_CVPR_2024_paper.html) - [Arxiv](https://arxiv.org/abs/2401.04928) - [GitHub](https://github.com/skynbe/FedRCL) |
 |

@@ -3,28 +3,27 @@ import torch.nn.functional as F
 
 from .base import Client, Server
 
-optional = {
-    "rcl_tau": 0.5,
-    "rcl_beta": 1.0,
-    "rcl_lambda": 0.5,
-    "rcl_weight": 0.1,
-    "rcl_num_classes": 4,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--rcl_tau", type=float, default=None)
-    parser.add_argument("--rcl_beta", type=float, default=None)
-    parser.add_argument("--rcl_lambda", type=float, default=None)
-    parser.add_argument("--rcl_weight", type=float, default=None)
-    parser.add_argument("--rcl_num_classes", type=int, default=None)
-
-
 class FedRCL(Server):
     """
     [methodology.tex, Algorithm 1] — Server side: standard FedAvg aggregation.
     No server-side changes needed.
     """
+
+    optional = {
+        "rcl_tau": 0.5,
+        "rcl_beta": 1.0,
+        "rcl_lambda": 0.5,
+        "rcl_weight": 0.1,
+        "rcl_num_classes": 4,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--rcl_tau", type=float, default=None)
+        parser.add_argument("--rcl_beta", type=float, default=None)
+        parser.add_argument("--rcl_lambda", type=float, default=None)
+        parser.add_argument("--rcl_weight", type=float, default=None)
+        parser.add_argument("--rcl_num_classes", type=int, default=None)
 
 
 class FedRCL_Client(Client):

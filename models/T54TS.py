@@ -5,32 +5,33 @@ from transformers import T5Config, T5ForConditionalGeneration
 
 from utils.parsing import str2bool
 
-optional = {
-    "is_gpt": True,
-    "patch_size": 16,
-    "pretrain": True,
-    "stride": 8,
-    "gpt_layers": 6,
-    "d_model": 768,
-    "freeze": True,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--is_gpt", type=str2bool, default=None)
-    parser.add_argument("--patch_size", type=int, default=None)
-    parser.add_argument("--pretrain", type=str2bool, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument("--gpt_layers", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--freeze", type=str2bool, default=None)
-
 
 class T54TS(nn.Module):
     """
     Paper: https://arxiv.org/pdf/2310.04948
     Source: https://github.com/DC-research/TEMPO/blob/main/tempo/models/T5.py
     """
+
+    optional = {
+        "is_gpt": True,
+        "patch_size": 16,
+        "pretrain": True,
+        "stride": 8,
+        "gpt_layers": 6,
+        "d_model": 768,
+        "freeze": True,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--is_gpt", type=str2bool, default=None)
+        parser.add_argument("--patch_size", type=int, default=None)
+        parser.add_argument("--pretrain", type=str2bool, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument("--gpt_layers", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--freeze", type=str2bool, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

@@ -11,78 +11,80 @@ from torch.nn import functional as F
 from layers import PositionalEncoding, RevIN, SimplexLinear, Transpose
 from utils.parsing import str2bool
 
-optional = {
-    "f_model": 1,
-    "e_layers": 3,
-    "n_heads": 1,
-    "d_model": 256,
-    "d_ff": 256,
-    "fc_dropout": 0.7,
-    "dropout": 0.3,
-    "head_dropout": 0.0,
-    "add": False,
-    "individual": False,
-    "wo_conv": False,
-    "serial_conv": False,
-    "patch_len": [16],
-    "kernel_list": [3, 7, 9],
-    "period": [96],
-    "stride": [1],
-    "affine": False,
-    "subtract_last": False,
-    "d_k": 128,
-    "d_v": 128,
-    "norm": "BatchNorm",
-    "act": "gelu",
-    "attn_dropout": 0.0,
-    "res_attention": True,
-    "pre_norm": False,
-    "store_attn": False,
-    "pe": "zeros",
-    "learn_pe": True,
-    "m_model": 1,
-    "m_layers": 1,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--f_model", type=int, default=None)
-    parser.add_argument("--e_layers", type=int, default=None)
-    parser.add_argument("--n_heads", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--d_ff", type=int, default=None)
-    parser.add_argument("--fc_dropout", type=float, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument("--head_dropout", type=float, default=None)
-    parser.add_argument("--add", type=str2bool, default=None)
-    parser.add_argument("--individual", type=str2bool, default=None)
-    parser.add_argument("--wo_conv", type=str2bool, default=None)
-    parser.add_argument("--serial_conv", type=str2bool, default=None)
-    parser.add_argument("--patch_len", type=int, nargs="+", default=None)
-    parser.add_argument("--kernel_list", type=int, nargs="+", default=None)
-    parser.add_argument("--period", type=int, nargs="+", default=None)
-    parser.add_argument("--stride", type=int, nargs="+", default=None)
-    parser.add_argument("--affine", type=str2bool, default=None)
-    parser.add_argument("--subtract_last", type=str2bool, default=None)
-    parser.add_argument("--d_k", type=int, default=None)
-    parser.add_argument("--d_v", type=int, default=None)
-    parser.add_argument(
-        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
-    )
-    parser.add_argument(
-        "--act", type=str, default=None, choices=["gelu", "relu", "selu"]
-    )
-    parser.add_argument("--attn_dropout", type=float, default=None)
-    parser.add_argument("--res_attention", type=str2bool, default=None)
-    parser.add_argument("--pre_norm", type=str2bool, default=None)
-    parser.add_argument("--store_attn", type=str2bool, default=None)
-    parser.add_argument("--pe", type=str, default=None)
-    parser.add_argument("--learn_pe", type=str2bool, default=None)
-    parser.add_argument("--m_model", type=int, default=None)
-    parser.add_argument("--m_layers", type=int, default=None)
-
 
 class FSMLP(nn.Module):
+
+    optional = {
+        "f_model": 1,
+        "e_layers": 3,
+        "n_heads": 1,
+        "d_model": 256,
+        "d_ff": 256,
+        "fc_dropout": 0.7,
+        "dropout": 0.3,
+        "head_dropout": 0.0,
+        "add": False,
+        "individual": False,
+        "wo_conv": False,
+        "serial_conv": False,
+        "patch_len": [16],
+        "kernel_list": [3, 7, 9],
+        "period": [96],
+        "stride": [1],
+        "affine": False,
+        "subtract_last": False,
+        "d_k": 128,
+        "d_v": 128,
+        "norm": "BatchNorm",
+        "act": "gelu",
+        "attn_dropout": 0.0,
+        "res_attention": True,
+        "pre_norm": False,
+        "store_attn": False,
+        "pe": "zeros",
+        "learn_pe": True,
+        "m_model": 1,
+        "m_layers": 1,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--f_model", type=int, default=None)
+        parser.add_argument("--e_layers", type=int, default=None)
+        parser.add_argument("--n_heads", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--d_ff", type=int, default=None)
+        parser.add_argument("--fc_dropout", type=float, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument("--head_dropout", type=float, default=None)
+        parser.add_argument("--add", type=str2bool, default=None)
+        parser.add_argument("--individual", type=str2bool, default=None)
+        parser.add_argument("--wo_conv", type=str2bool, default=None)
+        parser.add_argument("--serial_conv", type=str2bool, default=None)
+        parser.add_argument("--patch_len", type=int, nargs="+", default=None)
+        parser.add_argument("--kernel_list", type=int, nargs="+", default=None)
+        parser.add_argument("--period", type=int, nargs="+", default=None)
+        parser.add_argument("--stride", type=int, nargs="+", default=None)
+        parser.add_argument("--affine", type=str2bool, default=None)
+        parser.add_argument("--subtract_last", type=str2bool, default=None)
+        parser.add_argument("--d_k", type=int, default=None)
+        parser.add_argument("--d_v", type=int, default=None)
+        parser.add_argument(
+        "--norm", type=str, default=None, choices=["BatchNorm", "LayerNorm"]
+        )
+        parser.add_argument(
+        "--act", type=str, default=None, choices=["gelu", "relu", "selu"]
+        )
+        parser.add_argument("--attn_dropout", type=float, default=None)
+        parser.add_argument("--res_attention", type=str2bool, default=None)
+        parser.add_argument("--pre_norm", type=str2bool, default=None)
+        parser.add_argument("--store_attn", type=str2bool, default=None)
+        parser.add_argument("--pe", type=str, default=None)
+        parser.add_argument("--learn_pe", type=str2bool, default=None)
+        parser.add_argument("--m_model", type=int, default=None)
+        parser.add_argument("--m_layers", type=int, default=None)
+
+
     def __init__(
         self,
         configs,

@@ -1,18 +1,20 @@
 import torch
 import torch.nn as nn
 
-optional = {
-    "hidden_size": 128,
-    "num_layers": 2,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--hidden_size", type=int, default=None)
-    parser.add_argument("--num_layers", type=int, default=None)
-
 
 class LSTM(nn.Module):
+
+    optional = {
+        "hidden_size": 128,
+        "num_layers": 2,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--hidden_size", type=int, default=None)
+        parser.add_argument("--num_layers", type=int, default=None)
+
+
     def __init__(self, configs):
         super(LSTM, self).__init__()
         self.hidden_size = configs.hidden_size

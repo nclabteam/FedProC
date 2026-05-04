@@ -5,50 +5,51 @@ from torch.nn import functional as F
 
 from utils.parsing import str2bool
 
-optional = {
-    "block_size": 1024,
-    "vocab_size": 50304,
-    "n_layer": 2,
-    "n_head": 2,
-    "n_embd": 128,
-    "dropout": 0.0,
-    "bias": True,
-    "gpt_layer": 2,
-    "stride": 8,
-    "patch_size": 16,
-    "d_model": 128,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--block_size", type=int, default=None)
-    parser.add_argument(
-        "--vocab_size",
-        type=int,
-        default=None,
-        help="GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency",
-    )
-    parser.add_argument("--n_layer", type=int, default=None)
-    parser.add_argument("--n_head", type=int, default=None)
-    parser.add_argument("--n_embd", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument(
-        "--bias",
-        type=str2bool,
-        default=None,
-        help="True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster",
-    )
-    parser.add_argument("--gpt_layers", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument("--patch_size", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-
 
 class RWKV4TS(nn.Module):
     """
     Paper: https://arxiv.org/abs/2401.09093
     Source: https://github.com/howard-hou/RWKV-TS/blob/main/Long-term_Forecasting/models/RWKV4TS.py
     """
+
+    optional = {
+        "block_size": 1024,
+        "vocab_size": 50304,
+        "n_layer": 2,
+        "n_head": 2,
+        "n_embd": 128,
+        "dropout": 0.0,
+        "bias": True,
+        "gpt_layer": 2,
+        "stride": 8,
+        "patch_size": 16,
+        "d_model": 128,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--block_size", type=int, default=None)
+        parser.add_argument(
+        "--vocab_size",
+        type=int,
+        default=None,
+        help="GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency",
+        )
+        parser.add_argument("--n_layer", type=int, default=None)
+        parser.add_argument("--n_head", type=int, default=None)
+        parser.add_argument("--n_embd", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument(
+        "--bias",
+        type=str2bool,
+        default=None,
+        help="True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster",
+        )
+        parser.add_argument("--gpt_layers", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument("--patch_size", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+
 
     def __init__(self, configs):
         super(RWKV4TS, self).__init__()

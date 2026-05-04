@@ -4,54 +4,56 @@ import torch.nn as nn
 from layers import SeriesDecompDEMA, SeriesDecompEMA
 from utils.parsing import str2bool
 
-optional = {
-    "alpha": 0.3,
-    "beta": 0.3,
-    "patch_len": 6,
-    "stride": 3,
-    "padding_patch": "end",
-    "ma_type": "EMA",
-    "learnable": False,
-}
 
+class xPatch(nn.Module):
 
-def args_update(parser):
-    parser.add_argument(
+    optional = {
+        "alpha": 0.3,
+        "beta": 0.3,
+        "patch_len": 6,
+        "stride": 3,
+        "padding_patch": "end",
+        "ma_type": "EMA",
+        "learnable": False,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument(
         "--alpha",
         type=float,
         default=None,
         help="smoothing factor for EMA or DEMA",
-    )
-    parser.add_argument(
+        )
+        parser.add_argument(
         "--beta",
         type=float,
         default=None,
         help="smoothing factor for DEMA",
-    )
-    parser.add_argument("--patch_len", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-    parser.add_argument(
+        )
+        parser.add_argument("--patch_len", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+        parser.add_argument(
         "--padding_patch",
         type=str,
         default=None,
         choices=["end", "None"],
         help="None: None; end: padding on the end",
-    )
-    parser.add_argument(
+        )
+        parser.add_argument(
         "--ma_type",
         type=str,
         default=None,
         choices=["EMA", "DEMA", "None"],
-    )
-    parser.add_argument(
+        )
+        parser.add_argument(
         "--learnable",
         type=str2bool,
         default=None,
         help="learnable alpha and beta",
-    )
+        )
 
 
-class xPatch(nn.Module):
     def __init__(self, configs):
         super().__init__()
         if configs.ma_type == "EMA":

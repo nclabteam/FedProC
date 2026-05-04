@@ -8,28 +8,29 @@ from transformers import GenerationMixin
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
-optional = {
-    "lora_alpha": 32,
-    "lora_dropout": 0.1,
-    "r": 8,
-    "gpt_layers": 6,
-    "d_model": 768,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--lora_alpha", type=int, default=None)
-    parser.add_argument("--lora_dropout", type=float, default=None)
-    parser.add_argument("--r", type=int, default=None)
-    parser.add_argument("--gpt_layers", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-
 
 class CALF(nn.Module):
     """
     Paper: https://arxiv.org/abs/2403.07300
     Source: https://github.com/Hank0626/CALF/blob/main/models/CALF.py
     """
+
+    optional = {
+        "lora_alpha": 32,
+        "lora_dropout": 0.1,
+        "r": 8,
+        "gpt_layers": 6,
+        "d_model": 768,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--lora_alpha", type=int, default=None)
+        parser.add_argument("--lora_dropout", type=float, default=None)
+        parser.add_argument("--r", type=int, default=None)
+        parser.add_argument("--gpt_layers", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+
 
     def __init__(self, configs):
         super().__init__()

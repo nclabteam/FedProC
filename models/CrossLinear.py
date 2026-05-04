@@ -3,28 +3,29 @@ import math
 import torch
 import torch.nn as nn
 
-optional = {
-    "d_model": 512,
-    "d_ff": 2048,
-    "patch_len": 4,
-    "alpha": 1,
-    "beta": 0.5,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--d_ff", type=int, default=None)
-    parser.add_argument("--patch_len", type=int, default=None)
-    parser.add_argument("--alpha", type=float, default=None)
-    parser.add_argument("--beta", type=float, default=None)
-
 
 class CrossLinear(nn.Module):
     """
     Paper: https://arxiv.org/pdf/2505.23116
     Source: https://github.com/mumiao2000/CrossLinear/blob/main/models/CrossLinear.py
     """
+
+    optional = {
+        "d_model": 512,
+        "d_ff": 2048,
+        "patch_len": 4,
+        "alpha": 1,
+        "beta": 0.5,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--d_ff", type=int, default=None)
+        parser.add_argument("--patch_len", type=int, default=None)
+        parser.add_argument("--alpha", type=float, default=None)
+        parser.add_argument("--beta", type=float, default=None)
+
 
     def __init__(self, configs):
         super(CrossLinear, self).__init__()

@@ -3,24 +3,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-optional = {
-    "patch_size": 16,
-    "d_model": 768,
-    "stride": 8,
-}
-
-
-def args_update(parser):
-    parser.add_argument("--patch_size", type=int, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--stride", type=int, default=None)
-
 
 class PAttn(nn.Module):
     """
     Paper: https://arxiv.org/pdf/2406.16964
     Source: https://github.com/BennyTMT/LLMsForTimeSeries/blob/main/PAttn/models/PAttn.py
     """
+
+    optional = {
+        "patch_size": 16,
+        "d_model": 768,
+        "stride": 8,
+    }
+
+    @classmethod
+    def args_update(cls, parser):
+        parser.add_argument("--patch_size", type=int, default=None)
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--stride", type=int, default=None)
+
 
     def __init__(self, configs):
         super(PAttn, self).__init__()
