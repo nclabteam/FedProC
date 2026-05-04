@@ -10,7 +10,6 @@ Output: analysis/tables/ (pivot CSVs, ranking CSVs)
 import argparse
 import logging
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -20,15 +19,12 @@ import polars as pl
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from analysis.io import (
-    SIZE_COLUMNS,
     SIZE_UNITS,
-    TIME_COLUMNS,
     TIME_UNITS,
     convert_size,
     convert_time,
     load_config,
     read_csv,
-    read_timing,
     resolve_loss_metric,
 )
 
@@ -50,31 +46,82 @@ MISSING_VALUE: float = 0.0
 
 # Identifier fields (not hyperparameters)
 IDENTIFIER_FIELDS = frozenset(
-    {"exp", "aggregates", "dataset", "input_len", "output_len", "model", "strategy", "name"}
+    {
+        "exp",
+        "aggregates",
+        "dataset",
+        "input_len",
+        "output_len",
+        "model",
+        "strategy",
+        "name",
+    }
 )
 
 # Available metrics
 METRICS = (
-    "all", "loss", "personalization_loss", "generalization_loss",
-    "efficiency", "communication", "time_per_experiment",
-    "last_improvement_round", "longest_improvement_streak",
-    "most_frequent_improvement_streak", "oscillation_count",
-    "improvement_ratio", "improvement_magnitude", "hyperparameters",
+    "all",
+    "loss",
+    "personalization_loss",
+    "generalization_loss",
+    "efficiency",
+    "communication",
+    "time_per_experiment",
+    "last_improvement_round",
+    "longest_improvement_streak",
+    "most_frequent_improvement_streak",
+    "oscillation_count",
+    "improvement_ratio",
+    "improvement_magnitude",
+    "hyperparameters",
 )
 
 METRIC_DESCRIPTIONS = {
     "loss": {"title": "Test loss", "explanation": "Lower is better."},
-    "personalization_loss": {"title": "Personalization test loss", "explanation": "personal_avg_test_loss."},
-    "generalization_loss": {"title": "Generalization test loss", "explanation": "global_avg_test_loss."},
-    "efficiency": {"title": "Time per round", "explanation": "Lower = faster training."},
-    "communication": {"title": "Total communication cost", "explanation": "Lower = less bandwidth."},
-    "time_per_experiment": {"title": "Wall-clock time per run", "explanation": "Total time for one full run."},
-    "last_improvement_round": {"title": "Last improvement round", "explanation": "When the model stopped improving."},
-    "longest_improvement_streak": {"title": "Longest improvement streak", "explanation": "Max consecutive rounds of improvement."},
-    "most_frequent_improvement_streak": {"title": "Most frequent streak", "explanation": "Typical improvement pattern."},
-    "oscillation_count": {"title": "Oscillation count", "explanation": "Direction changes in loss. Lower = more stable."},
-    "improvement_ratio": {"title": "Improvement ratio", "explanation": "Fraction of rounds with improvement (0-1)."},
-    "improvement_magnitude": {"title": "Improvement magnitude", "explanation": "Avg loss reduction per improvement."},
+    "personalization_loss": {
+        "title": "Personalization test loss",
+        "explanation": "personal_avg_test_loss.",
+    },
+    "generalization_loss": {
+        "title": "Generalization test loss",
+        "explanation": "global_avg_test_loss.",
+    },
+    "efficiency": {
+        "title": "Time per round",
+        "explanation": "Lower = faster training.",
+    },
+    "communication": {
+        "title": "Total communication cost",
+        "explanation": "Lower = less bandwidth.",
+    },
+    "time_per_experiment": {
+        "title": "Wall-clock time per run",
+        "explanation": "Total time for one full run.",
+    },
+    "last_improvement_round": {
+        "title": "Last improvement round",
+        "explanation": "When the model stopped improving.",
+    },
+    "longest_improvement_streak": {
+        "title": "Longest improvement streak",
+        "explanation": "Max consecutive rounds of improvement.",
+    },
+    "most_frequent_improvement_streak": {
+        "title": "Most frequent streak",
+        "explanation": "Typical improvement pattern.",
+    },
+    "oscillation_count": {
+        "title": "Oscillation count",
+        "explanation": "Direction changes in loss. Lower = more stable.",
+    },
+    "improvement_ratio": {
+        "title": "Improvement ratio",
+        "explanation": "Fraction of rounds with improvement (0-1).",
+    },
+    "improvement_magnitude": {
+        "title": "Improvement magnitude",
+        "explanation": "Avg loss reduction per improvement.",
+    },
 }
 
 
@@ -138,7 +185,9 @@ class ExperimentComparison:
             return None
         return self._format_mean_std_str(mean_val, std_val)
 
-    def _get_metric_mean_std(self, experiment: Dict, metric: str) -> Optional[Tuple[float, float]]:
+    def _get_metric_mean_std(
+        self, experiment: Dict, metric: str
+    ) -> Optional[Tuple[float, float]]:
         resolved = self._resolve_metric(metric, experiment)
         aggs = experiment.get("aggregates", {})
         mean_val = aggs.get(f"{resolved}_{self.agg_mode}_mean")
@@ -169,13 +218,19 @@ class ExperimentComparison:
                 return any(q.lower() == target_lower for q in queries)
             return any(q.lower() in target_lower for q in queries)
 
-        if experiments is not None and not _check_match(experiment.get("exp", ""), experiments):
+        if experiments is not None and not _check_match(
+            experiment.get("exp", ""), experiments
+        ):
             return False
         if models is not None and not _check_match(experiment.get("model", ""), models):
             return False
-        if strategies is not None and not _check_match(experiment.get("strategy", ""), strategies):
+        if strategies is not None and not _check_match(
+            experiment.get("strategy", ""), strategies
+        ):
             return False
-        if datasets is not None and not _check_match(experiment.get("dataset", ""), datasets):
+        if datasets is not None and not _check_match(
+            experiment.get("dataset", ""), datasets
+        ):
             return False
         if output_lens is not None:
             exp_output_len = experiment.get("output_len")
@@ -216,9 +271,13 @@ class ExperimentComparison:
             datum.update(load_config(child))
 
             if not self._matches_filter(
-                experiment=datum, models=models, strategies=strategies,
-                datasets=datasets, output_lens=output_lens,
-                experiments=experiments, exact=exact,
+                experiment=datum,
+                models=models,
+                strategies=strategies,
+                datasets=datasets,
+                output_lens=output_lens,
+                experiments=experiments,
+                exact=exact,
             ):
                 continue
 
@@ -282,7 +341,10 @@ class ExperimentComparison:
         pivot_values = df.select(pivot_by).unique().sort(pivot_by).to_series().to_list()
 
         df_pivot = df.pivot(
-            on=pivot_by, index=list(group_by), values="value", aggregate_function="first",
+            on=pivot_by,
+            index=list(group_by),
+            values="value",
+            aggregate_function="first",
         )
         col_order = list(group_by) + [c for c in pivot_values if c in df_pivot.columns]
         return df_pivot.select(col_order).sort(list(group_by))
@@ -328,7 +390,8 @@ class ExperimentComparison:
             config_pivot_values = config_data[config_key]
 
             sorted_pv = sorted(
-                config_pivot_values.items(), key=lambda x: (x[1][0], x[1][1]),
+                config_pivot_values.items(),
+                key=lambda x: (x[1][0], x[1][1]),
                 reverse=not lower_is_better,
             )
 
@@ -367,7 +430,9 @@ class ExperimentComparison:
         for f in group_by[1:]:
             avg_row[f] = ""
         for pv in pivot_values:
-            avg_row[pv] = f"{np.mean(pivot_ranks[pv]):.2f}" if pivot_ranks[pv] else "N/A"
+            avg_row[pv] = (
+                f"{np.mean(pivot_ranks[pv]):.2f}" if pivot_ranks[pv] else "N/A"
+            )
 
         # Most frequent winner
         max_wins = max(win_counts.values()) if win_counts else 0
@@ -375,14 +440,19 @@ class ExperimentComparison:
         if len(winners) == 1:
             avg_row[best_col] = f"{winners[0]} ({max_wins}x)"
         elif len(winners) > 1:
-            winner_avgs = [(w, np.mean(pivot_ranks[w]) if pivot_ranks[w] else float("inf")) for w in winners]
+            winner_avgs = [
+                (w, np.mean(pivot_ranks[w]) if pivot_ranks[w] else float("inf"))
+                for w in winners
+            ]
             winner_avgs.sort(key=lambda x: x[1])
             best_avg = winner_avgs[0][1]
             final = [w for w, a in winner_avgs if a == best_avg]
             if len(final) == 1:
                 avg_row[best_col] = f"{final[0]} ({max_wins}x)"
             else:
-                avg_row[best_col] = f"tie: {', '.join(f'{w} ({max_wins}x)' for w in final)}"
+                avg_row[best_col] = (
+                    f"tie: {', '.join(f'{w} ({max_wins}x)' for w in final)}"
+                )
         else:
             avg_row[best_col] = "N/A"
 
@@ -395,7 +465,9 @@ class ExperimentComparison:
     # Display
     # =========================================================================
 
-    def _get_table_header(self, group_value: str, metric: str, pivot: PivotOption) -> str:
+    def _get_table_header(
+        self, group_value: str, metric: str, pivot: PivotOption
+    ) -> str:
         group_label = "MODEL" if pivot == "model" else "STRATEGY"
         pivot_label = "strategy" if pivot == "model" else "model"
         lines = [
@@ -411,21 +483,27 @@ class ExperimentComparison:
                 if line.strip():
                     lines.append(f"  {line}")
             lines.append("")
-        lines.extend([
-            f"(std x{self.std_multiplier}, {self.decimal_places}dp, agg={self.agg_mode})",
-            "=" * 80,
-        ])
+        lines.extend(
+            [
+                f"(std x{self.std_multiplier}, {self.decimal_places}dp, agg={self.agg_mode})",
+                "=" * 80,
+            ]
+        )
         return "\n".join(lines)
 
-    def _get_ranking_header(self, group_value: str, metric: str, pivot: PivotOption) -> str:
+    def _get_ranking_header(
+        self, group_value: str, metric: str, pivot: PivotOption
+    ) -> str:
         group_label = "MODEL" if pivot == "model" else "STRATEGY"
         pivot_label = "strategy" if pivot == "model" else "model"
-        return "\n".join([
-            "=" * 80,
-            f"RANKING: {group_label} {group_value.upper()} — {metric}",
-            f"{pivot_label}s ranked by mean (1=best), ties broken by std",
-            "=" * 80,
-        ])
+        return "\n".join(
+            [
+                "=" * 80,
+                f"RANKING: {group_label} {group_value.upper()} — {metric}",
+                f"{pivot_label}s ranked by mean (1=best), ties broken by std",
+                "=" * 80,
+            ]
+        )
 
     # =========================================================================
     # Markdown
@@ -471,7 +549,9 @@ class ExperimentComparison:
             return  # TODO: hyperparameter display
 
         group_by_field, pivot_by_field, row_group_by = self._get_pivot_config(pivot)
-        group_values = sorted(set(exp.get(group_by_field, "unknown") for exp in experiments))
+        group_values = sorted(
+            set(exp.get(group_by_field, "unknown") for exp in experiments)
+        )
 
         for gv in group_values:
             group_exps = [e for e in experiments if e.get(group_by_field) == gv]
@@ -479,13 +559,17 @@ class ExperimentComparison:
                 continue
 
             # Pivot table
-            df = self.create_pivot_table(group_exps, metric, row_group_by, pivot_by_field)
+            df = self.create_pivot_table(
+                group_exps, metric, row_group_by, pivot_by_field
+            )
             if df.is_empty():
                 continue
 
             header = self._get_table_header(gv, metric, pivot)
             sys.stdout.buffer.write((header + "\n").encode("utf-8", errors="replace"))
-            sys.stdout.buffer.write((str(df) + "\n\n").encode("utf-8", errors="replace"))
+            sys.stdout.buffer.write(
+                (str(df) + "\n\n").encode("utf-8", errors="replace")
+            )
 
             filename = f"{gv}_{metric}_{self.agg_mode}.csv"
             df.write_csv(self.output_dir / filename)
@@ -499,12 +583,20 @@ class ExperimentComparison:
             # Ranking table
             if include_ranking:
                 df_rank = self.create_ranking_table(
-                    group_exps, metric, row_group_by, pivot_by_field, lower_is_better,
+                    group_exps,
+                    metric,
+                    row_group_by,
+                    pivot_by_field,
+                    lower_is_better,
                 )
                 if not df_rank.is_empty():
                     rank_header = self._get_ranking_header(gv, metric, pivot)
-                    sys.stdout.buffer.write((rank_header + "\n").encode("utf-8", errors="replace"))
-                    sys.stdout.buffer.write((str(df_rank) + "\n\n").encode("utf-8", errors="replace"))
+                    sys.stdout.buffer.write(
+                        (rank_header + "\n").encode("utf-8", errors="replace")
+                    )
+                    sys.stdout.buffer.write(
+                        (str(df_rank) + "\n\n").encode("utf-8", errors="replace")
+                    )
 
                     rank_filename = f"{gv}_{metric}_{self.agg_mode}_ranking.csv"
                     df_rank.write_csv(self.output_dir / rank_filename)
@@ -534,7 +626,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--time-unit", "-t", type=str, default="s", choices=TIME_UNITS)
     parser.add_argument("--size-unit", "-z", type=str, default="mb", choices=SIZE_UNITS)
     parser.add_argument("--metric", "-m", type=str, default="loss", choices=METRICS)
-    parser.add_argument("--pivot", "-p", type=str, default="model", choices=PIVOT_OPTIONS)
+    parser.add_argument(
+        "--pivot", "-p", type=str, default="model", choices=PIVOT_OPTIONS
+    )
     parser.add_argument("--no-ranking", action="store_true")
     parser.add_argument("--higher-is-better", action="store_true")
     parser.add_argument("--markdown-path", type=str, default=None)
@@ -567,8 +661,12 @@ def main() -> None:
     )
 
     experiments = comparison.load_experiments(
-        models=args.models, strategies=args.strategies, datasets=args.datasets,
-        output_lens=args.output_lens, experiments=args.experiments, exact=args.exact,
+        models=args.models,
+        strategies=args.strategies,
+        datasets=args.datasets,
+        output_lens=args.output_lens,
+        experiments=args.experiments,
+        exact=args.exact,
     )
 
     if not experiments:
@@ -583,11 +681,15 @@ def main() -> None:
         with md.open("w", encoding="utf-8") as f:
             f.write("# Analysis Tables\n\n")
 
-    metrics_to_process = [m for m in METRICS if m != "all"] if args.metric == "all" else [args.metric]
+    metrics_to_process = (
+        [m for m in METRICS if m != "all"] if args.metric == "all" else [args.metric]
+    )
 
     for metric in metrics_to_process:
         comparison.save_tables(
-            experiments, metric=metric, pivot=args.pivot,
+            experiments,
+            metric=metric,
+            pivot=args.pivot,
             include_ranking=not args.no_ranking,
             lower_is_better=not args.higher_is_better,
             markdown_path=args.markdown_path,

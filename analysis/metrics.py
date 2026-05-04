@@ -14,9 +14,7 @@ AGG_MODES = ("min", "max", "mean", "last", "median")
 AggMode = Literal["min", "max", "mean", "last", "median"]
 
 
-def compute_per_run_agg(
-    vals: List[float], mode: AggMode = "min"
-) -> Optional[float]:
+def compute_per_run_agg(vals: List[float], mode: AggMode = "min") -> Optional[float]:
     """Compute a single aggregate value from a list of values."""
     if not vals:
         return None

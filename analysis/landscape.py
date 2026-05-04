@@ -13,7 +13,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -75,7 +75,9 @@ class LossLandscape:
     # Data loading
     # =========================================================================
 
-    def _load_tensors(self, client_info: Dict, split: str = "test") -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+    def _load_tensors(
+        self, client_info: Dict, split: str = "test"
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
         """Load full dataset as (x, y) tensors. split: 'train' or 'test'."""
         from strategies.base import SharedMethods
 
@@ -107,7 +109,9 @@ class LossLandscape:
         except Exception:
             return []
 
-    def _compute_loss(self, model: nn.Module, x: torch.Tensor, y: torch.Tensor) -> float:
+    def _compute_loss(
+        self, model: nn.Module, x: torch.Tensor, y: torch.Tensor
+    ) -> float:
         """Compute loss on full dataset tensors (single forward pass)."""
         import losses as loss_module
 
@@ -132,7 +136,11 @@ class LossLandscape:
         metrics = data.get("metric", [])
         avg_mins = data.get("avg_min", [])
 
-        loss_metric = "personal_avg_test_loss" if self.save_local_model else "global_avg_test_loss"
+        loss_metric = (
+            "personal_avg_test_loss"
+            if self.save_local_model
+            else "global_avg_test_loss"
+        )
         for i, m in enumerate(metrics):
             if m == loss_metric:
                 # We need per-run min, not avg. Fall back to first run.
@@ -158,11 +166,14 @@ class LossLandscape:
                         best_run = int(entry.name)
         return best_run
 
-    def _get_run_dirs(self, run: Optional[int] = None, all_runs: bool = False) -> List[Path]:
+    def _get_run_dirs(
+        self, run: Optional[int] = None, all_runs: bool = False
+    ) -> List[Path]:
         """Get run directories to process."""
         if all_runs:
             return sorted(
-                e for e in self.experiment_dir.iterdir()
+                e
+                for e in self.experiment_dir.iterdir()
                 if e.is_dir() and e.name.isdigit()
             )
 
@@ -194,7 +205,7 @@ class LossLandscape:
         offset = 0
         for p in model.parameters():
             numel = p.numel()
-            p.data.copy_(flat_params[offset:offset + numel].view(p.shape))
+            p.data.copy_(flat_params[offset : offset + numel].view(p.shape))
             offset += numel
 
     def _random_direction(self, model: nn.Module) -> torch.Tensor:
@@ -237,10 +248,18 @@ class LossLandscape:
                 train_losses.append(self._compute_loss(model, train_x, train_y))
 
         self._set_flat_params(model, original)
-        return alphas, np.array(test_losses), np.array(train_losses) if train_losses else None
+        return (
+            alphas,
+            np.array(test_losses),
+            np.array(train_losses) if train_losses else None,
+        )
 
     def compute_2d(
-        self, model: nn.Module, x: torch.Tensor, y: torch.Tensor, alpha_range: float = 1.0
+        self,
+        model: nn.Module,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        alpha_range: float = 1.0,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute 2D loss landscape along two random directions."""
         original = self._get_flat_params(model)
@@ -290,7 +309,10 @@ class LossLandscape:
         plt.close(fig)
 
     def plot_2d(
-        self, alphas: np.ndarray, betas: np.ndarray, losses: np.ndarray,
+        self,
+        alphas: np.ndarray,
+        betas: np.ndarray,
+        losses: np.ndarray,
         save_path: Optional[Path] = None,
     ) -> None:
         """Plot 2D loss landscape as contour lines with labels."""
@@ -310,7 +332,10 @@ class LossLandscape:
         plt.close(fig)
 
     def plot_3d(
-        self, alphas: np.ndarray, betas: np.ndarray, losses: np.ndarray,
+        self,
+        alphas: np.ndarray,
+        betas: np.ndarray,
+        losses: np.ndarray,
         save_path: Optional[Path] = None,
     ) -> None:
         """Plot 3D loss landscape as surface — paper style."""
@@ -321,7 +346,9 @@ class LossLandscape:
         fig = plt.figure(figsize=(10, 8), facecolor="white")
         ax = fig.add_subplot(111, projection="3d")
         ax.plot_surface(
-            A, B, losses,
+            A,
+            B,
+            losses,
             cmap=cm.RdYlBu_r,
             edgecolor="#cccccc",
             linewidth=0.3,
@@ -358,7 +385,9 @@ class LossLandscape:
         """
         run_dirs = self._get_run_dirs(run, all_runs)
         if not run_dirs:
-            logger.error("No run directories found (experiment may be compacted — landscape needs model checkpoints)")
+            logger.error(
+                "No run directories found (experiment may be compacted — landscape needs model checkpoints)"
+            )
             return
 
         data_info = self._load_data_info()
@@ -393,7 +422,10 @@ class LossLandscape:
 
             # Determine which models to process
             model_files = self._get_model_files(
-                models_dir, checkpoint=checkpoint, client=client, all_clients=all_clients,
+                models_dir,
+                checkpoint=checkpoint,
+                client=client,
+                all_clients=all_clients,
             )
 
             for model_name, model_path in model_files:
@@ -406,23 +438,36 @@ class LossLandscape:
 
                 if need_1d:
                     alphas, test_losses_1d, train_losses_1d = self.compute_1d(
-                        model, test_x, test_y, train_x, train_y, alpha_range,
+                        model,
+                        test_x,
+                        test_y,
+                        train_x,
+                        train_y,
+                        alpha_range,
                     )
                     self.plot_1d(
-                        alphas, test_losses_1d, train_losses_1d,
+                        alphas,
+                        test_losses_1d,
+                        train_losses_1d,
                         landscape_dir / f"{suffix}_1d.png",
                     )
 
                 if need_2d or need_3d:
-                    alphas_2d, betas_2d, losses_2d = self.compute_2d(model, test_x, test_y, alpha_range)
+                    alphas_2d, betas_2d, losses_2d = self.compute_2d(
+                        model, test_x, test_y, alpha_range
+                    )
                     if need_2d:
                         self.plot_2d(
-                            alphas_2d, betas_2d, losses_2d,
+                            alphas_2d,
+                            betas_2d,
+                            losses_2d,
                             landscape_dir / f"{suffix}_2d.png",
                         )
                     if need_3d:
                         self.plot_3d(
-                            alphas_2d, betas_2d, losses_2d,
+                            alphas_2d,
+                            betas_2d,
+                            losses_2d,
                             landscape_dir / f"{suffix}_3d.png",
                         )
 
@@ -477,15 +522,40 @@ def parse_args() -> argparse.Namespace:
         description="Loss landscape visualization.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--experiment", "-e", type=str, required=True, help="Experiment directory")
-    parser.add_argument("--mode", "-m", type=str, default="3d", choices=["1d", "2d", "3d", "all"], help="Plot mode")
-    parser.add_argument("--checkpoint", "-c", type=str, default="best", choices=["best", "last"], help="Model checkpoint to use")
+    parser.add_argument(
+        "--experiment", "-e", type=str, required=True, help="Experiment directory"
+    )
+    parser.add_argument(
+        "--mode",
+        "-m",
+        type=str,
+        default="3d",
+        choices=["1d", "2d", "3d", "all"],
+        help="Plot mode",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        "-c",
+        type=str,
+        default="best",
+        choices=["best", "last"],
+        help="Model checkpoint to use",
+    )
     parser.add_argument("--run", type=int, default=None, help="Specific run index")
     parser.add_argument("--all", action="store_true", dest="all_runs", help="All runs")
-    parser.add_argument("--client", type=int, default=None, help="Specific client index (personalized FL)")
-    parser.add_argument("--all-clients", action="store_true", help="All clients (personalized FL)")
+    parser.add_argument(
+        "--client",
+        type=int,
+        default=None,
+        help="Specific client index (personalized FL)",
+    )
+    parser.add_argument(
+        "--all-clients", action="store_true", help="All clients (personalized FL)"
+    )
     parser.add_argument("--n-points", type=int, default=51, help="Grid resolution")
-    parser.add_argument("--alpha-range", type=float, default=1.0, help="Perturbation range")
+    parser.add_argument(
+        "--alpha-range", type=float, default=1.0, help="Perturbation range"
+    )
     parser.add_argument("--device", type=str, default=None, help="Device (cuda/cpu)")
     parser.add_argument("--allow-unsafe-legacy", action="store_true")
     parser.add_argument("--verbose", "-v", action="store_true")

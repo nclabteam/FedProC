@@ -31,12 +31,15 @@ def main() -> None:
 
     if command == "single":
         from analysis.single import main as single_main
+
         single_main()
     elif command == "multi":
         from analysis.multi import main as multi_main
+
         multi_main()
     elif command == "landscape":
         from analysis.landscape import main as landscape_main
+
         landscape_main()
     else:
         print(f"Unknown command: {command}")

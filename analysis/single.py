@@ -297,10 +297,26 @@ class ExperimentAnalysis:
             name = f"{metric}_{unit}" if unit else metric
             row = {
                 "metric": name,
-                "avg_min": round(float(np.mean(min_vals)), self.decimal_places) if min_vals else DEFAULT_VALUE,
-                "std_min": round(float(np.std(min_vals, ddof=0)), self.decimal_places) if min_vals else DEFAULT_VALUE,
-                "avg_max": round(float(np.mean(max_vals)), self.decimal_places) if max_vals else DEFAULT_VALUE,
-                "std_max": round(float(np.std(max_vals, ddof=0)), self.decimal_places) if max_vals else DEFAULT_VALUE,
+                "avg_min": (
+                    round(float(np.mean(min_vals)), self.decimal_places)
+                    if min_vals
+                    else DEFAULT_VALUE
+                ),
+                "std_min": (
+                    round(float(np.std(min_vals, ddof=0)), self.decimal_places)
+                    if min_vals
+                    else DEFAULT_VALUE
+                ),
+                "avg_max": (
+                    round(float(np.mean(max_vals)), self.decimal_places)
+                    if max_vals
+                    else DEFAULT_VALUE
+                ),
+                "std_max": (
+                    round(float(np.std(max_vals, ddof=0)), self.decimal_places)
+                    if max_vals
+                    else DEFAULT_VALUE
+                ),
             }
             rows.append(row)
 
@@ -326,20 +342,31 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--experiment", "-e", type=str, required=True,
+        "--experiment",
+        "-e",
+        type=str,
+        required=True,
         help="Path to experiment directory (e.g., runs/exp19)",
     )
     parser.add_argument(
-        "--agg-mode", "-a", type=str, default="min",
+        "--agg-mode",
+        "-a",
+        type=str,
+        default="min",
         choices=("min", "max", "mean", "last", "median"),
         help="Per-run aggregation mode",
     )
     parser.add_argument(
-        "--decimal-places", "-d", type=int, default=4,
+        "--decimal-places",
+        "-d",
+        type=int,
+        default=4,
         help="Number of decimal places",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Enable debug logging",
     )
     return parser.parse_args()
@@ -360,7 +387,9 @@ def main() -> None:
     if not df.is_empty():
         output_path = analysis.save()
         sys.stdout.buffer.write(
-            (f"Saved to {output_path}\n" + str(df) + "\n").encode("utf-8", errors="replace")
+            (f"Saved to {output_path}\n" + str(df) + "\n").encode(
+                "utf-8", errors="replace"
+            )
         )
     else:
         logger.warning("No results generated")
