@@ -26,3 +26,9 @@
 | FedALA | AAAI | 2023 | FedALA: Adaptive Local Aggregation for Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01197) |
 | FedCAC | ICCV | 2023 | Bold but Cautious: Unlocking the Potential of Personalized Federated Learning through Cautiously Aggressive Collaboration | [OpenAccess](https://openaccess.thecvf.com/content/ICCV2023/html/Wu_Bold_but_Cautious_Unlocking_the_Potential_of_Personalized_Federated_Learning_ICCV_2023_paper.html) - [Arxiv](https://arxiv.org/abs/2309.11103) |
 | FedTrend |  |  | Tackling Data Heterogeneity in Federated Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2411.15716) |
+|
+| FedDF* | NeurIPS | 2020 | Ensemble Distillation for Robust Model Fusion in Federated Learning | [Arxiv](https://arxiv.org/abs/2006.07242) |
+| FedMD | NeurIPS-W | 2019 | FedMD: Heterogenous Federated Learning via Model Distillation | [Arxiv](https://arxiv.org/abs/1910.03581) |
+| FDCR | NeurIPS | 2024 | Parameter Disparities Dissection for Backdoor Defense in Heterogeneous Federated Learning | [Arxiv](https://arxiv.org/abs/2404.10332) |
+
+\* Adapted from classification to regression (original uses softmax + KL-divergence; we use MSE). Please use with caution.

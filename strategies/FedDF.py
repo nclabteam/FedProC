@@ -19,6 +19,11 @@ class FedDF(hFL):
 
     Reference: Lin et al., "Ensemble Distillation for Robust Model Fusion
     in Federated Learning", NeurIPS 2020. arXiv:2006.07242.
+
+    Adaptation note: The original paper uses softmax + KL-divergence for
+    classification (CV/NLP). This implementation uses MSE loss for
+    time-series forecasting (regression). Please use with caution — the
+    distillation dynamics may differ from the classification setting.
     """
 
     optional = {
