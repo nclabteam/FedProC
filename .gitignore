@@ -14,3 +14,4 @@ analysis/tables
 venv*
 .claude
 .vscode
+tmp
