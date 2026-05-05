@@ -56,6 +56,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 |||||||
 |||||||
 | Transformer | Transformer | Multivariate | NeurIPS | 2017 | Attention Is All You Need | [Arxiv](https://arxiv.org/abs/1706.03762) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Transformer.py) |
+| Informer | Transformer | Multivariate | AAAI | 2021 | Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting | [Arxiv](https://arxiv.org/abs/2012.07436) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Informer.py) |
 | CrossFormer | Transformer | Multivariate | ICLR | 2023 | Crossformer: Transformer Utilizing Cross-Dimension Dependency for Multivariate Time Series Forecasting | [OpenReview](https://openreview.net/forum?id=vSVLM2j9eie) - [REF](https://github.com/Thinklab-SJTU/Crossformer/blob/master/cross_models/cross_former.py) |
 | PatchTST | Transformer | Univariate | ICLR | 2023 | A Time Series is Worth 64 Words: Long-term Forecasting with Transformers | [Arxiv](https://arxiv.org/abs/2211.14730) - [REF](https://github.com/yuqinie98/PatchTST/blob/main/PatchTST_supervised/models/PatchTST.py) |
 | CARD | Transformer || ICLR | 2024 | CARD: Channel Aligned Robust Blend Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2305.12095) - [REF](https://github.com/wxie9/CARD/blob/main/long_term_forecast_l720/models/CARD.py) |
