@@ -105,11 +105,9 @@ class FedALA_Client(Client):
         # Weight learning
         losses = []
         while True:
-            for batch in rand_loader:
-                batch_x = batch[0].float()
-                batch_y = batch[1].float()
-                x_mark = batch[2] if len(batch) > 2 else None
-                y_mark = batch[3] if len(batch) > 3 else None
+            for batch_x, batch_y, x_mark, y_mark in rand_loader:
+                batch_x = batch_x.float()
+                batch_y = batch_y.float()
                 optimizer.zero_grad()
                 output = model_t(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss_value = self.loss(output, batch_y)  # Local objective

@@ -73,20 +73,11 @@ class SharedMethods:
         with np.load(file) as data:
             x = data["x"]
             y = data["y"]
-            has_marks = "x_mark" in data and "y_mark" in data
-            if has_marks:
-                x_mark = torch.as_tensor(
-                    np.asarray(data["x_mark"], dtype=np.float32)
-                )
-                y_mark = torch.as_tensor(
-                    np.asarray(data["y_mark"], dtype=np.float32)
-                )
+            x_mark = torch.as_tensor(np.asarray(data["x_mark"], dtype=np.float32))
+            y_mark = torch.as_tensor(np.asarray(data["y_mark"], dtype=np.float32))
         x = torch.as_tensor(np.asarray(scaler.transform(x), dtype=np.float32))
         y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
-        if has_marks:
-            dataset = TensorDataset(x, y, x_mark, y_mark)
-        else:
-            dataset = TensorDataset(x, y)
+        dataset = TensorDataset(x, y, x_mark, y_mark)
 
         # Apply subsampling if necessary
         if sample_ratio < 1.0:
@@ -126,16 +117,19 @@ class SharedMethods:
         model.to(device)
         model.eval()
         with torch.no_grad():
-            for batch in dataloader:
-                batch_x, batch_y = batch[0], batch[1]
+            for batch_x, batch_y, x_mark, y_mark in dataloader:
                 batch_x = batch_x.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
                 batch_y = batch_y.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
-                x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
-                y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+                x_mark = x_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                y_mark = y_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
                 outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = criterion(outputs, batch_y)
                 losses.append(loss.item())
@@ -413,13 +407,12 @@ class SharedMethods:
         model.to(device)
         SharedMethods._move_optimizer_state_to_param_devices(optimizer)
         model.train()
-        for batch in dataloader:
-            batch_x, batch_y = batch[0], batch[1]
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad(set_to_none=True)
             batch_x = batch_x.to(device=device, dtype=torch.float32, non_blocking=True)
             batch_y = batch_y.to(device=device, dtype=torch.float32, non_blocking=True)
-            x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
-            y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+            x_mark = x_mark.to(device=device, dtype=torch.float32, non_blocking=True)
+            y_mark = y_mark.to(device=device, dtype=torch.float32, non_blocking=True)
             outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = criterion(outputs, batch_y)
             loss.backward()
@@ -723,16 +716,19 @@ def ray_compute_client_loss(
         losses = []
         model.eval()
         with torch.no_grad():
-            for batch in dataloader:
-                batch_x, batch_y = batch[0], batch[1]
+            for batch_x, batch_y, x_mark, y_mark in dataloader:
                 batch_x = batch_x.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
                 batch_y = batch_y.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
-                x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
-                y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+                x_mark = x_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                y_mark = y_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
                 outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = criterion(outputs, batch_y)
                 losses.append(float(loss.item()))

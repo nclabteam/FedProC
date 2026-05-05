@@ -99,11 +99,14 @@ def train_one_epoch_remote(
     SharedMethods._move_optimizer_state_to_param_devices(optimizer)
     model.train()
     for _ in range(epochs):
-        for batch in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()
-            inputs, targets = batch[0].to(device), batch[1].to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
+            loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
         scheduler.step()

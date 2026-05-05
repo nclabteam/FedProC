@@ -139,12 +139,12 @@ class FedRCL_Client(Client):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
-        for batch in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()
-            batch_x = batch[0].float().to(device)
-            batch_y = batch[1].float().to(device)
-            x_mark = batch[2].to(device) if len(batch) > 2 else None
-            y_mark = batch[3].to(device) if len(batch) > 3 else None
+            batch_x = batch_x.float().to(device)
+            batch_y = batch_y.float().to(device)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
 
             # [methodology.tex, Algorithm 1, line 10] — L_CE (task loss)
             outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
