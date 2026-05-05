@@ -55,6 +55,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | MMK | KAN | | | | Are KANsEffective for Multivariate Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2408.11306) - [REF](https://github.com/2448845600/EasyTSF/blob/main/easytsf/model/MMK.py) |
 |||||||
 |||||||
+| Transformer | Transformer | Multivariate | NeurIPS | 2017 | Attention Is All You Need | [Arxiv](https://arxiv.org/abs/1706.03762) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Transformer.py) |
 | CrossFormer | Transformer | Multivariate | ICLR | 2023 | Crossformer: Transformer Utilizing Cross-Dimension Dependency for Multivariate Time Series Forecasting | [OpenReview](https://openreview.net/forum?id=vSVLM2j9eie) - [REF](https://github.com/Thinklab-SJTU/Crossformer/blob/master/cross_models/cross_former.py) |
 | PatchTST | Transformer | Univariate | ICLR | 2023 | A Time Series is Worth 64 Words: Long-term Forecasting with Transformers | [Arxiv](https://arxiv.org/abs/2211.14730) - [REF](https://github.com/yuqinie98/PatchTST/blob/main/PatchTST_supervised/models/PatchTST.py) |
 | CARD | Transformer | | ICLR | 2024 | CARD: Channel Aligned Robust Blend Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2305.12095) - [REF](https://github.com/wxie9/CARD/blob/main/long_term_forecast_l720/models/CARD.py) |
@@ -73,3 +74,61 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | FAN ||| || FAN: Fourier Analysis Networks | [Arxiv](https://arxiv.org/abs/2410.02675) - [REF](https://github.com/YihongDong/FAN/blob/main/Timeseries_Forecasting/layers/FANLayer.py) |
 | FiLM ||| NeurIPS | 2022 | FiLM: Frequency improved Legendre Memory Model for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2205.08897) - [REF](https://github.com/decisionintelligence/TFB/blob/master/ts_benchmark/baselines/time_series_library/models/FiLM.py) |
 | Leddam ||| ICML | 2024 | Revitalizing Multivariate Time Series Forecasting: Learnable Decomposition with Inter-Series Dependencies and Intra-Series Variations Modeling | [Arxiv](https://arxiv.org/abs/2402.12694) - [REF](https://github.com/Levi-Ackman/Leddam/blob/main/models/Leddam.py) |
+
+---
+
+## Transformer Parameters
+
+The Transformer model (from LTSF-Linear) accepts time marks and exposes these optional CLI arguments:
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--d_model` | int | 512 | Model dimension |
+| `--n_heads` | int | 8 | Number of attention heads |
+| `--e_layers` | int | 2 | Number of encoder layers |
+| `--d_layers` | int | 1 | Number of decoder layers |
+| `--d_ff` | int | 2048 | Feed-forward dimension |
+| `--factor` | int | 1 | Attention factor (1 = full attention) |
+| `--dropout` | float | 0.05 | Dropout rate |
+| `--activation` | str | gelu | Activation function (`gelu` or `relu`) |
+| `--label_len` | int | 48 | Label length for decoder input |
+| `--embed_type` | int | 0 | Embedding type (see below) |
+| `--embed` | str | timeF | Temporal embedding strategy (see below) |
+| `--freq` | str | h | Dataset granularity (see below) |
+
+**Embedding types (`--embed_type`):**
+
+| Value | Components | Description |
+|-------|------------|-------------|
+| 0 | token + positional + temporal | Full embedding (default) |
+| 1 | token + positional + temporal | Full embedding (learned positional) |
+| 2 | token + temporal | No positional encoding |
+| 3 | token + positional | No temporal encoding |
+| 4 | token only | No positional or temporal encoding |
+
+**Temporal embedding strategies (`--embed`):**
+
+| Value | Class | Description |
+|-------|-------|-------------|
+| `timeF` | TimeFeatureEmbedding | Linear projection of continuous time features (default) |
+| `fixed` | TemporalEmbedding (fixed) | Fixed sinusoidal encoding on discrete time indices |
+| `learned` | TemporalEmbedding (learned) | Learnable embedding table on discrete time indices |
+
+**Frequency (`--freq`):**
+
+| Value | Mark columns | Count |
+|-------|-------------|-------|
+| `s` | month, day, weekday, hour, minute, second | 6 |
+| `t` | month, day, weekday, hour, minute | 5 |
+| `h` | month, day, weekday, hour | 4 |
+| `d` | month, day, weekday | 3 |
+| `w` | month, day, week_of_year | 3 |
+| `mo` | month | 1 |
+| `q` | month | 1 |
+
+**Example:**
+
+```bash
+python main.py --dataset ETDatasetHour --model Transformer --strategy FedAvg \
+  --d_model 128 --n_heads 4 --e_layers 1 --embed_type 0 --embed timeF --freq h
+```

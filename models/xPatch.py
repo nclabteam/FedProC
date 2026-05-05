@@ -80,7 +80,7 @@ class xPatch(nn.Module):
             padding_patch=configs.padding_patch,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [Batch, Input, Channel]
         seasonal_init, trend_init = self.decomp(x)
         x = self.net(seasonal_init, trend_init)
@@ -89,7 +89,7 @@ class xPatch(nn.Module):
 
 
 class NoneDecomp(nn.Module):
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return x, x
 
 
@@ -152,7 +152,7 @@ class Network(nn.Module):
         # Streams Concatination
         self.fc8 = nn.Linear(pred_len * 2, pred_len)
 
-    def forward(self, s, t):
+    def forward(self, s, t, **kwargs):
         # x: [Batch, Input, Channel]
         # s - seasonality
         # t - trend

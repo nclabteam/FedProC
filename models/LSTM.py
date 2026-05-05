@@ -35,7 +35,7 @@ class LSTM(nn.Module):
         # New linear layer to project the final hidden state to (pred_len * enc_in)
         self.fc_pred = nn.Linear(self.hidden_size, self.pred_len * self.enc_in)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         batch_size, seq_len, _ = x.size()
         h = [
             torch.zeros(batch_size, self.hidden_size).to(x.device)
@@ -93,7 +93,7 @@ class LSTMCell(nn.Module):
         for param in self.parameters():
             nn.init.uniform_(param, -0.1, 0.1)
 
-    def forward(self, x, hidden):
+    def forward(self, x, hidden, **kwargs):
         h_prev, c_prev = hidden
 
         i_t = torch.sigmoid(x @ self.W_ii.T + h_prev @ self.W_hi.T + self.b_i)

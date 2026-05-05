@@ -37,11 +37,13 @@ class FedProx_Client(Client):
         self._move_optimizer_state_to_param_devices(optimizer)
         global_params = copy.deepcopy(list(self.snapshot.to(device).parameters()))
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch in dataloader:
             optimizer.zero_grad()
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
+            batch_x = batch[0].float().to(device)
+            batch_y = batch[1].float().to(device)
+            x_mark = batch[2].to(device) if len(batch) > 2 else None
+            y_mark = batch[3].to(device) if len(batch) > 3 else None
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = criterion(outputs, batch_y)
             loss.backward()
             for w, w_t in zip(model.parameters(), global_params):

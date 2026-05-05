@@ -154,7 +154,7 @@ class MMK(nn.Module):
         self.rev = RevIN(num_features=self.in_channels, affine=True)
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, var_x):
+    def forward(self, var_x, **kwargs):
         B, L, N = var_x.shape
         x = self.rev(var_x, "norm")
         x = x.transpose(1, 2).reshape(B * N, L)
@@ -196,7 +196,7 @@ class MoKLayer(nn.Module):
         if self.with_dropout:
             self.dropout = nn.Dropout(p=0.1)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         score = F.softmax(self.gate(x), dim=-1)
         expert_outputs = torch.stack(
             [self.experts[i](x) for i in range(self.n_expert)], dim=-1
@@ -239,7 +239,7 @@ class KANInterfaceV2(nn.Module):
         else:
             raise NotImplementedError(f"Layer type {layer_type} not implemented")
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = self.transform(x)
         return x
 
@@ -407,7 +407,7 @@ class KANLayer(nn.Module):
         self.lock_id = torch.zeros(size)
         self.device = device
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         """
         KANLayer forward given input x
 
@@ -997,7 +997,7 @@ class WaveKANLayer(nn.Module):
 
         return wavelet_output
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         wavelet_output = self.wavelet_transform(x)
         # You may like test the cases like Spl-KAN
         # wav_output = F.linear(wavelet_output, self.weight)
@@ -1030,7 +1030,7 @@ class NaiveFourierKANLayer(nn.Module):
             / (np.sqrt(inputdim) * np.sqrt(self.gridsize))
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         xshp = x.shape
         outshape = xshp[0:-1] + (self.outdim,)
         x = x.view(-1, self.inputdim)
@@ -1075,7 +1075,7 @@ class JacobiKANLayer(nn.Module):
             self.jacobi_coeffs, mean=0.0, std=1 / (input_dim * (degree + 1))
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = torch.reshape(x, (-1, self.inputdim))  # shape = (batch_size, inputdim)
         # Since Jacobian polynomial is defined in [-1, 1]
         # We need to normalize x to [-1, 1] using tanh
@@ -1131,7 +1131,7 @@ class ChebyKANLayer(nn.Module):
         nn.init.normal_(self.cheby_coeffs, mean=0.0, std=1 / (input_dim * (degree + 1)))
         self.register_buffer("arange", torch.arange(0, degree + 1, 1))
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Since Chebyshev polynomial is defined in [-1, 1]
         # We need to normalize x to [-1, 1] using tanh
         x = torch.tanh(x)
@@ -1169,7 +1169,7 @@ class TaylorKANLayer(nn.Module):
         if self.addbias:
             self.bias = nn.Parameter(torch.zeros(1, out_dim))
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         shape = x.shape
         outshape = shape[0:-1] + (self.out_dim,)
         x = torch.reshape(x, (-1, self.input_dim))
@@ -1209,7 +1209,7 @@ class RBFKANLayer(nn.Module):
     def gaussian_rbf(self, distances):
         return torch.exp(-self.alpha * distances**2)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         distances = torch.cdist(x, self.centers)
         basis_values = self.gaussian_rbf(distances)
         output = torch.sum(basis_values.unsqueeze(2) * self.weights.unsqueeze(0), dim=1)

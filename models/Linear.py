@@ -7,7 +7,7 @@ class Linear(nn.Module):
         super().__init__()
         self.Linear = nn.Linear(configs.input_len, configs.output_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [batch_size, input_len, in_channels]
         x = x.permute(0, 2, 1)
         # x: [batch_size, in_channels, input_len]

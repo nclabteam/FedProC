@@ -77,7 +77,7 @@ class TimeKAN(nn.Module):
         x_enc = x_enc_sampling_list
         return x_enc
 
-    def forward(self, x_enc):
+    def forward(self, x_enc, **kwargs):
         x_enc = self.__multi_level_process_inputs(x_enc)
         x_list = []
         for i, x in zip(
@@ -133,7 +133,7 @@ class Normalize(nn.Module):
         if self.affine:
             self._init_params()
 
-    def forward(self, x, mode: str):
+    def forward(self, x, mode: str, **kwargs):
         if mode == "norm":
             self._get_statistics(x)
             x = self._normalize(x)
@@ -190,7 +190,7 @@ class ChebyKANLayer(nn.Module):
         super().__init__()
         self.fc1 = ChebyKANLinear(in_features, out_features, order)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, N, C = x.shape
         x = self.fc1(x.reshape(B * N, C))
         x = x.reshape(B, N, -1).contiguous()
@@ -202,7 +202,7 @@ class FrequencyDecomp(nn.Module):
         super(FrequencyDecomp, self).__init__()
         self.configs = configs
 
-    def forward(self, level_list):
+    def forward(self, level_list, **kwargs):
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
@@ -270,7 +270,7 @@ class FrequencyMixing(nn.Module):
             ]
         )
 
-    def forward(self, level_list):
+    def forward(self, level_list, **kwargs):
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
@@ -320,7 +320,7 @@ class M_KAN(nn.Module):
             d_model, d_model, kernel_size=3, degree=order, groups=d_model
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x1 = self.channel_mixer(x)
         x2 = self.conv(x)
         out = x1 + x2
@@ -359,7 +359,7 @@ class BasicConv(nn.Module):
         self.act = nn.GELU() if act else None
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         if self.bn is not None:
             x = self.bn(x)
         x = self.conv(x.transpose(-1, -2)).transpose(-1, -2)
@@ -385,7 +385,7 @@ class ChebyKANLinear(nn.Module):
         nn.init.normal_(self.cheby_coeffs, mean=0.0, std=1 / (input_dim * (degree + 1)))
         self.register_buffer("arange", torch.arange(0, degree + 1, 1))
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Since Chebyshev polynomial is defined in [-1, 1]
         # We need to normalize x to [-1, 1] using tanh
         # View and repeat input degree + 1 times

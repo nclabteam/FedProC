@@ -66,7 +66,7 @@ class GPT4TS(nn.Module):
 
         self.cnt = 0
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, L, M = x.shape
 
         means = x.mean(1, keepdim=True).detach()

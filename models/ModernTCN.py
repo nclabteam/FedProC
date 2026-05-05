@@ -165,7 +165,7 @@ class ModernTCN(nn.Module):
                 target_window=self.target_window,
             )
 
-    def forward(self, x, te=None):
+    def forward(self, x, te=None, **kwargs):
 
         if self.decomposition:
             res_init, trend_init = self.decomp_module(x)
@@ -207,7 +207,7 @@ class Flatten_Head(nn.Module):
             self.linear = nn.Linear(nf, target_window)
             self.dropout = nn.Dropout(head_dropout)
 
-    def forward(self, x):  # x: [bs x nvars x d_model x patch_num]
+    def forward(self, x, **kwargs):  # x: [bs x nvars x d_model x patch_num]
         if self.individual:
             x_out = []
             for i in range(self.n_vars):
@@ -228,7 +228,7 @@ class LayerNorm(nn.Module):
         super(LayerNorm, self).__init__()
         self.norm = nn.Layernorm(channels)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, M, D, N = x.shape
         x = x.permute(0, 1, 3, 2)
         x = x.reshape(B * M, N, D)
@@ -355,7 +355,7 @@ class ReparamLargeKernelConv(nn.Module):
                     bias=False,
                 )
 
-    def forward(self, inputs):
+    def forward(self, inputs, **kwargs):
 
         if hasattr(self, "lkb_reparam"):
             out = self.lkb_reparam(inputs)
@@ -488,7 +488,7 @@ class Block(nn.Module):
 
         self.ffn_ratio = dff // dmodel
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
 
         input = x
         B, M, D, N = x.shape
@@ -548,7 +548,7 @@ class Stage(nn.Module):
 
         self.blocks = nn.ModuleList(blks)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
 
         for blk in self.blocks:
             x = blk(x)
@@ -736,7 +736,7 @@ class ModernTCNBackbone(nn.Module):
             x = self.stages[i](x)
         return x
 
-    def forward(self, x, te=None):
+    def forward(self, x, te=None, **kwargs):
 
         # instance norm
         if self.revin:

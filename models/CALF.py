@@ -146,7 +146,7 @@ class CALF(nn.Module):
             # Fallback to random embeddings
             return torch.randn(configs.d_model, 500)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, L, M] where B=batch, L=seq_len, M=features
         B, L, M = x.shape
 
@@ -237,7 +237,7 @@ class Encoder_PCA(nn.Module):
 
         self.word_embedding = word_embedding.T
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B = x.shape[0]
 
         self.word_embedding = self.word_embedding.to(x.device)

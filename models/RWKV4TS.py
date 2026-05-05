@@ -67,7 +67,7 @@ class RWKV4TS(nn.Module):
 
         self.cnt = 0
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, L, M = x.shape
 
         means = x.mean(1, keepdim=True).detach()
@@ -104,7 +104,7 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.cmix = RWKV_ChannelMix_x051a(config, layer_id)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x + self.tmix(self.ln_1(x))
         x = x + self.cmix(self.ln_2(x))
         return x
@@ -120,7 +120,7 @@ class LayerNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
 
-    def forward(self, input):
+    def forward(self, input, **kwargs):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
@@ -174,7 +174,7 @@ class RWKV_TimeMix_x051a(nn.Module):
 
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, T, C = (
             x.size()
         )  # batch size, sequence length, embedding dimensionality (n_embd)
@@ -262,7 +262,7 @@ class RWKV_ChannelMix_x051a(nn.Module):
         self.receptance = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         xx = self.time_shift(x) - x
         xk = x + xx * self.time_maa_k
         xr = x + xx * self.time_maa_r

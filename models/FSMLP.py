@@ -125,7 +125,7 @@ class FSMLP(nn.Module):
             individual=configs.individual,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [Batch, Input length, Channel]
         x = x.permute(0, 2, 1)
         # x: [Batch, Channel, Input length]
@@ -380,7 +380,7 @@ class FSMLP_Backbone(nn.Module):
         res = torch.cat(store, dim=-1)
         return res
 
-    def forward(self, z):
+    def forward(self, z, **kwargs):
         # z: [bs x nvars x seq_len]
         z = z.permute(0, 2, 1)
         z = self.revin_layer(z, "norm")
@@ -846,7 +846,7 @@ class Head(nn.Module):
         )
         self.dropout = nn.Dropout(head_dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [bs x nvars x d_model x patch_num]
         if self.concat:
             x = torch.cat(x, dim=-1)
@@ -945,7 +945,7 @@ class channel_mix(nn.Module):
         loss += self.out_layers.loss()
         return loss * 5e-4
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         self.prototypes = self.prototypes.to(x.device)
         if self.f_model != 0:
             embedding = self.emd_time(x.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
@@ -978,7 +978,7 @@ class HyperNetwork(nn.Module):
         self.fc3 = nn.Linear(hidden_dim, output_dim)
         self.output_dim = output_dim
 
-    def forward(self, embedding):
+    def forward(self, embedding, **kwargs):
         x = self.fc1(embedding)
         weights = self.fc2(x)
         biases = self.fc3(x)

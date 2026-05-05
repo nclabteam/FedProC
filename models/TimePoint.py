@@ -72,7 +72,7 @@ class TimePoint(nn.Module):
         print(f"Detector head parameters: {detector_params}")
         print(f"Descriptor head parameters: {descriptor_params}")
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x.permute(0, 2, 1)
         # Input x: [N, C, L]
         N, C, L = x.shape
@@ -145,7 +145,7 @@ class Encoder1D(nn.Module):
         self.layer3 = ConvBlock1D(dims[1], dims[2], stride=2)
         self.layer4 = ConvBlock1D(dims[2], dims[3], stride=2)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input x: [N, C, L]
         x = self.layer1(x)  # [N, base_channels, L]
         x = self.layer2(x)  # [N, base_channels, L/2]
@@ -175,7 +175,7 @@ class WTConvEncoder1D(nn.Module):
             dims[2], dims[3], stride=self.stride, wt_levels=wt_levels[2]
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input x: [N, C, L]
         x = self.layer1(x)  # [N, base_channels, L]
         x = self.layer2(x)  # [N, base_channels, L/2]
@@ -196,7 +196,7 @@ class DetectorHead1D(nn.Module):
             input_channels, cell_size + 1, kernel_size=1
         )  # Output channels: cell_size + 1 (dustbin)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [N, C, L/8]
         N, C, Lc = x.shape  # Lc = L/8
         x = self.conv(x)  # [N, cell_size + 1, Lc]
@@ -223,7 +223,7 @@ class DescriptorHead1D(nn.Module):
         self.conv = nn.Conv1d(input_channels, descriptor_dim, kernel_size=1)
         self.upsample = nn.Upsample(scale_factor=8, mode="linear", align_corners=False)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [N, C, L/8]
         x = self.conv(x)  # [N, descriptor_dim, L/8]
         x = self.upsample(x)  # [N, descriptor_dim, L]
@@ -332,7 +332,7 @@ class WTConv1d(nn.Module):
                 torch.ones(in_channels, 1, 1), requires_grad=False
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_ll_in_levels = []
         x_h_in_levels = []
         shapes_in_levels = []
@@ -396,7 +396,7 @@ class _ScaleModule(nn.Module):
         self.weight = nn.Parameter(torch.ones(*dims) * init_scale)
         self.bias = None
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return torch.mul(self.weight, x)
 
 
@@ -420,7 +420,7 @@ class ConvBlock1D(nn.Module):
             act(inplace=True),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return self.layer(x)
 
 
@@ -445,7 +445,7 @@ class WTConvBlock1D(nn.Module):
             act(),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return self.layer(x)
 
 

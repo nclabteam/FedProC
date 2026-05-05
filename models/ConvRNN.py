@@ -50,7 +50,7 @@ class ConvRNN(nn.Module):
         self.zp31 = nn.ConstantPad1d(((kernel_size3 - 1), 0), 0)
         self.zp32 = nn.ConstantPad1d(((kernel_size3 - 1), 0), 0)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         batch_size, seq_len, input_dim = x.size()
 
         # Permute to (batch_size, input_dim, seq_len) for 1D convolutions

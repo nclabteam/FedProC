@@ -49,7 +49,7 @@ class FiLM(nn.Module):
         )
         self.mlp = nn.Linear(len(self.multiscale) * len(self.window_size), 1)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Normalization from Non-stationary Transformer
         means = x.mean(1, keepdim=True).detach()
         x = x - means
@@ -121,7 +121,7 @@ class HiPPO_LegT(nn.Module):
             ),
         )
 
-    def forward(self, inputs):
+    def forward(self, inputs, **kwargs):
         """
         inputs : (length, ...)
         output : (length, ..., N) where N is the order of the HiPPO projection
@@ -169,7 +169,7 @@ class SpectralConv1d(nn.Module):
             + torch.einsum(order, x.imag, weights_real),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, H, E, N = x.shape
         x_ft = torch.fft.rfft(x)
         out_ft = torch.zeros(

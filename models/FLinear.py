@@ -31,7 +31,7 @@ class FLinear(nn.Module):
             rfft=self.rfft,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, seq_len, in_channels]
         x = self.rev(x, "norm")
         x = self.Linear(x.permute(0, 2, 1)).permute(0, 2, 1)

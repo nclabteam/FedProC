@@ -109,7 +109,7 @@ class Timer(nn.Module):
             bias=True,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input: [batch_size, input_len, input_channels]
         B, L, M = x.shape  # B=batch_size, L=input_len, M=input_channels
 
@@ -165,7 +165,7 @@ class PatchEmbedding(nn.Module):
         # Residual dropout
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # do patching
         n_vars = x.shape[1]  # [B, M, T]
         x = self.padding_patch_layer(x)
@@ -195,7 +195,7 @@ class AttentionLayer(nn.Module):
         self.out_projection = nn.Linear(d_values * n_heads, d_model)
         self.n_heads = n_heads
 
-    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
+    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None, **kwargs):
         B, L, _ = queries.shape
         _, S, _ = keys.shape
         H = self.n_heads
@@ -227,7 +227,7 @@ class FullAttention(nn.Module):
         self.output_attention = output_attention
         self.dropout = nn.Dropout(attention_dropout)
 
-    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
+    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None, **kwargs):
         B, L, H, E = queries.shape
         _, S, _, D = values.shape
         scale = self.scale or 1.0 / sqrt(E)
@@ -274,7 +274,7 @@ class EncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.activation = F.relu if activation == "relu" else F.gelu
 
-    def forward(self, x, attn_mask=None, tau=None, delta=None):
+    def forward(self, x, attn_mask=None, tau=None, delta=None, **kwargs):
         new_x, attn = self.attention(x, x, x, attn_mask=attn_mask, tau=tau, delta=delta)
         x = x + self.dropout(new_x)
 
@@ -294,7 +294,7 @@ class Encoder(nn.Module):
         )
         self.norm = norm_layer
 
-    def forward(self, x, attn_mask=None, tau=None, delta=None):
+    def forward(self, x, attn_mask=None, tau=None, delta=None, **kwargs):
         # x [B, L, D]
         attns = []
         if self.conv_layers is not None:

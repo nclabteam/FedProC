@@ -56,7 +56,7 @@ class LightTS(nn.Module):
 
         self.ar = nn.Linear(self.seq_len, self.pred_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, T, N = x.size()
 
         highway = self.ar(x.permute(0, 2, 1))
@@ -110,7 +110,7 @@ class IEBlock(nn.Module):
 
         self.output_proj = nn.Linear(self.hid_dim // 4, self.output_dim)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = self.spatial_proj(x.permute(0, 2, 1))
         x = x.permute(0, 2, 1) + self.channel_proj(x.permute(0, 2, 1))
         x = self.output_proj(x.permute(0, 2, 1))

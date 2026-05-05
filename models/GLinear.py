@@ -13,7 +13,7 @@ class GLinear(nn.Module):
         self.GeLU = nn.GELU()
         self.Hidden1 = nn.Linear(self.seq_len, self.pred_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x.permute(0, 2, 1)
         x = self.Linear(x)
         x = self.GeLU(x)

@@ -24,7 +24,7 @@ class DishLinear(nn.Module):
             dish_init=configs.dishts,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, seq_len, in_channels]
         x = self.dish(x, "norm")
         x = self.Linear(x.permute(0, 2, 1)).permute(0, 2, 1)

@@ -75,7 +75,7 @@ class MTSMixer(nn.Module):
             individual=configs.individual,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         for block in self.mlp_blocks:
             x = block(x)
         x = self.norm(x) if self.norm else x
@@ -94,7 +94,7 @@ class ChannelProjection(nn.Module):
         )
         self.individual = individual
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, L, D]
         x_out = []
         if self.individual:
@@ -116,7 +116,7 @@ class MLPBlock(nn.Module):
         self.gelu = nn.GELU()
         self.fc2 = nn.Linear(mlp_dim, input_dim)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # [B, L, D] or [B, D, L]
         return self.fc2(self.gelu(self.fc1(x)))
 
@@ -138,7 +138,7 @@ class FactorizedTemporalMixing(nn.Module):
 
         return y
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_samp = []
         for idx, samp in enumerate(self.temporal_fac):
             x_samp.append(samp(x[:, :, idx :: self.sampling]))
@@ -155,7 +155,7 @@ class FactorizedChannelMixing(nn.Module):
         assert input_dim > factorized_dim
         self.channel_mixing = MLPBlock(input_dim, factorized_dim)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return self.channel_mixing(x)
 
 
@@ -184,7 +184,7 @@ class MixerBlock(nn.Module):
         )
         self.norm = nn.LayerNorm(channels_dim) if norm_flag else None
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # token-mixing [B, D, #tokens]
         y = self.norm(x) if self.norm else x
         y = self.tokens_mixing(y.transpose(1, 2)).transpose(1, 2)

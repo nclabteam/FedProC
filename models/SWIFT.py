@@ -128,7 +128,7 @@ class SWIFT(nn.Module):
         self.dropout1 = nn.Dropout(self.conv_dropout)
         self.dropout2 = nn.Dropout(self.fc_dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # normalization and permute     b,s,c -> b,c,s
         seq_mean = torch.mean(x, dim=1).unsqueeze(1)
         x = (x - seq_mean).permute(0, 2, 1)

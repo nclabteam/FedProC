@@ -73,9 +73,20 @@ class SharedMethods:
         with np.load(file) as data:
             x = data["x"]
             y = data["y"]
+            has_marks = "x_mark" in data and "y_mark" in data
+            if has_marks:
+                x_mark = torch.as_tensor(
+                    np.asarray(data["x_mark"], dtype=np.float32)
+                )
+                y_mark = torch.as_tensor(
+                    np.asarray(data["y_mark"], dtype=np.float32)
+                )
         x = torch.as_tensor(np.asarray(scaler.transform(x), dtype=np.float32))
         y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
-        dataset = TensorDataset(x, y)
+        if has_marks:
+            dataset = TensorDataset(x, y, x_mark, y_mark)
+        else:
+            dataset = TensorDataset(x, y)
 
         # Apply subsampling if necessary
         if sample_ratio < 1.0:
@@ -115,14 +126,17 @@ class SharedMethods:
         model.to(device)
         model.eval()
         with torch.no_grad():
-            for batch_x, batch_y in dataloader:
+            for batch in dataloader:
+                batch_x, batch_y = batch[0], batch[1]
                 batch_x = batch_x.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
                 batch_y = batch_y.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
-                outputs = model(batch_x)
+                x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
+                y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+                outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = criterion(outputs, batch_y)
                 losses.append(loss.item())
         if offload_after:
@@ -399,11 +413,14 @@ class SharedMethods:
         model.to(device)
         SharedMethods._move_optimizer_state_to_param_devices(optimizer)
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch in dataloader:
+            batch_x, batch_y = batch[0], batch[1]
             optimizer.zero_grad(set_to_none=True)
             batch_x = batch_x.to(device=device, dtype=torch.float32, non_blocking=True)
             batch_y = batch_y.to(device=device, dtype=torch.float32, non_blocking=True)
-            outputs = model(batch_x)
+            x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
+            y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
@@ -538,14 +555,26 @@ class SharedMethods:
         Args:
             dataloader: A sample dataloader to determine input shapes.
         """
-        getattr(__import__("utils"), "ModelSummarizer")(
-            model=self.model,
-            dataloader=dataloader,
-            save_path=os.path.join(
-                self.model_info_path, f"{self.name.lower().strip()}.svg"
-            ),
+        import torchinfo
+
+        sample = next(iter(dataloader))
+        input_size = tuple(sample[0].shape)  # (batch, seq, channels)
+        original_device = next(self.model.parameters()).device
+        result = torchinfo.summary(
+            self.model,
+            input_size=input_size,
             device=self.device,
-        ).execute()
+            verbose=0,
+            col_names=["output_size", "num_params", "mult_adds"],
+        )
+        self.model.to(original_device)
+        # Print with utf-8 to handle Unicode tree characters on Windows
+        try:
+            print(result)
+        except UnicodeEncodeError:
+            sys.stdout.buffer.write(str(result).encode("utf-8"))
+            sys.stdout.buffer.write(b"\n")
+            sys.stdout.buffer.flush()
 
     def save_results(self) -> None:
         """Exports the accumulated metrics to a CSV file."""
@@ -640,14 +669,12 @@ class SharedMethods:
         """Creates the necessary directory structure for experiments."""
         self.save_path = os.path.join(self.save_path, str(self.times))
         self.model_path = os.path.join(self.save_path, "models")
-        self.model_info_path = os.path.join(self.save_path, "models_info")
         self.log_path = os.path.join(self.save_path, "logs")
         self.result_path = os.path.join(self.save_path, "results")
         for dir_path in [
             self.save_path,
             self.model_path,
             self.log_path,
-            self.model_info_path,
             self.result_path,
         ]:
             if not os.path.exists(dir_path):
@@ -696,14 +723,17 @@ def ray_compute_client_loss(
         losses = []
         model.eval()
         with torch.no_grad():
-            for batch_x, batch_y in dataloader:
+            for batch in dataloader:
+                batch_x, batch_y = batch[0], batch[1]
                 batch_x = batch_x.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
                 batch_y = batch_y.to(
                     device=device, dtype=torch.float32, non_blocking=True
                 )
-                outputs = model(batch_x)
+                x_mark = batch[2].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 2 else None
+                y_mark = batch[3].to(device=device, dtype=torch.float32, non_blocking=True) if len(batch) > 3 else None
+                outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = criterion(outputs, batch_y)
                 losses.append(float(loss.item()))
         return float(np.mean(losses))

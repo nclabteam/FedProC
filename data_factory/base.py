@@ -1291,64 +1291,67 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             (31, 4)  # 31 days with 4 daily features
         """
 
-        # Define all possible time features and their normalization functions
+        # Raw integer indices — normalized inside the model when needed.
+        # Order: [month(0), day(1), weekday(2), hour(3), minute(4), second(5)]
+        # matches TemporalEmbedding column indices.
         features = {
-            "second_of_minute": lambda dt: dt.dt.second() / 59.0 - 0.5,
-            "minute_of_hour": lambda dt: dt.dt.minute() / 59.0 - 0.5,
-            "hour_of_day": lambda dt: dt.dt.hour() / 23.0 - 0.5,
-            "day_of_week": lambda dt: dt.dt.weekday() / 6.0 - 0.5,
-            "day_of_month": lambda dt: (dt.dt.day() - 1) / 30.0 - 0.5,
-            "day_of_year": lambda dt: (dt.dt.ordinal_day() - 1) / 365.0 - 0.5,
-            "month_of_year": lambda dt: (dt.dt.month() - 1) / 11.0 - 0.5,
-            "week_of_year": lambda dt: (dt.dt.week() - 1) / 52.0 - 0.5,
+            "second_of_minute": lambda dt: dt.dt.second(),
+            "minute_of_hour": lambda dt: dt.dt.minute(),
+            "hour_of_day": lambda dt: dt.dt.hour(),
+            "day_of_week": lambda dt: dt.dt.weekday(),
+            "day_of_month": lambda dt: dt.dt.day(),
+            "day_of_year": lambda dt: dt.dt.ordinal_day(),
+            "month_of_year": lambda dt: dt.dt.month(),
+            "week_of_year": lambda dt: dt.dt.week(),
         }
 
-        # Map frequencies to the relevant time features
+        # Map frequencies to time features in TemporalEmbedding column order:
+        # [month(0), day(1), weekday(2), hour(3), minute(4), second(5)]
         freq_mapping = {
             "y": [],
             "q": ["month_of_year"],
             "mo": ["month_of_year"],
-            "w": ["day_of_month", "week_of_year"],
-            "d": ["day_of_week", "day_of_month", "day_of_year"],
-            "h": ["hour_of_day", "day_of_week", "day_of_month", "day_of_year"],
-            "m": [
-                "minute_of_hour",
-                "hour_of_day",
-                "day_of_week",
+            "w": ["month_of_year", "day_of_month", "week_of_year"],
+            "d": ["month_of_year", "day_of_month", "day_of_week"],
+            "h": ["month_of_year", "day_of_month", "day_of_week", "hour_of_day"],
+            "t": [
+                "month_of_year",
                 "day_of_month",
-                "day_of_year",
+                "day_of_week",
+                "hour_of_day",
+                "minute_of_hour",
             ],
             "s": [
-                "second_of_minute",
-                "minute_of_hour",
-                "hour_of_day",
-                "day_of_week",
+                "month_of_year",
                 "day_of_month",
-                "day_of_year",
+                "day_of_week",
+                "hour_of_day",
+                "minute_of_hour",
+                "second_of_minute",
             ],
             "ms": [
-                "second_of_minute",
-                "minute_of_hour",
-                "hour_of_day",
-                "day_of_week",
+                "month_of_year",
                 "day_of_month",
-                "day_of_year",
+                "day_of_week",
+                "hour_of_day",
+                "minute_of_hour",
+                "second_of_minute",
             ],
             "us": [
-                "second_of_minute",
-                "minute_of_hour",
-                "hour_of_day",
-                "day_of_week",
+                "month_of_year",
                 "day_of_month",
-                "day_of_year",
+                "day_of_week",
+                "hour_of_day",
+                "minute_of_hour",
+                "second_of_minute",
             ],
             "ns": [
-                "second_of_minute",
-                "minute_of_hour",
-                "hour_of_day",
-                "day_of_week",
+                "month_of_year",
                 "day_of_month",
-                "day_of_year",
+                "day_of_week",
+                "hour_of_day",
+                "minute_of_hour",
+                "second_of_minute",
             ],
         }
 
@@ -1753,19 +1756,21 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                 }
 
                 # Extract time features
-                # split_time_df = self.extract_time_features(dates=split_df[self.column_date], freq=self.granularity_unit)
-                # null_mask = split_df.with_columns(
-                #     pl.concat_list(pl.all().is_null()).alias("null_mask")
-                # )["null_mask"].list.any()
-                # split_time_df = split_time_df.with_columns(
-                #     [
-                #         pl.when(null_mask)
-                #         .then(None)
-                #         .otherwise(split_time_df[col])
-                #         .alias(col)
-                #         for col in split_time_df.columns
-                #     ]
-                # )
+                split_time_df = self.extract_time_features(
+                    dates=split_df[self.column_date], freq=self.granularity_unit
+                )
+                null_mask = split_df.with_columns(
+                    pl.concat_list(pl.all().is_null()).alias("null_mask")
+                )["null_mask"].list.any()
+                split_time_df = split_time_df.with_columns(
+                    [
+                        pl.when(null_mask)
+                        .then(None)
+                        .otherwise(split_time_df[col])
+                        .alias(col)
+                        for col in split_time_df.columns
+                    ]
+                )
 
                 # Get statistic
                 split_df = split_df.select(self.column_used)
@@ -1781,11 +1786,11 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                     "x": str(split_x.shape),
                     "y": str(split_y.shape),
                 }
-                # split_x_mark, split_y_mark = self.split_x_y(
-                #     df=split_time_df,
-                #     x_used_cols=split_time_df.columns,
-                #     y_used_cols=split_time_df.columns,
-                # )
+                split_x_mark, split_y_mark = self.split_x_y(
+                    df=split_time_df,
+                    x_used_cols=split_time_df.columns,
+                    y_used_cols=split_time_df.columns,
+                )
 
                 # Save split data
                 file_path = os.path.join(
@@ -1793,8 +1798,8 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                 )
                 np.savez_compressed(
                     file=file_path,
-                    # x_mark=split_x_mark,
-                    # y_mark=split_y_mark,
+                    x_mark=split_x_mark,
+                    y_mark=split_y_mark,
                     x=split_x,
                     y=split_y,
                 )

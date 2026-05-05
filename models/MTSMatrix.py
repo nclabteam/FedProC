@@ -48,7 +48,7 @@ class MTSMatrix(nn.Module):
         )
         self.projection = nn.Linear(configs.input_len, configs.output_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         for mat in self.matrics:
             x = mat(x)
         x = self.projection(x.transpose(1, 2)).transpose(1, 2)
@@ -72,7 +72,7 @@ class Matrix(nn.Module):
         self.acti = nn.GELU()
         self.is_norm = norm
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x + self.acti(torch.matmul(self.temporal, x))
         x = (
             x + self.norm(torch.matmul(x, self.channels))
@@ -100,7 +100,7 @@ class FactorizedTemporalMixing(nn.Module):
 
         return y
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_samp = []
         for idx, samp in enumerate(self.temporal_fac):
             x_samp.append(samp(x[:, idx :: self.sampling, :]))

@@ -14,7 +14,7 @@ class LinearIC(nn.Module):
         for i in range(self.channels):
             self.Linear.append(nn.Linear(self.seq_len, self.pred_len))
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, seq_len, in_channels]
         output = torch.zeros([x.size(0), self.pred_len, x.size(2)], dtype=x.dtype).to(
             x.device

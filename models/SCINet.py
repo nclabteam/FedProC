@@ -30,7 +30,7 @@ class SCINet(nn.Module):
             bias=False,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         res = x
         x = self.encoder(x)
         x += res
@@ -85,7 +85,7 @@ class SCIBlock(nn.Module):
             nn.Tanh(),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_even = x[:, ::2, :].transpose(1, 2)
         x_odd = x[:, 1::2, :].transpose(1, 2)
 
@@ -128,7 +128,7 @@ class SCITree(nn.Module):
 
         return merge  # [B, L, D]
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # [B, L, D]
         x_even_update, x_odd_update = self.block(x)
 

@@ -12,3 +12,5 @@ analysis/plots
 analysis/tables
 
 venv*
+.claude
+.vscode

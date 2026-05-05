@@ -147,7 +147,7 @@ class PatchTST(nn.Module):
         else:
             self.model = PatchTST_backbone(**backbone_config)
 
-    def forward(self, x):  # x: [Batch, Input length, Channel]
+    def forward(self, x, **kwargs):  # x: [Batch, Input length, Channel]
         if self.decomposition:
             res_init, trend_init = self.decomp_module(x)
             # x: [Batch, Channel, Input length]
@@ -259,7 +259,7 @@ class PatchTST_backbone(nn.Module):
                 head_dropout=head_dropout,
             )
 
-    def forward(self, z):  # z: [bs x nvars x seq_len]
+    def forward(self, z, **kwargs):  # z: [bs x nvars x seq_len]
         # norm
         if self.revin:
             z = z.permute(0, 2, 1)
@@ -309,7 +309,7 @@ class Flatten_Head(nn.Module):
             self.linear = nn.Linear(nf, target_window)
             self.dropout = nn.Dropout(head_dropout)
 
-    def forward(self, x):  # x: [bs x nvars x d_model x patch_num]
+    def forward(self, x, **kwargs):  # x: [bs x nvars x d_model x patch_num]
         if self.individual:
             x_out = []
             for i in range(self.n_vars):
