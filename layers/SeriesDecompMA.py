@@ -35,3 +35,26 @@ class MovingAverage(nn.Module):
         x = self.avg(x.permute(0, 2, 1))
         x = x.permute(0, 2, 1)
         return x
+
+
+class SeriesDecompMultiMA(nn.Module):
+    """
+    Series decomposition block with multiple kernel sizes (for FEDformer).
+    """
+
+    def __init__(self, kernel_size):
+        super().__init__()
+        self.moving_avg = [MovingAverage(kernel, stride=1) for kernel in kernel_size]
+        self.layer = nn.Linear(1, len(kernel_size))
+
+    def forward(self, x):
+        moving_mean = []
+        for func in self.moving_avg:
+            ma = func(x)
+            moving_mean.append(ma.unsqueeze(-1))
+        moving_mean = torch.cat(moving_mean, dim=-1)
+        moving_mean = torch.sum(
+            moving_mean * nn.Softmax(-1)(self.layer(x.unsqueeze(-1))), dim=-1
+        )
+        res = x - moving_mean
+        return res, moving_mean

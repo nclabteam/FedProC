@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from layers.SeriesDecompMA import SeriesDecompMA
+from layers.SeriesDecompMA import SeriesDecompMA, SeriesDecompMultiMA
 
 
 class my_Layernorm(nn.Module):
@@ -37,8 +37,12 @@ class EncoderLayer(nn.Module):
         self.conv2 = nn.Conv1d(
             in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False
         )
-        self.decomp1 = SeriesDecompMA(moving_avg)
-        self.decomp2 = SeriesDecompMA(moving_avg)
+        if isinstance(moving_avg, list):
+            self.decomp1 = SeriesDecompMultiMA(moving_avg)
+            self.decomp2 = SeriesDecompMultiMA(moving_avg)
+        else:
+            self.decomp1 = SeriesDecompMA(moving_avg)
+            self.decomp2 = SeriesDecompMA(moving_avg)
         self.dropout = nn.Dropout(dropout)
         self.activation = F.relu if activation == "relu" else F.gelu
 
@@ -112,9 +116,14 @@ class DecoderLayer(nn.Module):
         self.conv2 = nn.Conv1d(
             in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False
         )
-        self.decomp1 = SeriesDecompMA(moving_avg)
-        self.decomp2 = SeriesDecompMA(moving_avg)
-        self.decomp3 = SeriesDecompMA(moving_avg)
+        if isinstance(moving_avg, list):
+            self.decomp1 = SeriesDecompMultiMA(moving_avg)
+            self.decomp2 = SeriesDecompMultiMA(moving_avg)
+            self.decomp3 = SeriesDecompMultiMA(moving_avg)
+        else:
+            self.decomp1 = SeriesDecompMA(moving_avg)
+            self.decomp2 = SeriesDecompMA(moving_avg)
+            self.decomp3 = SeriesDecompMA(moving_avg)
         self.dropout = nn.Dropout(dropout)
         self.projection = nn.Conv1d(
             in_channels=d_model,
