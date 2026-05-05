@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 
 from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from layers.Autoformer_EncDec import Decoder, DecoderLayer, Encoder, EncoderLayer, my_Layernorm
+from layers.Autoformer_EncDec import (
+    Decoder,
+    DecoderLayer,
+    Encoder,
+    EncoderLayer,
+    my_Layernorm,
+)
 from layers.DataEmbedding import (
     DataEmbedding,
     DataEmbedding_wo_pos,
@@ -188,9 +194,7 @@ class Autoformer(nn.Module):
 
         # dec
         dec_out = self.dec_embedding(seasonal_init, dec_mark)
-        seasonal_part, trend_part = self.decoder(
-            dec_out, enc_out, trend=trend_init
-        )
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, trend=trend_init)
 
         # final
         dec_out = trend_part + seasonal_part

@@ -60,17 +60,13 @@ class FourierCrossAttentionW(nn.Module):
         xqkv_ft = torch.einsum("bhxy,bhey->bhex", xqk_ft, xk_ft_)
 
         xqkvw = xqkv_ft
-        out_ft = torch.zeros(
-            B, H, E, L // 2 + 1, device=xq.device, dtype=torch.cfloat
-        )
+        out_ft = torch.zeros(B, H, E, L // 2 + 1, device=xq.device, dtype=torch.cfloat)
         for i, j in enumerate(self.index_q):
             out_ft[:, :, :, j] = xqkvw[:, :, :, i]
 
-        out = (
-            torch.fft.irfft(
-                out_ft / self.in_channels / self.out_channels, n=xq.size(-1)
-            ).permute(0, 3, 2, 1)
-        )
+        out = torch.fft.irfft(
+            out_ft / self.in_channels / self.out_channels, n=xq.size(-1)
+        ).permute(0, 3, 2, 1)
         return (out, None)
 
 
@@ -183,9 +179,7 @@ class MultiWaveletTransform(nn.Module):
         self.Lk0 = nn.Linear(ich, c * k)
         self.Lk1 = nn.Linear(c * k, ich)
         self.ich = ich
-        self.MWT_CZ = nn.ModuleList(
-            MWT_CZ1d(k, alpha, L, c, base) for _ in range(nCZ)
-        )
+        self.MWT_CZ = nn.ModuleList(MWT_CZ1d(k, alpha, L, c, base) for _ in range(nCZ))
 
     def forward(self, queries, keys, values, attn_mask):
         B, L, H, E = queries.shape
@@ -247,16 +241,40 @@ class MultiWaveletCross(nn.Module):
         G1r[np.abs(G1r) < 1e-8] = 0
 
         self.attn1 = FourierCrossAttentionW(
-            in_channels, out_channels, seq_len_q, seq_len_kv, modes, activation, mode_select_method
+            in_channels,
+            out_channels,
+            seq_len_q,
+            seq_len_kv,
+            modes,
+            activation,
+            mode_select_method,
         )
         self.attn2 = FourierCrossAttentionW(
-            in_channels, out_channels, seq_len_q, seq_len_kv, modes, activation, mode_select_method
+            in_channels,
+            out_channels,
+            seq_len_q,
+            seq_len_kv,
+            modes,
+            activation,
+            mode_select_method,
         )
         self.attn3 = FourierCrossAttentionW(
-            in_channels, out_channels, seq_len_q, seq_len_kv, modes, activation, mode_select_method
+            in_channels,
+            out_channels,
+            seq_len_q,
+            seq_len_kv,
+            modes,
+            activation,
+            mode_select_method,
         )
         self.attn4 = FourierCrossAttentionW(
-            in_channels, out_channels, seq_len_q, seq_len_kv, modes, activation, mode_select_method
+            in_channels,
+            out_channels,
+            seq_len_q,
+            seq_len_kv,
+            modes,
+            activation,
+            mode_select_method,
         )
         self.T0 = nn.Linear(k, k)
         self.register_buffer("ec_s", torch.Tensor(np.concatenate((H0.T, H1.T), axis=0)))

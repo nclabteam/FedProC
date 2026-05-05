@@ -27,7 +27,13 @@ class FourierBlock(nn.Module):
     """
 
     def __init__(
-        self, in_channels, out_channels, seq_len, modes=0, mode_select_method="random", n_heads=8
+        self,
+        in_channels,
+        out_channels,
+        seq_len,
+        modes=0,
+        mode_select_method="random",
+        n_heads=8,
     ):
         super().__init__()
         self.index = get_frequency_modes(
@@ -39,9 +45,7 @@ class FourierBlock(nn.Module):
         d_values = out_channels // n_heads
         self.weights1 = nn.Parameter(
             self.scale
-            * torch.rand(
-                n_heads, d_keys, d_values, len(self.index), dtype=torch.cfloat
-            )
+            * torch.rand(n_heads, d_keys, d_values, len(self.index), dtype=torch.cfloat)
         )
 
     def compl_mul1d(self, input, weights):
@@ -55,7 +59,9 @@ class FourierBlock(nn.Module):
         for wi, i in enumerate(self.index):
             if i >= x_ft.shape[3] or wi >= out_ft.shape[3]:
                 continue
-            out_ft[:, :, :, wi] = self.compl_mul1d(x_ft[:, :, :, i], self.weights1[:, :, :, wi])
+            out_ft[:, :, :, wi] = self.compl_mul1d(
+                x_ft[:, :, :, i], self.weights1[:, :, :, wi]
+            )
         x = torch.fft.irfft(out_ft, n=x.size(-1))
         return (x, None)
 
@@ -107,13 +113,17 @@ class FourierCrossAttention(nn.Module):
         xk = k.permute(0, 2, 3, 1)
         xv = v.permute(0, 2, 3, 1)
 
-        xq_ft_ = torch.zeros(B, H, E, len(self.index_q), device=xq.device, dtype=torch.cfloat)
+        xq_ft_ = torch.zeros(
+            B, H, E, len(self.index_q), device=xq.device, dtype=torch.cfloat
+        )
         xq_ft = torch.fft.rfft(xq, dim=-1)
         for i, j in enumerate(self.index_q):
             if j >= xq_ft.shape[3]:
                 continue
             xq_ft_[:, :, :, i] = xq_ft[:, :, :, j]
-        xk_ft_ = torch.zeros(B, H, E, len(self.index_kv), device=xq.device, dtype=torch.cfloat)
+        xk_ft_ = torch.zeros(
+            B, H, E, len(self.index_kv), device=xq.device, dtype=torch.cfloat
+        )
         xk_ft = torch.fft.rfft(xk, dim=-1)
         for i, j in enumerate(self.index_kv):
             if j >= xk_ft.shape[3]:

@@ -86,8 +86,11 @@ class AutoCorrelation(nn.Module):
         delays_agg = torch.zeros_like(values).float()
         for i in range(top_k):
             tmp_delay = init_index + delay[:, i]
-            tmp_delay = tmp_delay.unsqueeze(1).unsqueeze(1).unsqueeze(1).repeat(
-                1, head, channel, length
+            tmp_delay = (
+                tmp_delay.unsqueeze(1)
+                .unsqueeze(1)
+                .unsqueeze(1)
+                .repeat(1, head, channel, length)
             )
             pattern = torch.gather(tmp_values, dim=-1, index=tmp_delay)
             delays_agg = delays_agg + pattern * (
@@ -143,12 +146,8 @@ class AutoCorrelation(nn.Module):
             keys = keys[:, :L, :, :]
 
         # period-based dependencies
-        q_fft = torch.fft.rfft(
-            queries.permute(0, 2, 3, 1).contiguous(), dim=-1
-        )
-        k_fft = torch.fft.rfft(
-            keys.permute(0, 2, 3, 1).contiguous(), dim=-1
-        )
+        q_fft = torch.fft.rfft(queries.permute(0, 2, 3, 1).contiguous(), dim=-1)
+        k_fft = torch.fft.rfft(keys.permute(0, 2, 3, 1).contiguous(), dim=-1)
         res = q_fft * torch.conj(k_fft)
         corr = torch.fft.irfft(res, dim=-1)
 

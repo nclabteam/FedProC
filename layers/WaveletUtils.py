@@ -1,7 +1,8 @@
-import numpy as np
 from functools import partial
+
+import numpy as np
 from scipy.special import eval_legendre
-from sympy import Poly, legendre, Symbol, chebyshevt
+from sympy import Poly, Symbol, chebyshevt, legendre
 
 
 def legendreDer(k, x):
@@ -45,7 +46,8 @@ def get_phi_psi(k, base):
                 prod_[np.abs(prod_) < 1e-8] = 0
                 proj_ = (
                     prod_
-                    * 1 / (np.arange(len(prod_)) + 1)
+                    * 1
+                    / (np.arange(len(prod_)) + 1)
                     * np.power(0.5, 1 + np.arange(len(prod_)))
                 ).sum()
                 psi1_coeff[ki, :] -= proj_ * phi_coeff[i, :]
@@ -57,7 +59,8 @@ def get_phi_psi(k, base):
                 prod_[np.abs(prod_) < 1e-8] = 0
                 proj_ = (
                     prod_
-                    * 1 / (np.arange(len(prod_)) + 1)
+                    * 1
+                    / (np.arange(len(prod_)) + 1)
                     * np.power(0.5, 1 + np.arange(len(prod_)))
                 ).sum()
                 psi1_coeff[ki, :] -= proj_ * psi1_coeff[j, :]
@@ -68,7 +71,8 @@ def get_phi_psi(k, base):
             prod_[np.abs(prod_) < 1e-8] = 0
             norm1 = (
                 prod_
-                * 1 / (np.arange(len(prod_)) + 1)
+                * 1
+                / (np.arange(len(prod_)) + 1)
                 * np.power(0.5, 1 + np.arange(len(prod_)))
             ).sum()
 
@@ -77,7 +81,8 @@ def get_phi_psi(k, base):
             prod_[np.abs(prod_) < 1e-8] = 0
             norm2 = (
                 prod_
-                * 1 / (np.arange(len(prod_)) + 1)
+                * 1
+                / (np.arange(len(prod_)) + 1)
                 * (1 - np.power(0.5, 1 + np.arange(len(prod_))))
             ).sum()
             norm_ = np.sqrt(norm1 + norm2)
@@ -102,7 +107,10 @@ def get_phi_psi(k, base):
                 )
                 coeff_ = Poly(chebyshevt(ki, 4 * x - 1), x).all_coeffs()
                 phi_2x_coeff[ki, : ki + 1] = np.flip(
-                    np.sqrt(2) * 2 / np.sqrt(np.pi) * np.array(coeff_).astype(np.float64)
+                    np.sqrt(2)
+                    * 2
+                    / np.sqrt(np.pi)
+                    * np.array(coeff_).astype(np.float64)
                 )
 
         phi = [partial(phi_, phi_coeff[i, :]) for i in range(k)]
@@ -127,9 +135,7 @@ def get_phi_psi(k, base):
                 psi2_coeff[ki, :] -= proj_ * phi_coeff[i, :]
 
             for j in range(ki):
-                proj_ = (
-                    wm * psi1[j](x_m) * np.sqrt(2) * phi[ki](2 * x_m)
-                ).sum()
+                proj_ = (wm * psi1[j](x_m) * np.sqrt(2) * phi[ki](2 * x_m)).sum()
                 psi1_coeff[ki, :] -= proj_ * psi1_coeff[j, :]
                 psi2_coeff[ki, :] -= proj_ * psi2_coeff[j, :]
 
@@ -183,9 +189,7 @@ def get_filter(base, k):
                     * (wm * psi(psi1, psi2, ki, x_m / 2) * phi[kpi](x_m)).sum()
                 )
                 H1[ki, kpi] = (
-                    1
-                    / np.sqrt(2)
-                    * (wm * phi[ki]((x_m + 1) / 2) * phi[kpi](x_m)).sum()
+                    1 / np.sqrt(2) * (wm * phi[ki]((x_m + 1) / 2) * phi[kpi](x_m)).sum()
                 )
                 G1[ki, kpi] = (
                     1
@@ -214,9 +218,7 @@ def get_filter(base, k):
                     * (wm * psi(psi1, psi2, ki, x_m / 2) * phi[kpi](x_m)).sum()
                 )
                 H1[ki, kpi] = (
-                    1
-                    / np.sqrt(2)
-                    * (wm * phi[ki]((x_m + 1) / 2) * phi[kpi](x_m)).sum()
+                    1 / np.sqrt(2) * (wm * phi[ki]((x_m + 1) / 2) * phi[kpi](x_m)).sum()
                 )
                 G1[ki, kpi] = (
                     1
@@ -224,12 +226,10 @@ def get_filter(base, k):
                     * (wm * psi(psi1, psi2, ki, (x_m + 1) / 2) * phi[kpi](x_m)).sum()
                 )
 
-                PHI0[ki, kpi] = (
-                    (wm * phi[ki](2 * x_m) * phi[kpi](2 * x_m)).sum() * 2
-                )
+                PHI0[ki, kpi] = (wm * phi[ki](2 * x_m) * phi[kpi](2 * x_m)).sum() * 2
                 PHI1[ki, kpi] = (
-                    (wm * phi[ki](2 * x_m - 1) * phi[kpi](2 * x_m - 1)).sum() * 2
-                )
+                    wm * phi[ki](2 * x_m - 1) * phi[kpi](2 * x_m - 1)
+                ).sum() * 2
 
         PHI0[np.abs(PHI0) < 1e-8] = 0
         PHI1[np.abs(PHI1) < 1e-8] = 0

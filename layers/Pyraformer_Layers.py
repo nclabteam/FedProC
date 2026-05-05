@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # Attention
 # ---------------------------------------------------------------------------
@@ -110,7 +109,12 @@ class PyraformerEncoderLayer(nn.Module):
     ):
         super().__init__()
         self.slf_attn = MultiHeadAttention(
-            n_head, d_model, d_k, d_v, dropout=dropout, normalize_before=normalize_before
+            n_head,
+            d_model,
+            d_k,
+            d_v,
+            dropout=dropout,
+            normalize_before=normalize_before,
         )
         self.pos_ffn = PositionwiseFeedForward(
             d_model, d_inner, dropout=dropout, normalize_before=normalize_before
@@ -130,7 +134,12 @@ class PyraformerDecoderLayer(nn.Module):
     ):
         super().__init__()
         self.slf_attn = MultiHeadAttention(
-            n_head, d_model, d_k, d_v, dropout=dropout, normalize_before=normalize_before
+            n_head,
+            d_model,
+            d_k,
+            d_v,
+            dropout=dropout,
+            normalize_before=normalize_before,
         )
         self.pos_ffn = PositionwiseFeedForward(
             d_model, d_inner, dropout=dropout, normalize_before=normalize_before
@@ -431,10 +440,8 @@ class PyraformerEncoder(nn.Module):
             seq_enc, _ = layer(seq_enc, mask)
 
         if self.decoder_type == "FC":
-            indexes = (
-                self.indexes.repeat(seq_enc.size(0), 1, 1, seq_enc.size(2)).to(
-                    seq_enc.device
-                )
+            indexes = self.indexes.repeat(seq_enc.size(0), 1, 1, seq_enc.size(2)).to(
+                seq_enc.device
             )
             indexes = indexes.view(seq_enc.size(0), -1, seq_enc.size(2))
             all_enc = torch.gather(seq_enc, 1, indexes)

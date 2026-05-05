@@ -8,7 +8,13 @@ from layers.DataEmbedding import (
     DataEmbedding_wo_temp,
 )
 from layers.SelfAttention_Family import AttentionLayer, ProbAttention
-from layers.Transformer_EncDec import ConvLayer, Decoder, DecoderLayer, Encoder, EncoderLayer
+from layers.Transformer_EncDec import (
+    ConvLayer,
+    Decoder,
+    DecoderLayer,
+    Encoder,
+    EncoderLayer,
+)
 
 
 class Informer(nn.Module):

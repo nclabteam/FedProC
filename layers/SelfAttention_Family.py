@@ -134,9 +134,7 @@ class ProbAttention(nn.Module):
             :,
         ] = torch.matmul(attn, V).type_as(context_in)
         if self.output_attention:
-            attns = (
-                torch.ones([B, H, L_V, L_V]).type_as(attn).to(attn.device) / L_V
-            )
+            attns = torch.ones([B, H, L_V, L_V]).type_as(attn).to(attn.device) / L_V
             attns[
                 torch.arange(B)[:, None, None],
                 torch.arange(H)[None, :, None],

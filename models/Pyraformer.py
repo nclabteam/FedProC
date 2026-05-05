@@ -112,7 +112,11 @@ class Pyraformer(nn.Module):
 
         self.decoder_type = decoder_type
         self.enc_embedding = DataEmbedding(
-            self.channels, d_model, embed_type="timeF", freq=configs.freq, dropout=dropout
+            self.channels,
+            d_model,
+            embed_type="timeF",
+            freq=configs.freq,
+            dropout=dropout,
         )
 
         self.encoder = PyraformerEncoder(opt)
@@ -121,14 +125,16 @@ class Pyraformer(nn.Module):
             # Mask dimensions: Q=label_len+pred_len, K=encoder_out+label_len+pred_len
             enc_out_len = self.seq_len  # encoder output length (before truncation)
             dec_len = self.label_len + self.pred_len
-            mask = get_subsequent_mask(
-                enc_out_len, window_size, dec_len, truncate
-            )
+            mask = get_subsequent_mask(enc_out_len, window_size, dec_len, truncate)
             self.register_buffer("dec_mask", mask)
             self.decoder = PyraformerDecoder(opt, mask)
             self.predictor = Predictor(d_model, self.channels)
             self.dec_embedding = DataEmbedding(
-                self.channels, d_model, embed_type="timeF", freq=configs.freq, dropout=dropout
+                self.channels,
+                d_model,
+                embed_type="timeF",
+                freq=configs.freq,
+                dropout=dropout,
             )
         else:
             self.predictor = Predictor(4 * d_model, self.pred_len * self.channels)

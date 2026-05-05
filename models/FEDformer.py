@@ -138,12 +138,8 @@ class FEDformer(nn.Module):
 
         # Attention selection
         if version == "Wavelets":
-            encoder_self_att = MultiWaveletTransform(
-                ich=d_model, L=L, base=base
-            )
-            decoder_self_att = MultiWaveletTransform(
-                ich=d_model, L=L, base=base
-            )
+            encoder_self_att = MultiWaveletTransform(ich=d_model, L=L, base=base)
+            decoder_self_att = MultiWaveletTransform(ich=d_model, L=L, base=base)
             decoder_cross_att = MultiWaveletCross(
                 in_channels=d_model,
                 out_channels=d_model,
@@ -243,9 +239,7 @@ class FEDformer(nn.Module):
 
         # dec
         dec_out = self.dec_embedding(seasonal_init, dec_mark)
-        seasonal_part, trend_part = self.decoder(
-            dec_out, enc_out, trend=trend_init
-        )
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, trend=trend_init)
 
         # final
         dec_out = trend_part + seasonal_part
