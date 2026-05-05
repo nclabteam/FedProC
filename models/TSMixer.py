@@ -24,7 +24,7 @@ class TSMixer(nn.Module):
         self.model = nn.ModuleList([ResBlock(configs) for _ in range(self.num_layers)])
         self.projection = nn.Linear(self.seq_len, self.pred_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, L, D]
         for i in range(self.num_layers):
             x = self.model[i](x)
@@ -49,7 +49,7 @@ class ResBlock(nn.Module):
             nn.Dropout(configs.dropout),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [B, L, D]
         x = x + self.temporal_mlp(x.transpose(1, 2)).transpose(1, 2)
         x = x + self.feature_mlp(x)

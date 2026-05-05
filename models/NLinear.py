@@ -7,7 +7,7 @@ class NLinear(nn.Module):
         super().__init__()
         self.Linear = nn.Linear(configs.input_len, configs.output_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [batch_size, input_len, in_channels]
         seq_last = x[:, -1:, :].detach()
         x = x - seq_last

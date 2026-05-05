@@ -139,13 +139,15 @@ class FedRCL_Client(Client):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
 
             # [methodology.tex, Algorithm 1, line 10] — L_CE (task loss)
-            outputs = model(batch_x)
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             task_loss = criterion(outputs, batch_y)
 
             # [methodology.tex, Algorithm 1, line 8-9] — L_RCL

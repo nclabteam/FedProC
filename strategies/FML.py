@@ -51,11 +51,13 @@ class FML_Client(Client):
         self._move_optimizer_state_to_param_devices(self.optimizer_g)
         self.model.train()
         self.model_g.train()
-        for batch_x, batch_y in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             batch_x = batch_x.float().to(self.device)
             batch_y = batch_y.float().to(self.device)
-            output = self.model(batch_x)
-            output_g = self.model_g(batch_x)
+            x_mark = x_mark.to(self.device)
+            y_mark = y_mark.to(self.device)
+            output = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
+            output_g = self.model_g(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = self.loss(output, batch_y) * self.alpha + self.KL(
                 F.log_softmax(output, dim=1), F.softmax(output_g, dim=1)
             ) * (1 - self.alpha)

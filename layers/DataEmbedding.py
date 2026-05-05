@@ -84,15 +84,21 @@ class TemporalEmbedding(nn.Module):
 
 
 class TimeFeatureEmbedding(nn.Module):
+    # Normalization constants per column: [month, day, weekday, hour, minute, second]
+    _norm_max = torch.tensor([12.0, 31.0, 6.0, 23.0, 59.0, 59.0])
+
     def __init__(self, d_model, embed_type="timeF", freq="h"):
         super(TimeFeatureEmbedding, self).__init__()
 
         freq_map = {"h": 4, "t": 5, "s": 6, "m": 1, "a": 1, "w": 2, "d": 3, "b": 3}
         d_inp = freq_map[freq]
+        self.d_inp = d_inp
         self.embed = nn.Linear(d_inp, d_model, bias=False)
 
     def forward(self, x):
-        return self.embed(x)
+        # Normalize raw integer features to [-0.5, 0.5]
+        norm = self._norm_max[: self.d_inp].to(x.device, x.dtype)
+        return self.embed(x / norm - 0.5)
 
 
 class DataEmbedding(nn.Module):
@@ -122,7 +128,6 @@ class DataEmbedding_wo_pos(nn.Module):
         super(DataEmbedding_wo_pos, self).__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
-        self.position_embedding = PositionalEmbedding(d_model=d_model)
         self.temporal_embedding = (
             TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
             if embed_type != "timeF"
@@ -146,15 +151,9 @@ class DataEmbedding_wo_pos_temp(nn.Module):
         super(DataEmbedding_wo_pos_temp, self).__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
-        self.position_embedding = PositionalEmbedding(d_model=d_model)
-        self.temporal_embedding = (
-            TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-            if embed_type != "timeF"
-            else TimeFeatureEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-        )
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark):
+    def forward(self, x, x_mark=None):
         x = self.value_embedding(x)
         return self.dropout(x)
 
@@ -165,13 +164,8 @@ class DataEmbedding_wo_temp(nn.Module):
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
-        self.temporal_embedding = (
-            TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-            if embed_type != "timeF"
-            else TimeFeatureEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-        )
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark):
+    def forward(self, x, x_mark=None):
         x = self.value_embedding(x) + self.position_embedding(x)
         return self.dropout(x)

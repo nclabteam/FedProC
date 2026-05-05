@@ -114,13 +114,15 @@ class DFedSAM_Client(DFL_Client):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
 
             # Step 1: first forward/backward → compute g
             optimizer.zero_grad()
-            loss = criterion(model(batch_x), batch_y)
+            loss = criterion(model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y)
             loss.backward()
             grad_norm = self._grad_norm(model)
 
@@ -129,7 +131,7 @@ class DFedSAM_Client(DFL_Client):
 
             # Step 3: second forward/backward at (y + delta) → compute g_tilde
             optimizer.zero_grad()
-            loss2 = criterion(model(batch_x), batch_y)
+            loss2 = criterion(model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y)
             loss2.backward()
 
             # Step 4: restore weights and step with perturbed gradient

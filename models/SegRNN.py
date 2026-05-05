@@ -50,7 +50,7 @@ class SegRNN(nn.Module):
             nn.Dropout(self.dropout), nn.Linear(self.d_model, self.seg_len)
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # b:batch_size c:channel_size s:seq_len s:seq_len
         # d:d_model w:seg_len n:seg_num_x m:seg_num_y
         batch_size = x.size(0)

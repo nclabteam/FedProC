@@ -25,7 +25,7 @@ class FAN(nn.Module):
         if configs.with_gate:
             self.gate = nn.Parameter(torch.randn(1, dtype=torch.float32))
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x.permute(0, 2, 1)
         g = self.activation(self.input_linear_g(x))
         p = self.input_linear_p(x)

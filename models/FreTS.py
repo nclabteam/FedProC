@@ -109,7 +109,7 @@ class FreTS(nn.Module):
         y = torch.view_as_complex(y)
         return y
 
-    def forward(self, x_enc):
+    def forward(self, x_enc, **kwargs):
         # x: [Batch, Input length, Channel]
         B, T, N = x_enc.shape
         # embedding x: [B, N, T, D]

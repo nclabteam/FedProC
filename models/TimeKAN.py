@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 
+from layers.ChebyKANLayer import ChebyKANLinear
 from layers.DataEmbedding import DataEmbedding_wo_pos
 from layers.SeriesDecompMA import SeriesDecompMA as series_decomp
+from layers.StandardNorm import Normalize
 
 
 class TimeKAN(nn.Module):
@@ -77,7 +79,7 @@ class TimeKAN(nn.Module):
         x_enc = x_enc_sampling_list
         return x_enc
 
-    def forward(self, x_enc):
+    def forward(self, x_enc, **kwargs):
         x_enc = self.__multi_level_process_inputs(x_enc)
         x_list = []
         for i, x in zip(
@@ -110,87 +112,12 @@ class TimeKAN(nn.Module):
         return dec_out
 
 
-class Normalize(nn.Module):
-    def __init__(
-        self,
-        num_features: int,
-        eps=1e-5,
-        affine=False,
-        subtract_last=False,
-        non_norm=False,
-    ):
-        """
-        :param num_features: the number of features or channels
-        :param eps: a value added for numerical stability
-        :param affine: if True, RevIN has learnable affine parameters
-        """
-        super(Normalize, self).__init__()
-        self.num_features = num_features
-        self.eps = eps
-        self.affine = affine
-        self.subtract_last = subtract_last
-        self.non_norm = non_norm
-        if self.affine:
-            self._init_params()
-
-    def forward(self, x, mode: str):
-        if mode == "norm":
-            self._get_statistics(x)
-            x = self._normalize(x)
-        elif mode == "denorm":
-            x = self._denormalize(x)
-        else:
-            raise NotImplementedError
-        return x
-
-    def _init_params(self):
-        # initialize RevIN params: (C,)
-        self.affine_weight = nn.Parameter(torch.ones(self.num_features))
-        self.affine_bias = nn.Parameter(torch.zeros(self.num_features))
-
-    def _get_statistics(self, x):
-        dim2reduce = tuple(range(1, x.ndim - 1))
-        if self.subtract_last:
-            self.last = x[:, -1, :].unsqueeze(1)
-        else:
-            self.mean = torch.mean(x, dim=dim2reduce, keepdim=True).detach()
-        self.stdev = torch.sqrt(
-            torch.var(x, dim=dim2reduce, keepdim=True, unbiased=False) + self.eps
-        ).detach()
-
-    def _normalize(self, x):
-        if self.non_norm:
-            return x
-        if self.subtract_last:
-            x = x - self.last
-        else:
-            x = x - self.mean
-        x = x / self.stdev
-        if self.affine:
-            x = x * self.affine_weight
-            x = x + self.affine_bias
-        return x
-
-    def _denormalize(self, x):
-        if self.non_norm:
-            return x
-        if self.affine:
-            x = x - self.affine_bias
-            x = x / (self.affine_weight + self.eps * self.eps)
-        x = x * self.stdev
-        if self.subtract_last:
-            x = x + self.last
-        else:
-            x = x + self.mean
-        return x
-
-
 class ChebyKANLayer(nn.Module):
     def __init__(self, in_features, out_features, order):
         super().__init__()
         self.fc1 = ChebyKANLinear(in_features, out_features, order)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, N, C = x.shape
         x = self.fc1(x.reshape(B * N, C))
         x = x.reshape(B, N, -1).contiguous()
@@ -202,7 +129,7 @@ class FrequencyDecomp(nn.Module):
         super(FrequencyDecomp, self).__init__()
         self.configs = configs
 
-    def forward(self, level_list):
+    def forward(self, level_list, **kwargs):
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
@@ -270,7 +197,7 @@ class FrequencyMixing(nn.Module):
             ]
         )
 
-    def forward(self, level_list):
+    def forward(self, level_list, **kwargs):
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
@@ -320,7 +247,7 @@ class M_KAN(nn.Module):
             d_model, d_model, kernel_size=3, degree=order, groups=d_model
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x1 = self.channel_mixer(x)
         x2 = self.conv(x)
         out = x1 + x2
@@ -359,7 +286,7 @@ class BasicConv(nn.Module):
         self.act = nn.GELU() if act else None
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         if self.bn is not None:
             x = self.bn(x)
         x = self.conv(x.transpose(-1, -2)).transpose(-1, -2)
@@ -368,53 +295,3 @@ class BasicConv(nn.Module):
         if self.dropout is not None:
             x = self.dropout(x)
         return x
-
-
-# This is inspired by Kolmogorov-Arnold Networks but using Chebyshev polynomials instead of splines coefficients
-class ChebyKANLinear(nn.Module):
-    def __init__(self, input_dim, output_dim, degree):
-        super(ChebyKANLinear, self).__init__()
-        self.inputdim = input_dim
-        self.outdim = output_dim
-        self.degree = degree
-
-        self.cheby_coeffs = nn.Parameter(torch.empty(input_dim, output_dim, degree + 1))
-        self.epsilon = 1e-7
-        self.pre_mul = False
-        self.post_mul = False
-        nn.init.normal_(self.cheby_coeffs, mean=0.0, std=1 / (input_dim * (degree + 1)))
-        self.register_buffer("arange", torch.arange(0, degree + 1, 1))
-
-    def forward(self, x):
-        # Since Chebyshev polynomial is defined in [-1, 1]
-        # We need to normalize x to [-1, 1] using tanh
-        # View and repeat input degree + 1 times
-        b, c_in = x.shape
-        if self.pre_mul:
-            mul_1 = x[:, ::2]
-            mul_2 = x[:, 1::2]
-            mul_res = mul_1 * mul_2
-            x = torch.concat([x[:, : x.shape[1] // 2], mul_res])
-        x = x.view((b, c_in, 1)).expand(
-            -1, -1, self.degree + 1
-        )  # shape = (batch_size, inputdim, self.degree + 1)
-        # Apply acos
-        x = torch.tanh(x)
-        x = torch.tanh(x)
-        x = torch.acos(x)
-        # x = torch.acos(torch.clamp(x, -1 + self.epsilon, 1 - self.epsilon))
-        # # Multiply by arange [0 .. degree]
-        x = x * self.arange
-        # Apply cos
-        x = x.cos()
-        # Compute the Chebyshev interpolation
-        y = torch.einsum(
-            "bid,iod->bo", x, self.cheby_coeffs
-        )  # shape = (batch_size, outdim)
-        y = y.view(-1, self.outdim)
-        if self.post_mul:
-            mul_1 = y[:, ::2]
-            mul_2 = y[:, 1::2]
-            mul_res = mul_1 * mul_2
-            y = torch.concat([y[:, : y.shape[1] // 2], mul_res])
-        return y

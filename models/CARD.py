@@ -59,7 +59,7 @@ class CARD(nn.Module):
             alpha=configs.alpha,
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x.permute(0, 2, 1)
         x = self.model(x)
         x = x.permute(0, 2, 1)
@@ -157,7 +157,7 @@ class CARDformer(nn.Module):
             ]
         )
 
-    def forward(self, z):
+    def forward(self, z, **kwargs):
         b, c, s = z.shape
 
         z_mean = torch.mean(z, dim=(-1), keepdims=True)
@@ -280,7 +280,7 @@ class Attention(nn.Module):
         src_dp = torch.einsum("bnhef,bnhec -> bnhcf", src, src_dp)
         return src_dp
 
-    def forward(self, src):
+    def forward(self, src, **kwargs):
         B, nvars, H, C = src.shape
 
         qkv = (

@@ -26,7 +26,7 @@ class DSSRNN(nn.Module):
         )
         self.Linear_Trend = nn.Linear(configs.input_len, configs.output_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [Batch, Input length, Channel]
         seasonal_init, trend_init = self.decomposition(x)
         trend_init = trend_init.permute(0, 2, 1)
@@ -49,7 +49,7 @@ class SSRNN(nn.Module):
         self.Linear = nn.Linear(seq_len, pred_len)
         self.fc = nn.Linear(hidden_size, pred_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x.shape: torch.Size([16, 96, 21])
         # [Batch, Input length, Channel]
         x = x.permute(0, 2, 1)
@@ -75,7 +75,7 @@ class CustomRNNCell(nn.Module):
         self.input_layer = nn.Linear(input_size, hidden_size)
         self.hidden_layer = nn.Linear(hidden_size, hidden_size)
 
-    def forward(self, x, hidden):
+    def forward(self, x, hidden, **kwargs):
         # Compute transformations for input and hidden state
         input_transformation = self.input_layer(x)
         hidden_transformation = self.hidden_layer(hidden)

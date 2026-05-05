@@ -46,21 +46,27 @@ class MOON_Client(Client):
         prev_model.eval()
 
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
 
             # [eq.3] — supervised loss ℓ_sup
-            outputs = model(batch_x)
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss_sup = criterion(outputs, batch_y)
 
             # [§Method] — representations z, z_glob, z_prev
             # TSF adaptation: use flattened output as representation (no projection head)
             z = outputs.flatten(start_dim=1)
             with torch.no_grad():
-                z_glob = global_model(batch_x).flatten(start_dim=1)
-                z_prev = prev_model(batch_x).flatten(start_dim=1)
+                z_glob = global_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
+                    start_dim=1
+                )
+                z_prev = prev_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
+                    start_dim=1
+                )
 
             # [eq.1] — model-contrastive loss ℓ_con (NT-Xent style)
             sim_glob = F.cosine_similarity(z, z_glob, dim=1) / self.temperature

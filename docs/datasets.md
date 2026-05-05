@@ -116,6 +116,26 @@ Merge multiple datasets, each with potentially different configurations per data
 
 ---
 
-**Note:**  
+**Note:**
 - For all scenarios, you can further control client configuration using arguments like `--input_len`, `--output_len`, and `--batch_size`.
 - Refer to the dataset table above for available dataset names and their details.
+
+---
+
+## Time Marks
+
+Processed datasets (`.npz` files) automatically include temporal time mark features (`x_mark`, `y_mark`) alongside the input (`x`) and target (`y`) arrays. These are integer-valued calendar features extracted from the date column, ordered as `[month, day_of_month, day_of_week, hour, minute]` (not all frequencies use all columns).
+
+Models that accept time marks (e.g., `Transformer`) use them automatically. Models that do not accept marks simply ignore them — the training pipeline only passes marks when the model's `forward` signature accepts `x_mark`/`y_mark` keyword arguments.
+
+The number of mark columns depends on the dataset granularity:
+
+| Granularity | Columns | Count |
+|-------------|---------|-------|
+| `s` (second) | month, day, weekday, hour, minute, second | 6 |
+| `t` (minute) | month, day, weekday, hour, minute | 5 |
+| `h` (hour) | month, day, weekday, hour | 4 |
+| `d` (day) | month, day, weekday | 3 |
+| `w` (week) | month, day, week_of_year | 3 |
+| `mo` (month) | month | 1 |
+| `q` (quarter) | month | 1 |

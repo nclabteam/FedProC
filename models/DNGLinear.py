@@ -31,7 +31,7 @@ class DNGLinear(nn.Module):
         self.GeLU = nn.GELU()
         self.Hidden1 = nn.Linear(self.seq_len, self.pred_len)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x1 = self.nlinear(x)
         x2 = self.dlinear(x)
         x3 = x.permute(0, 2, 1)

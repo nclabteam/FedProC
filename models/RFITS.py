@@ -35,7 +35,7 @@ class RFITS(nn.Module):
             out_features=int(self.cut_freq * self.length_ratio),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # RevIN
         x_mean = torch.mean(x, dim=1, keepdim=True)
         x = x - x_mean

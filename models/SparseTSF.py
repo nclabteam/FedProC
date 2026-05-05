@@ -47,7 +47,7 @@ class SparseTSF(nn.Module):
                 nn.Linear(self.d_model, self.seg_num_y),
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         batch_size = x.shape[0]
         # normalization and permute     b,s,c -> b,c,s
         seq_mean = torch.mean(x, dim=1).unsqueeze(1)

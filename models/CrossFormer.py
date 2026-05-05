@@ -90,7 +90,7 @@ class CrossFormer(nn.Module):
             factor=configs.factor,
         )
 
-    def forward(self, x_seq):
+    def forward(self, x_seq, **kwargs):
         if self.baseline:
             base = x_seq.mean(dim=1, keepdim=True)
         else:
@@ -156,7 +156,7 @@ class Encoder(nn.Module):
                 )
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         encode_x = []
         encode_x.append(x)
 
@@ -195,7 +195,7 @@ class Decoder(nn.Module):
                 )
             )
 
-    def forward(self, x, cross):
+    def forward(self, x, cross, **kwargs):
         final_predict = None
         i = 0
 
@@ -246,7 +246,7 @@ class DecoderLayer(nn.Module):
         )
         self.linear_pred = nn.Linear(d_model, seg_len)
 
-    def forward(self, x, cross):
+    def forward(self, x, cross, **kwargs):
         """
         x: the output of last decoder layer
         cross: the output of the corresponding encoder layer
@@ -297,7 +297,7 @@ class SegMerging(nn.Module):
         self.linear_trans = nn.Linear(win_size * d_model, d_model)
         self.norm = norm_layer(win_size * d_model)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         """
         x: B, ts_d, L, d_model
         """
@@ -342,7 +342,7 @@ class scale_block(nn.Module):
                 TwoStageAttentionLayer(seg_num, factor, d_model, n_heads, d_ff, dropout)
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         _, ts_dim, _, _ = x.shape
 
         if self.merge_layer is not None:
@@ -361,7 +361,7 @@ class DSW_embedding(nn.Module):
 
         self.linear = nn.Linear(seg_len, d_model)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         batch, ts_len, ts_dim = x.shape
 
         x_segment = rearrange(
@@ -385,7 +385,7 @@ class FullAttention(nn.Module):
         self.scale = scale
         self.dropout = nn.Dropout(attention_dropout)
 
-    def forward(self, queries, keys, values):
+    def forward(self, queries, keys, values, **kwargs):
         B, L, H, E = queries.shape
         _, S, _, D = values.shape
         scale = self.scale or 1.0 / math.sqrt(E)
@@ -415,7 +415,7 @@ class AttentionLayer(nn.Module):
         self.out_projection = nn.Linear(d_values * n_heads, d_model)
         self.n_heads = n_heads
 
-    def forward(self, queries, keys, values):
+    def forward(self, queries, keys, values, **kwargs):
         B, L, _ = queries.shape
         _, S, _ = keys.shape
         H = self.n_heads
@@ -463,7 +463,7 @@ class TwoStageAttentionLayer(nn.Module):
             nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model)
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Cross Time Stage: Directly apply MSA to each dimension
         batch = x.shape[0]
         time_in = rearrange(x, "b ts_d seg_num d_model -> (b ts_d) seg_num d_model")

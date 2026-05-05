@@ -64,7 +64,7 @@ class T54TS(nn.Module):
         for layer in (self.t5, self.in_layer, self.out_layer):
             layer.train()
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input: [batch_size, input_len, input_channels]
         B, L, M = x.shape  # B=batch_size, L=input_len, M=input_channels
 

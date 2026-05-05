@@ -104,7 +104,7 @@ class TexFilter(nn.Module):
         y = torch.view_as_complex(y)
         return y
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: [Batch, Input length, Channel]
         B, L, N = x.shape
         z = x

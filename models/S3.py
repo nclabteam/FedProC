@@ -81,7 +81,7 @@ class S3(nn.Module):
             if next_segment_num == 0:
                 next_segment_num = 1
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_copy = x.clone()
         for S3_layer in self.S3_layers:
             # Only process if the input sequence length is greater or equal to the number of segments
@@ -189,7 +189,7 @@ class S3Layer(nn.Module):
                 f"Unsupported initialization type: {self.initialization_type}"
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Ensure shuffle_vector is on the same device as the input tensor
         if self.shuffle_vector.device != x.device:
             self.shuffle_vector = self.shuffle_vector.to(x.device)

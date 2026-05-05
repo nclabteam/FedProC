@@ -73,7 +73,7 @@ class MLCNN(nn.Module):
                     nn.Linear(self.hw * (i + 1), 96)
                 )  # Matching output sequence length
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         batch_size, seq_len, _ = x.shape  # Expecting [batch, 96, 7]
 
         regressors = []

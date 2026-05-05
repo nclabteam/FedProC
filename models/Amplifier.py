@@ -76,7 +76,7 @@ class Amplifier(nn.Module):
                 nn.Linear(self.hidden_size, self.seq_len),
             )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         B, T, C = x.size()
 
         # RevIN

@@ -57,7 +57,7 @@ class Leddam(nn.Module):
             (1 / configs.d_model) * torch.ones([configs.output_len, configs.d_model])
         )
 
-    def forward(self, inp):
+    def forward(self, inp, **kwargs):
         res, main = self.leddam(inp)
         main_out = self.Linear_main(main.permute(0, 2, 1)).permute(0, 2, 1)
         res_out = self.Linear_res(res.permute(0, 2, 1)).permute(0, 2, 1)

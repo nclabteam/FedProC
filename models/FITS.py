@@ -29,7 +29,7 @@ class FITS(nn.Module):
             self.dominance_freq, int(self.dominance_freq * self.length_ratio)
         ).to(torch.cfloat)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # RIN
         x_mean = torch.mean(x, dim=1, keepdim=True)
         x = x - x_mean

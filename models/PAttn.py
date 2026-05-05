@@ -54,7 +54,7 @@ class PAttn(nn.Module):
             x /= stdev
             return x, means, stdev
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input: [Batch, input_len, Channel] -> [Batch, Channel, input_len]
         x = x.transpose(1, 2)
 
@@ -115,7 +115,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
-    def forward(self, q, k, v, mask=None):
+    def forward(self, q, k, v, mask=None, **kwargs):
         d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
         sz_b, len_q, len_k, len_v = q.size(0), q.size(1), k.size(1), v.size(1)
 
@@ -154,7 +154,7 @@ class ScaledDotProductAttention(nn.Module):
         self.temperature = temperature
         self.dropout = nn.Dropout(attn_dropout)
 
-    def forward(self, q, k, v, mask=None):
+    def forward(self, q, k, v, mask=None, **kwargs):
         attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
 
         if mask is not None:
@@ -175,7 +175,7 @@ class Encoder_LLaTA(nn.Module):
             encoder_layer, num_layers=num_encoder_layers
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input: [Batch, seq_len, input_dim]
         x = self.linear(x)
         # Transformer expects [seq_len, batch, hidden_dim]

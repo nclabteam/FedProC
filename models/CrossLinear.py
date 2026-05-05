@@ -58,7 +58,7 @@ class CrossLinear(nn.Module):
             variate_num=configs.input_channels,
         )
 
-    def forward(self, x_enc):
+    def forward(self, x_enc, **kwargs):
         x_enc = x_enc.permute(0, 2, 1)
         # normalization
         x_obj = x_enc
@@ -99,7 +99,7 @@ class Patch_Embedding(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = nn.functional.pad(x, (0, self.pad_num))
         x = x.unfold(2, self.patch_len, self.patch_len)
         x = self.linear(x)
@@ -117,6 +117,6 @@ class De_Patch_Embedding(nn.Module):
             nn.Linear(d_ff, pred_len),
         )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = self.linear(x)
         return x

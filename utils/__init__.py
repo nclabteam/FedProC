@@ -1,7 +1,6 @@
 __all__ = [
     "Decimal",
     "increment_path",
-    "ModelSummarizer",
     "Options",
     "SetSeed",
 ]
@@ -16,10 +15,6 @@ def __getattr__(name):
         from .general import increment_path
 
         return increment_path
-    if name == "ModelSummarizer":
-        from .model_info import ModelSummarizer
-
-        return ModelSummarizer
     if name == "Options":
         from .options import Options
 

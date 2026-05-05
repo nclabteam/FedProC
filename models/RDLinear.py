@@ -19,7 +19,7 @@ class RDLinear(DLinear):
         super().__init__(configs=configs)
         self.rev = RevIN(num_features=configs.input_channels)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         seasonal_init, trend_init = self.decompsition(x)
 
         trend_init = self.rev(trend_init, mode="norm")

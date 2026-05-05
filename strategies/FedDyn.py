@@ -80,10 +80,12 @@ class FedDyn_Client(Client):
     ):
         model.to(device)
         model.train()
-        for batch_x, batch_y in dataloader:
+        for batch_x, batch_y, x_mark, y_mark in dataloader:
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
-            outputs = model(batch_x)
+            x_mark = x_mark.to(device)
+            y_mark = y_mark.to(device)
+            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = criterion(outputs, batch_y)
             if self.global_model_vector is not None:
                 self.global_model_vector = self.global_model_vector.to(device)

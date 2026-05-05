@@ -201,7 +201,7 @@ class VisionTS(nn.Module):
         self.register_buffer("mask", mask.reshape((1, -1)))
         self.mask_ratio = torch.mean(mask).item()
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Input: [batch_size, input_len, input_channels]
         # Output: [batch_size, output_len, output_channels]
 
@@ -630,7 +630,7 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio=0.75, noise=None):
+    def forward(self, imgs, mask_ratio=0.75, noise=None, **kwargs):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, noise)
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
         return None, pred, mask

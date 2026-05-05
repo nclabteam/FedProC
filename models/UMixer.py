@@ -69,7 +69,7 @@ class UMixer(nn.Module):
         )
         self.comb = nn.Linear(self.layers, 1)
 
-    def forward(self, x_input):
+    def forward(self, x_input, **kwargs):
         x_ori = x_input.contiguous()
         x_input = self.predict_linear(x_input.permute(0, 2, 1))
         x_input, n_vars = self.patch_embedding(x_input)
@@ -123,7 +123,7 @@ class PatchEmbedding(nn.Module):
         # Residual dropout
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # do patching
         n_vars = x.shape[1]
         x = self.padding_patch_layer(x)
@@ -154,7 +154,7 @@ class TokenEmbedding(nn.Module):
                     m.weight, mode="fan_in", nonlinearity="leaky_relu"
                 )
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
@@ -183,7 +183,7 @@ class Flatten_Head(nn.Module):
         self.linear = nn.Linear(nf, target_window)
         self.dropout = nn.Dropout(head_dropout)
 
-    def forward(self, x):  # x: [bs x nvars x d_model x patch_num]
+    def forward(self, x, **kwargs):  # x: [bs x nvars x d_model x patch_num]
         x = self.flatten(x)
         x = self.linear(x)
         x = self.dropout(x)
@@ -200,7 +200,7 @@ class moving_avg(nn.Module):
         self.kernel_size = kernel_size
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x shape: batch,seq_len,channels
         # padding on the both ends of time series
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
@@ -220,7 +220,7 @@ class series_decomp(nn.Module):
         super(series_decomp, self).__init__()
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         moving_mean = self.moving_avg(x)
         res = x - moving_mean
         return res, moving_mean
@@ -236,7 +236,7 @@ class series_decomp_multi(nn.Module):
         self.kernel_size = kernel_size
         self.moving_avg = [moving_avg(kernel, stride=1) for kernel in kernel_size]
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         moving_mean = []
         res = []
         for func in self.moving_avg:
@@ -264,7 +264,7 @@ class channelMix_CI_pat(nn.Module):
         self.norm = nn.LayerNorm(configs.d_model)
         self.channels = configs.d_model
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         o = torch.zeros_like(x)
         for i in range(self.channels):
             o[:, :, i] = self.drop(self.conv2[i](self.gelu(self.conv1[i](x[:, :, i]))))
@@ -287,7 +287,7 @@ class tempolMix_CI_pat(nn.Module):
         self.norm = nn.LayerNorm(configs.d_model)
         self.channels = patnum
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         o = torch.zeros_like(x)
         for i in range(self.channels):
             o[:, i, :] = self.drop(self.conv2[i](self.gelu(self.conv1[i](x[:, i, :]))))

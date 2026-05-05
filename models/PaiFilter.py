@@ -42,7 +42,7 @@ class PaiFilter(nn.Module):
         out = torch.fft.irfft(y, n=self.embed_size, dim=2, norm="ortho")
         return out
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         z = x
         z = self.revin_layer(z, "norm")
         x = z
