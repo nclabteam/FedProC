@@ -29,8 +29,7 @@
 |
 | FedDF* | NeurIPS | 2020 | Ensemble Distillation for Robust Model Fusion in Federated Learning | [Arxiv](https://arxiv.org/abs/2006.07242) |
 | FedMD | NeurIPS-W | 2019 | FedMD: Heterogenous Federated Learning via Model Distillation | [Arxiv](https://arxiv.org/abs/1910.03581) |
-| FDCR | NeurIPS | 2024 | Parameter Disparities Dissection for Backdoor Defense in Heterogeneous Federated Learning | [Arxiv](https://arxiv.org/abs/2404.10332) |
-
-| FedRolex | NeurIPS | 2022 | FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction | [Arxiv](https://arxiv.org/abs/2211.11614) |
+| FDCR | NeurIPS | 2024 | Parameter Disparities Dissection for Backdoor Defense in Heterogeneous Federated Learning | [Arxiv](https://arxiv.org/abs/2404.10332) - [GitHub](https://github.com/WenkeHuang/FDCR) |
+| FedRolex | NeurIPS | 2022 | FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction | [Arxiv](https://arxiv.org/abs/2211.11614) - [GitHub](https://github.com/AIoT-MLSys-Lab/FedRolex) |
 
 \* Adapted from classification to regression (original uses softmax + KL-divergence; we use MSE). Please use with caution.
