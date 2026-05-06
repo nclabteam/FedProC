@@ -6,19 +6,17 @@ import torch.nn.functional as F
 
 from losses import KLDivergence
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class FML(Server):
+class FML(pFL):
 
     optional = {
         "alpha": 0.9,
         "beta": 0.1,
     }
 
-    compulsory = {
-        "save_local_model": True,
-    }
+    compulsory = {}
 
     @classmethod
     def args_update(cls, parser):
@@ -29,7 +27,7 @@ class FML(Server):
         self.weights = torch.tensor([1 / len(self.client_data)] * len(self.client_data))
 
 
-class FML_Client(Client):
+class FML_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

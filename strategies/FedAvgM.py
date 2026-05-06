@@ -1,6 +1,6 @@
 import copy
 
-from .base import Server
+from .tFL import tFL as Server
 
 
 class FedAvgM(Server):

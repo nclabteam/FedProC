@@ -1,9 +1,9 @@
 import torch
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class FedMedian(Server):
+class FedMedian(tFL):
 
     def calculate_aggregation_weights(self):
         pass
@@ -17,6 +17,6 @@ class FedMedian(Server):
             param.data = torch.median(layers, dim=0).values.clone()
 
 
-class FedMedian_Client(Client):
+class FedMedian_Client(tFL_Client):
     def variables_to_be_sent(self):
         return {"model": self.model}

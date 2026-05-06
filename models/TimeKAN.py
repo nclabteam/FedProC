@@ -4,7 +4,7 @@ import torch.nn as nn
 from layers.ChebyKANLayer import ChebyKANLinear
 from layers.DataEmbedding import DataEmbedding_wo_pos
 from layers.SeriesDecompMA import SeriesDecompMA as series_decomp
-from layers.StandardNorm import Normalize
+from layers.RevIN import RevIN as Normalize
 
 
 class TimeKAN(nn.Module):

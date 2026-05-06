@@ -15,7 +15,10 @@ for filename in os.listdir(current_dir):
         # Get the module name by stripping .py
         module_name = filename[:-3]
         # Dynamically import the module
-        module = importlib.import_module(f".{module_name}", package=__name__)
+        try:
+            module = importlib.import_module(f".{module_name}", package=__name__)
+        except (ImportError, ModuleNotFoundError):
+            continue
 
         # Loop through all members of the module
         for name, obj in inspect.getmembers(module):

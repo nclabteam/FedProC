@@ -2,10 +2,10 @@ import gc
 
 import torch
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class Elastic(Server):
+class Elastic(tFL):
 
     optional = {
         "tau": 0.5,
@@ -51,7 +51,7 @@ class Elastic(Server):
             client.calculate_sensitivity()
 
 
-class Elastic_Client(Client):
+class Elastic_Client(tFL_Client):
     def variables_to_be_sent(self):
         to_be_sent = super().variables_to_be_sent()
         to_be_sent["sensitivity"] = self.sensitivity
@@ -66,7 +66,9 @@ class Elastic_Client(Client):
         )
         self.model.to(self.device)
         self.model.eval()
-        for x, y in self.load_train_data(sample_ratio=self.sample_ratio, shuffle=False):
+        for x, y, _x_mark, _y_mark in self.load_train_data(
+            sample_ratio=self.sample_ratio, shuffle=False
+        ):
             x = x.to(self.device)
             y = y.to(self.device)
             logits = self.model(x)

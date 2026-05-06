@@ -1,12 +1,12 @@
-from typing import Dict, List, Tuple
+import copy
+from typing import Dict, List
 
-import numpy as np
 import torch
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class FedRolex(Server):
+class FedRolex(tFL):
     """
     FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction.
 
@@ -27,15 +27,15 @@ class FedRolex(Server):
         "capacity": "1,0.5,0.25,0.125",
     }
 
-    compulsory = {
-        "save_local_model": True,
-    }
+    compulsory = {}
 
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-            "--capacity", type=str, default=None,
-            help="Comma-separated client capacity ratios (e.g. '1,0.5,0.25,0.125')"
+            "--capacity",
+            type=str,
+            default=None,
+            help="Comma-separated client capacity ratios (e.g. '1,0.5,0.25,0.125')",
         )
 
     def __init__(self, configs, times):
@@ -125,21 +125,47 @@ class FedRolex(Server):
                     continue
 
                 # Roll the permutation and take first k indices
-                rolled = torch.roll(perm, roll_offset.item() if isinstance(roll_offset, torch.Tensor) else roll_offset, 0)
+                rolled = torch.roll(
+                    perm,
+                    (
+                        roll_offset.item()
+                        if isinstance(roll_offset, torch.Tensor)
+                        else roll_offset
+                    ),
+                    0,
+                )
                 active_idx = rolled[:k]
                 sub_state[name] = param[active_idx].clone()
 
-            client.receive_from_server({
-                "sub_state": sub_state,
-                "capacity": capacity,
-                "active_indices": {
-                    name: torch.roll(self._global_idx[name],
-                                     int(self.round_counter * max(1, int(self.model.state_dict()[name].shape[0] * capacity))),
-                                     0)[:max(1, int(self.model.state_dict()[name].shape[0] * capacity))]
-                    for name in global_state
-                    if name in self._global_idx
-                },
-            })
+            client.receive_from_server(
+                {
+                    "sub_state": sub_state,
+                    "capacity": capacity,
+                    "active_indices": {
+                        name: torch.roll(
+                            self._global_idx[name],
+                            int(
+                                self.round_counter
+                                * max(
+                                    1,
+                                    int(
+                                        self.model.state_dict()[name].shape[0]
+                                        * capacity
+                                    ),
+                                )
+                            ),
+                            0,
+                        )[
+                            : max(
+                                1,
+                                int(self.model.state_dict()[name].shape[0] * capacity),
+                            )
+                        ]
+                        for name in global_state
+                        if name in self._global_idx
+                    },
+                }
+            )
 
     def receive_from_clients(self):
         self.client_data = []
@@ -149,8 +175,13 @@ class FedRolex(Server):
     def aggregate_models(self):
         """Index-scatter aggregation: write sub-model params back to global positions."""
         global_state = self.model.state_dict()
-        accum = {k: torch.zeros_like(v, dtype=torch.float64) for k, v in global_state.items()}
-        count = {k: torch.zeros(v.shape[0], dtype=torch.float64) for k, v in global_state.items()}
+        accum = {
+            k: torch.zeros_like(v, dtype=torch.float64) for k, v in global_state.items()
+        }
+        count = {
+            k: torch.zeros(v.shape[0], dtype=torch.float64)
+            for k, v in global_state.items()
+        }
 
         for client_data in self.client_data:
             sub_state = client_data["sub_state"]
@@ -168,7 +199,9 @@ class FedRolex(Server):
             mask = count[name] > 0
             global_state[name] = torch.where(
                 mask.unsqueeze(-1) if len(global_state[name].shape) > 1 else mask,
-                (accum[name] / count[name].clamp(min=1)).to(dtype=global_state[name].dtype),
+                (accum[name] / count[name].clamp(min=1)).to(
+                    dtype=global_state[name].dtype
+                ),
                 global_state[name],
             )
 
@@ -176,7 +209,7 @@ class FedRolex(Server):
         self.round_counter += 1
 
 
-class FedRolex_Client(Client):
+class FedRolex_Client(tFL_Client):
     """Client that trains a physically narrower sub-model extracted from the global model."""
 
     def __init__(self, *args, **kwargs):
@@ -203,15 +236,23 @@ class FedRolex_Client(Client):
         sub_model.to(device)
         sub_model.train()
 
-        optimizer = torch.optim.Adam(sub_model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(sub_model.parameters(), lr=self.learning_rate)
         loader = self.load_train_data()
 
-        for _ in range(self.local_epochs):
+        for _ in range(self.epochs):
             for batch_x, batch_y, x_mark, y_mark in loader:
-                batch_x = batch_x.to(device=device, dtype=torch.float32, non_blocking=True)
-                batch_y = batch_y.to(device=device, dtype=torch.float32, non_blocking=True)
-                x_mark = x_mark.to(device=device, dtype=torch.float32, non_blocking=True)
-                y_mark = y_mark.to(device=device, dtype=torch.float32, non_blocking=True)
+                batch_x = batch_x.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                batch_y = batch_y.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                x_mark = x_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
+                y_mark = y_mark.to(
+                    device=device, dtype=torch.float32, non_blocking=True
+                )
 
                 optimizer.zero_grad()
                 output = sub_model(batch_x, x_mark=x_mark, y_mark=y_mark)
@@ -223,9 +264,22 @@ class FedRolex_Client(Client):
         self._sub_state = sub_model.state_dict()
         sub_model.to("cpu")
 
+        # Return training package (same format as tFL_Client.train)
+        model = self.model
+        if self.parallel:
+            model = self._clone_model_to_cpu(self.model)
+        return {
+            "id": self.id,
+            "model": model,
+            "train_samples": self.train_samples,
+            "optimizer_state": copy.deepcopy(self.optimizer.state_dict()),
+            "train_time": 0,
+        }
+
     def _build_narrow_model(self):
         """Build a model with reduced output dimensions matching the sub-state dict."""
         from copy import deepcopy
+
         model = deepcopy(self.model)
 
         # Resize layers to match sub-state dimensions
@@ -247,7 +301,8 @@ class FedRolex_Client(Client):
                         # Linear layer: resize output features
                         old_linear = module
                         new_linear = torch.nn.Linear(
-                            sub_shape[1], sub_shape[0],
+                            sub_shape[1],
+                            sub_shape[0],
                             bias=old_linear.bias is not None,
                         )
                         new_linear.weight.data.copy_(sub_param)
@@ -265,7 +320,8 @@ class FedRolex_Client(Client):
                         # Conv1d: resize output channels
                         old_conv = module
                         new_conv = torch.nn.Conv1d(
-                            sub_shape[1], sub_shape[0],
+                            sub_shape[1],
+                            sub_shape[0],
                             kernel_size=old_conv.kernel_size,
                             stride=old_conv.stride,
                             padding=old_conv.padding,

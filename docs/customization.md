@@ -92,15 +92,15 @@ class FedNew_Client(Client):
     pass
 ```
 
-If the customized `strategy` is inherited from another `strategy` like `DFL`:
+If the customized `strategy` is inherited from another `strategy` like `dFL`:
 
 ```
-from .DFL import DFL, DFL_Client
+from .dFL import dFL, dFL_Client
 
-class FedNew(DFL):
+class FedNew(dFL):
     pass
 
-class FedNew_Client(DFL_Client):
+class FedNew_Client(dFL_Client):
     pass
 ```
 

@@ -2,10 +2,11 @@ from collections import deque
 
 import ray
 
-from .base import Client, Server, SharedMethods
+from .base import SharedMethods
+from .nFL import nFL, nFL_Client
 
 
-class Centralized(Server):
+class Centralized(nFL):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.initialize_loss()
@@ -73,20 +74,11 @@ class Centralized(Server):
         for client in self.clients:
             self.client_data.append(client.send_to_server())
 
-    def send_to_clients(self):
-        pass
-
     def evaluate_personalization_loss(self, *args, **kwargs):
         pass
 
-    def aggregate_models(self):
-        pass
 
-    def calculate_aggregation_weights(self):
-        pass
-
-
-class Centralized_Client(Client):
+class Centralized_Client(nFL_Client):
     def variables_to_be_sent(self):
         return {"dataloader": self.load_train_data()}
 

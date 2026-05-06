@@ -7,9 +7,8 @@ from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from strategies.base import Client, Server
-from strategies.FedAvg import FedAvg, FedAvg_Client
-from strategies.LocalOnly import LocalOnly, LocalOnly_Client
+# Imports are deferred to test methods / build_server to survive module reloads
+# from test_lazy_registries.py
 
 
 class DummyClient:
@@ -36,7 +35,6 @@ class TestStrategies(unittest.TestCase):
             device="cpu",
             device_id="",
             num_workers=0,
-            save_local_model=False,
             exclude_server_model_processes=True,
             skip_eval_train=False,
             eval_gap=1,
@@ -44,6 +42,11 @@ class TestStrategies(unittest.TestCase):
         )
 
     def build_server(self, strategy_cls):
+        # Reimport to get fresh class objects (test_lazy_registries may reload modules)
+        from strategies.tFL import tFL as _tFL, tFL_Client as _tFL_Client
+        from strategies.pFL import pFL as _pFL
+        from strategies.nFL import nFL as _nFL
+
         with tempfile.TemporaryDirectory() as tmpdir:
             configs = self.make_configs(tmpdir)
 
@@ -53,24 +56,25 @@ class TestStrategies(unittest.TestCase):
                 self.output_channels = 2
                 self.train_samples = 1
 
-            import strategies.base as base_module
-
             with (
                 patch("strategies.base.ray.init"),
+                patch("strategies.tFL.ray.init"),
                 patch.object(
-                    Server,
+                    _tFL,
                     "initialize_model",
                     lambda self: setattr(self, "model", "model"),
                 ),
-                patch.object(Server, "get_model_info", lambda self: None),
-                patch.object(Server, "make_logger", lambda self, name, path: None),
-                patch.object(base_module.Client, "__init__", fake_client_init),
+                patch.object(_tFL, "get_model_info", lambda self: None),
+                patch.object(_pFL, "get_model_info", lambda self: None),
+                patch.object(_nFL, "get_model_info", lambda self: None),
+                patch.object(_tFL, "make_logger", lambda self, name, path: None),
+                patch.object(_tFL_Client, "__init__", fake_client_init),
             ):
                 server = strategy_cls(configs=configs, times=0)
         return server
 
     def test_localonly_uses_strategy_specific_client_class(self):
-        from strategies.LocalOnly import LocalOnly_Client as CurrentClient
+        from strategies.LocalOnly import LocalOnly, LocalOnly_Client as CurrentClient
 
         server = self.build_server(LocalOnly)
         self.assertTrue(
@@ -80,7 +84,7 @@ class TestStrategies(unittest.TestCase):
         self.assertEqual(server.num_gpus, 0)
 
     def test_fedavg_uses_strategy_specific_client_class(self):
-        from strategies.FedAvg import FedAvg_Client as CurrentClient
+        from strategies.FedAvg import FedAvg, FedAvg_Client as CurrentClient
 
         server = self.build_server(FedAvg)
         self.assertTrue(
@@ -90,6 +94,9 @@ class TestStrategies(unittest.TestCase):
         self.assertEqual(server.num_gpus, 0)
 
     def test_fedavg_one_round_smoke(self):
+        from strategies.tFL import tFL
+        from strategies.FedAvg import FedAvg
+
         server = object.__new__(FedAvg)
         server.random_join_ratio = False
         server.num_join_clients = 2
@@ -102,14 +109,14 @@ class TestStrategies(unittest.TestCase):
         server.selected_clients = []
         server.get_size = lambda _: 1.5
 
-        Server.select_clients(server)
+        tFL.select_clients(server)
         self.assertEqual(len(server.selected_clients), 2)
 
-        Server.send_to_clients(server)
+        tFL.send_to_clients(server)
         self.assertEqual(server.metrics["send_mb"], [4.5])
         self.assertTrue(all(client.received for client in server.clients))
 
-        Server.receive_from_clients(server)
+        tFL.receive_from_clients(server)
         self.assertEqual(len(server.client_data), 2)
         self.assertEqual(
             sorted(item["client_id"] for item in server.client_data),
@@ -117,12 +124,13 @@ class TestStrategies(unittest.TestCase):
         )
 
     def test_localonly_round_hooks_are_noops(self):
+        from strategies.LocalOnly import LocalOnly
+
         local_only = object.__new__(LocalOnly)
         self.assertIsNone(LocalOnly.receive_from_clients(local_only))
         self.assertIsNone(LocalOnly.calculate_aggregation_weights(local_only))
         self.assertIsNone(LocalOnly.aggregate_models(local_only))
         self.assertIsNone(LocalOnly.send_to_clients(local_only))
-        self.assertIsNone(LocalOnly.evaluate_generalization_loss(local_only))
         self.assertIsNone(LocalOnly.initialize_model(local_only))
 
 

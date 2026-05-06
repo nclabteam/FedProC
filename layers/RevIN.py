@@ -3,17 +3,17 @@ import torch.nn as nn
 
 
 class RevIN(nn.Module):
-    def __init__(self, num_features: int, eps=1e-5, affine=True, subtract_last=False):
-
-        super(RevIN, self).__init__()
+    def __init__(self, num_features: int, eps=1e-5, affine=True, subtract_last=False, non_norm=False):
+        super().__init__()
         self.num_features = num_features
         self.eps = eps
         self.affine = affine
         self.subtract_last = subtract_last
+        self.non_norm = non_norm
         if self.affine:
             self._init_params()
 
-    def forward(self, x, mode: str):
+    def forward(self, x, mode: str, **kwargs):
         if mode == "norm":
             self._get_statistics(x)
             x = self._normalize(x)
@@ -39,6 +39,8 @@ class RevIN(nn.Module):
         ).detach()
 
     def _normalize(self, x):
+        if self.non_norm:
+            return x
         if self.subtract_last:
             x = x - self.last
         else:
@@ -50,6 +52,8 @@ class RevIN(nn.Module):
         return x
 
     def _denormalize(self, x):
+        if self.non_norm:
+            return x
         if self.affine:
             x = x - self.affine_bias
             x = x / (self.affine_weight + self.eps * self.eps)

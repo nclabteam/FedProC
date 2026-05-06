@@ -2,7 +2,8 @@ import torch.nn as nn
 
 from layers import RevIN
 
-from .base import Client, Server, SharedMethods
+from .base import SharedMethods
+from .pFL import pFL, pFL_Client
 
 
 class ModelWithRevIN(nn.Module):
@@ -11,9 +12,9 @@ class ModelWithRevIN(nn.Module):
         self.rev = RevIN(in_channels)
         self.base_model = base_model
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = self.rev(x, "norm")
-        x = self.base_model(x)
+        x = self.base_model(x, **kwargs)
         x = self.rev(x, "denorm")
         return x
 
@@ -36,13 +37,11 @@ class FedRevINShared(SharedMethods):
         self.ensure_revin_wrapped()
 
 
-class FedRevIN(Server, FedRevINShared):
-    compulsory = {
-        "save_local_model": True,
-    }
+class FedRevIN(pFL, FedRevINShared):
+    compulsory = {}
 
 
-class FedRevIN_Client(Client, FedRevINShared):
+class FedRevIN_Client(pFL_Client, FedRevINShared):
     def update_model_params(self, old, new):
         for new_param, (name, old_param) in zip(
             new.parameters(), old.named_parameters()

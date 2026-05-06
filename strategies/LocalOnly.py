@@ -1,30 +1,10 @@
-from .base import Client, Server
+from .nFL import nFL, nFL_Client
 
 
-class LocalOnly(Server):
-    compulsory = {
-        "save_local_model": True,
-        "exclude_server_model_processes": True,
-    }
-
-    def receive_from_clients(self, *args, **kwargs):
-        pass
-
-    def calculate_aggregation_weights(self, *args, **kwargs):
-        pass
-
-    def aggregate_models(self, *args, **kwargs):
-        pass
-
-    def send_to_clients(self, *args, **kwargs):
-        pass
-
+class LocalOnly(nFL):
     def evaluate_generalization_loss(self, *args, **kwargs):
         pass
 
-    def initialize_model(self, *args, **kwargs):
-        pass
 
-
-class LocalOnly_Client(Client):
+class LocalOnly_Client(nFL_Client):
     pass

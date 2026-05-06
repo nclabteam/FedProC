@@ -2,10 +2,10 @@ import copy
 
 import torch
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class FedDyn(Server):
+class FedDyn(pFL):
 
     optional = {
         "alpha": 0.1,
@@ -60,7 +60,7 @@ class FedDyn(Server):
             server_param.data -= (1 / self.alpha) * state_param
 
 
-class FedDyn_Client(Client):
+class FedDyn_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.global_model_vector = None
@@ -79,6 +79,7 @@ class FedDyn_Client(Client):
         offload_after=True,
     ):
         model.to(device)
+        self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
             batch_x = batch_x.float().to(device)
@@ -111,6 +112,7 @@ class FedDyn_Client(Client):
         self.global_model_vector = (
             self.model_parameter_vector(data["model"]).detach().clone()
         )
+        self.old_grad = self.old_grad.to("cpu")
 
     @staticmethod
     def model_parameter_vector(model):

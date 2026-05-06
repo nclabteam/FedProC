@@ -2,7 +2,7 @@ import copy
 
 import torch
 
-from .base import Server
+from .tFL import tFL as Server
 
 
 class FedYogi(Server):

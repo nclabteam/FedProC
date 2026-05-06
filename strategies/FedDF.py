@@ -5,8 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from .base import Server
-from .hFL import hFL, hFL_Client
+from .hFL import hFL
 
 
 class FedDF(hFL):
@@ -52,11 +51,12 @@ class FedDF(hFL):
 
     def _load_public_dataset(self, configs):
         """Load public dataset for server-side distillation."""
-        from data_factory import BaseDataset
+        import data_factory
 
         public_args = copy.deepcopy(configs)
         public_args.dataset = self.public_dataset
-        t = BaseDataset(public_args)
+        dataset_cls = getattr(data_factory, self.public_dataset)
+        t = dataset_cls(public_args)
         t.execute()
 
         all_x, all_y, all_x_mark, all_y_mark = [], [], [], []
@@ -70,10 +70,6 @@ class FedDF(hFL):
         y = torch.as_tensor(np.concatenate(all_y), dtype=torch.float32)
         x_mark = torch.as_tensor(np.concatenate(all_x_mark), dtype=torch.float32)
         y_mark = torch.as_tensor(np.concatenate(all_y_mark), dtype=torch.float32)
-
-        scaler = t.get_scaler()
-        x = torch.as_tensor(scaler.transform(x), dtype=torch.float32)
-        y = torch.as_tensor(scaler.transform(y), dtype=torch.float32)
 
         return DataLoader(
             TensorDataset(x, y, x_mark, y_mark),

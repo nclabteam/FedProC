@@ -1,24 +1,20 @@
 import copy
 
-from topologies import TOPOLOGIES
-
-from .base import Client, Server
-from .DFL import DFL, DFL_Client
+from .dFL import dFL, dFL_Client
+from .pFL import pFL, pFL_Client
 
 
-class FedProx(Server):
+class FedProx(pFL):
     optional = {
         "mu": 0.01,
-        "topology": "FullyConnected",
     }
 
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--mu", type=float, default=None)
-        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
 
 
-class FedProx_Client(Client):
+class FedProx_Client(pFL_Client):
     def receive_from_server(self, data):
         self.snapshot = copy.deepcopy(data["model"]).to("cpu")
         self.update_model_params(old=self.model, new=data["model"])
@@ -56,26 +52,24 @@ class FedProx_Client(Client):
         del global_params
 
 
-class DFedProx(DFL):
+class DFedProx(dFL):
     """Decentralized FedProx: DFL aggregation plus local proximal training."""
 
     optional = {
         "mu": 0.01,
-        "topology": "FullyConnected",
     }
 
     compulsory = {
-        "save_local_model": True,
         "exclude_server_model_processes": True,
     }
 
     @classmethod
     def args_update(cls, parser):
+        super().args_update(parser)
         parser.add_argument("--mu", type=float, default=None)
-        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
 
 
-class DFedProx_Client(DFL_Client):
+class DFedProx_Client(dFL_Client):
     def aggregate_models(self):
         super().aggregate_models()
         self.snapshot = copy.deepcopy(self.model).to("cpu")

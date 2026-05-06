@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class FedALA(Server):
+class FedALA(pFL):
     optional = {
         "eta": 1.0,
         "sample_ratio": 0.8,
@@ -16,9 +16,7 @@ class FedALA(Server):
         "local_patience": 10,
     }
 
-    compulsory = {
-        "save_local_model": True,
-    }
+    compulsory = {}
 
     @classmethod
     def args_update(cls, parser):
@@ -29,7 +27,7 @@ class FedALA(Server):
         parser.add_argument("--local_patience", type=int, default=None)
 
 
-class FedALA_Client(Client):
+class FedALA_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.weights = None  # Learnable local aggregation weights

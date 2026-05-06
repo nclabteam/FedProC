@@ -6,16 +6,15 @@ import torch
 
 from topologies import TOPOLOGIES
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class DFL(Server):
+class dFL(pFL):
     optional = {
         "topology": "FullyConnected",
     }
 
     compulsory = {
-        "save_local_model": True,
         "exclude_server_model_processes": True,
     }
 
@@ -75,11 +74,9 @@ class DFL(Server):
             receive_mb = 0
             all_to_be_received = {}
 
-            # Each client sends its own data
             for key, value in node.variables_to_be_sent().items():
                 all_to_be_received[key] = [value]
 
-            # Receive from neighbors (following topology)
             for neighbor in node.neighbors:
                 neighbor_node = self.clients[neighbor]
                 to_be_received = neighbor_node.variables_to_be_sent()
@@ -107,7 +104,7 @@ class DFL(Server):
             node.aggregate_models()
 
 
-class DFL_Client(Client):
+class dFL_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.neighbors = kwargs["configs"].neighbors[self.id]

@@ -8,7 +8,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from strategies.base import Client, SharedMethods
+from strategies.tFL import tFL_Client as Client
+from strategies.base import SharedMethods
 
 
 class TrackableModel(torch.nn.Module):
@@ -17,7 +18,7 @@ class TrackableModel(torch.nn.Module):
         self.layer = torch.nn.Linear(1, 1)
         self.devices = []
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return self.layer(x)
 
     def to(self, *args, **kwargs):
@@ -41,7 +42,9 @@ class TestDevicePolicy(unittest.TestCase):
     def make_loader(self):
         x = torch.ones(2, 1)
         y = torch.ones(2, 1)
-        return DataLoader(TensorDataset(x, y), batch_size=1)
+        x_mark = torch.ones(2, 1)
+        y_mark = torch.ones(2, 1)
+        return DataLoader(TensorDataset(x, y, x_mark, y_mark), batch_size=1)
 
     def test_calculate_loss_offloads_when_requested(self):
         model = TrackableModel()

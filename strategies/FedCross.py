@@ -3,7 +3,7 @@ import copy
 import torch
 import torch.nn.functional as F
 
-from .base import Server
+from .tFL import tFL as Server
 
 
 class FedCross(Server):
