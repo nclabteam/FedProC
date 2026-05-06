@@ -8,7 +8,6 @@ from .dFL import dFL, dFL_Client
 
 
 class DFedHPO(dFL):
-    """Run decentralized HPO before the normal DFL training loop."""
 
     optional = {
         "trials": 10,

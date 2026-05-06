@@ -203,7 +203,9 @@ class DFedAWA(FedAWA, dFL):
         FedAWA.args_update(parser)
 
     def calculate_aggregation_weights(self):
-        dFL.calculate_aggregation_weights(self)  # delegate to dFL's client-orchestrating version
+        dFL.calculate_aggregation_weights(
+            self
+        )  # delegate to dFL's client-orchestrating version
 
 
 class DFedAWA_Client(dFL_Client):
