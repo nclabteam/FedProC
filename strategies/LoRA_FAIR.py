@@ -17,8 +17,6 @@ class LoRA_FAIR(FedIT):
         "lora_target_modules": ["Linear"],
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--lora_r", default=None, type=int)

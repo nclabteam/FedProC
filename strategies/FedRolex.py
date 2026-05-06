@@ -27,8 +27,6 @@ class FedRolex(tFL):
         "capacity": "1,0.5,0.25,0.125",
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(

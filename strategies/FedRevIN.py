@@ -38,7 +38,7 @@ class FedRevINShared(SharedMethods):
 
 
 class FedRevIN(pFL, FedRevINShared):
-    compulsory = {}
+    pass
 
 
 class FedRevIN_Client(pFL_Client, FedRevINShared):

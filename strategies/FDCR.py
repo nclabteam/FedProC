@@ -92,8 +92,6 @@ class FDCR(pFL):
         "fisher_epochs": 1,
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--bad_client_rate", type=float, default=None)

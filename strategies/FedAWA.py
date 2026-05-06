@@ -199,11 +199,17 @@ class DFedAWA(FedAWA, dFL):
 
     @classmethod
     def args_update(cls, parser):
-        super().args_update(parser)
+        dFL.args_update(parser)
         FedAWA.args_update(parser)
+
+    def calculate_aggregation_weights(self):
+        dFL.calculate_aggregation_weights(self)  # delegate to dFL's client-orchestrating version
 
 
 class DFedAWA_Client(dFL_Client):
+    _flatten_params = staticmethod(FedAWA._flatten_params)
+    _cost_matrix = staticmethod(FedAWA._cost_matrix)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.awa_weights = None

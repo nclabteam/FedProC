@@ -21,8 +21,6 @@ class hFL(pFL):
         "model_assign": "robin",
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--models", type=str, default=None)

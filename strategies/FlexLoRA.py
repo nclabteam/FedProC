@@ -53,10 +53,6 @@ class FlexLoRA(FedIT):
         "client_ranks": None,
     }
 
-    compulsory = {
-        "exclude_server_model_processes": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--lora_r", default=None, type=int)

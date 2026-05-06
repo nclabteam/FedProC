@@ -33,10 +33,6 @@ class FedDF(hFL):
         "distill_lr": 1e-3,
     }
 
-    compulsory = {
-        **hFL.compulsory,
-    }
-
     @classmethod
     def args_update(cls, parser):
         hFL.args_update(parser)

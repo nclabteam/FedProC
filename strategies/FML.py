@@ -16,8 +16,6 @@ class FML(pFL):
         "beta": 0.1,
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--alpha", type=float, default=None)
