@@ -1,9 +1,9 @@
 import torch
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class Krum(Server):
+class Krum(tFL):
 
     optional = {
         "num_malicious_clients": 0,
@@ -102,6 +102,6 @@ class Krum(Server):
         return distance_matrix
 
 
-class Krum_Client(Client):
+class Krum_Client(tFL_Client):
     def variables_to_be_sent(self):
         return {"model": self.model}

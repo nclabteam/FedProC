@@ -5,10 +5,10 @@ import numpy as np
 import torch
 from torch.utils.data import ConcatDataset, DataLoader, TensorDataset
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class FedTrend(Server):
+class FedTrend(tFL):
 
     optional = {
         "L_ct": 10,  # Interval for updating client-side synthetic data
@@ -315,7 +315,7 @@ class FedTrend(Server):
             self._update_D_gt()
 
 
-class FedTrend_Client(Client):
+class FedTrend_Client(tFL_Client):
     D_ct = None  # To store the received synthetic data
 
     def receive_from_server(self, data):

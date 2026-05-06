@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from scipy.sparse.csgraph import connected_components
 from sklearn.neighbors import NearestNeighbors
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
 class FINCH:
@@ -77,7 +77,7 @@ class FINCH:
         return self
 
 
-class FDCR(Server):
+class FDCR(pFL):
     """
     FDCR: Parameter Disparities Dissection for Backdoor Defense
     in Heterogeneous Federated Learning (NeurIPS 2024).
@@ -90,10 +90,6 @@ class FDCR(Server):
     optional = {
         "bad_client_rate": 0.3,
         "fisher_epochs": 1,
-    }
-
-    compulsory = {
-        "save_local_model": True,
     }
 
     @classmethod
@@ -117,7 +113,7 @@ class FDCR(Server):
         """FDCR aggregation: detect attackers via Fisher-weighted disparities, rescale benign params."""
         online_clients = self.selected_clients
         freq = self.weights.clone()
-        lr = self.clients[0].lr  # local learning rate
+        lr = self.clients[0].learning_rate  # local learning rate
 
         # Snapshot previous global model
         if self.prev_global_params is None:
@@ -202,7 +198,7 @@ class FDCR(Server):
         }
 
 
-class FDCR_Client(Client):
+class FDCR_Client(pFL_Client):
     """Client that computes Fisher Information during training."""
 
     def __init__(self, *args, **kwargs):
@@ -211,8 +207,9 @@ class FDCR_Client(Client):
 
     def train(self):
         """Train and compute diagonal Fisher Information."""
-        super().train()
+        result = super().train()
         self._compute_fisher()
+        return result
 
     def _compute_fisher(self):
         """Compute diagonal Fisher Information Matrix approximation."""
@@ -222,7 +219,7 @@ class FDCR_Client(Client):
         }
         loader = self.load_train_data()
         n_batches = 0
-        for batch_x, batch_y in loader:
+        for batch_x, batch_y, _x_mark, _y_mark in loader:
             batch_x = batch_x.to(self.device, non_blocking=True)
             batch_y = batch_y.to(self.device, non_blocking=True)
             self.model.zero_grad()

@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from .base import SharedMethods
+from .base import SharedMethods  # noqa: F401
 from .hFL import hFL, hFL_Client
 
 
@@ -25,6 +25,8 @@ class FedMD(hFL):
         "public_batch_size": 32,
     }
 
+    compulsory = {"exclude_server_model_processes": True}
+
     @classmethod
     def args_update(cls, parser):
         hFL.args_update(parser)
@@ -40,11 +42,12 @@ class FedMD(hFL):
 
     def _load_public_dataset(self, configs):
         """Load public dataset via normal data pipeline."""
-        from data_factory import BaseDataset
+        import data_factory
 
         public_args = copy.deepcopy(configs)
         public_args.dataset = self.public_dataset
-        t = BaseDataset(public_args)
+        dataset_cls = getattr(data_factory, self.public_dataset)
+        t = dataset_cls(public_args)
         t.execute()
 
         all_x, all_y = [], []
@@ -54,10 +57,6 @@ class FedMD(hFL):
                 all_y.append(f["y"])
         x = torch.as_tensor(np.concatenate(all_x), dtype=torch.float32)
         y = torch.as_tensor(np.concatenate(all_y), dtype=torch.float32)
-
-        scaler = t.get_scaler()
-        x = torch.as_tensor(scaler.transform(x), dtype=torch.float32)
-        y = torch.as_tensor(scaler.transform(y), dtype=torch.float32)
 
         return DataLoader(
             TensorDataset(x, y),
@@ -75,6 +74,9 @@ class FedMD(hFL):
         pass
 
     def initialize_loss(self):
+        pass
+
+    def aggregate_models(self):
         pass
 
     def variables_to_be_sent(self):
@@ -96,6 +98,9 @@ class FedMD_Client(hFL_Client):
         super().__init__(*args, **kwargs)
         self.device = getattr(self, "device", "cpu")
 
+    def receive_from_server(self, data):
+        """FedMD doesn't aggregate models — no-op."""
+
     def predict_public(self, public_loader):
         """Compute predictions on public data."""
         self.model.to(self.device)
@@ -112,7 +117,7 @@ class FedMD_Client(hFL_Client):
         """Train to match consensus predictions on public data (MSE distillation)."""
         self.model.to(self.device)
         self.model.train()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         idx = 0
         for _ in range(self.digest_epochs):
             for batch_x, _ in public_loader:

@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
 
-from topologies import TOPOLOGIES
-
-from .base import Server
-from .DFL import DFL, DFL_Client
+from .dFL import dFL, dFL_Client
+from .tFL import tFL as Server
 
 
 class FedAWA(Server):
@@ -196,30 +194,21 @@ class FedAWA(Server):
             self.weights = torch.ones_like(final_probabilities) / num_clients
 
 
-class DFedAWA(DFL):
+class DFedAWA(FedAWA, dFL):
     """Decentralized FedAWA: learn adaptive aggregation weights per receiver."""
-
-    optional = {
-        "topology": "FullyConnected",
-        "server_epochs": 1,
-        "reg_distance": "cos",
-        "server_lr": 0.01,
-        "server_optimizer": "Adam",
-        "fedawa_gamma": 1.0,
-    }
-
-    compulsory = {
-        "save_local_model": True,
-        "exclude_server_model_processes": True,
-    }
 
     @classmethod
     def args_update(cls, parser):
-        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
+        dFL.args_update(parser)
         FedAWA.args_update(parser)
 
+    def calculate_aggregation_weights(self):
+        dFL.calculate_aggregation_weights(
+            self
+        )  # delegate to dFL's client-orchestrating version
 
-class DFedAWA_Client(DFL_Client):
+
+class DFedAWA_Client(dFL_Client):
     _flatten_params = staticmethod(FedAWA._flatten_params)
     _cost_matrix = staticmethod(FedAWA._cost_matrix)
 

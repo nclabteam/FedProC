@@ -1,11 +1,9 @@
 import math
 
-from topologies import TOPOLOGIES
-
-from .DFL import DFL, DFL_Client
+from .dFL import dFL, dFL_Client
 
 
-class DFedSAM(DFL):
+class DFedSAM(dFL):
     """DFedSAM / DFedSAM-MGS server orchestrator.
 
     Inherits DFL topology-based communication. Overrides aggregate_models
@@ -13,20 +11,14 @@ class DFedSAM(DFL):
     """
 
     optional = {
-        "topology": "FullyConnected",
         "use_mgs": True,
         "mgs_steps": 2,
         "rho": 0.05,
     }
 
-    compulsory = {
-        "save_local_model": True,
-        "exclude_server_model_processes": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
-        parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
+        super().args_update(parser)
         parser.add_argument("--rho", type=float, default=0.05, help="SAM radius")
         parser.add_argument(
             "--use_mgs",
@@ -62,7 +54,7 @@ class DFedSAM(DFL):
             super().aggregate_models(*args, **kwargs)
 
 
-class DFedSAM_Client(DFL_Client):
+class DFedSAM_Client(dFL_Client):
     """Local SAM training for DFedSAM.
 
     Each mini-batch:

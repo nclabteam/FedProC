@@ -1,9 +1,9 @@
 import torch
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class FedTrimmedAvg(Server):
+class FedTrimmedAvg(tFL):
 
     optional = {
         "beta": 0.2,
@@ -42,6 +42,6 @@ class FedTrimmedAvg(Server):
             param.data = torch.mean(sorted_layers[lowercut:uppercut], dim=0)
 
 
-class FedTrimmedAvg_Client(Client):
+class FedTrimmedAvg_Client(tFL_Client):
     def variables_to_be_sent(self):
         return {"model": self.model}

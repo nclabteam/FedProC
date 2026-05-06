@@ -3,10 +3,10 @@ import os
 
 import numpy as np
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class hFL(Server):
+class hFL(pFL):
     """
     Base class for federated learning with heterogeneous models.
 
@@ -21,10 +21,6 @@ class hFL(Server):
         "model_assign": "robin",
     }
 
-    compulsory = {
-        "save_local_model": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--models", type=str, default=None)
@@ -37,13 +33,14 @@ class hFL(Server):
         )
 
     def __init__(self, configs, times):
+        self.set_configs(configs=configs, times=times)
         self.model_map = self._build_model_map(configs)
         configs._hfl_model_map = self.model_map
         super().__init__(configs, times)
         self._export_model_config()
 
     def _parse_models_str(self, models_str):
-        """Parse 'DLinear:3,PatchTST:2,CMoS:1' → {'DLinear': 3, 'PatchTST': 2, 'CMoS': 1}
+        """Parse 'DLinear:3,PatchTST:2,CMoS:1' -> {'DLinear': 3, 'PatchTST': 2, 'CMoS': 1}
 
         If no ratios given ('DLinear,PatchTST,CMoS'), each gets ratio 1.
         """
@@ -59,9 +56,8 @@ class hFL(Server):
 
     def _build_model_map(self, configs):
         """Build per-client model assignment. Returns list of dicts with 'client', 'model', 'params'."""
-        # Priority: config_file > models > model (global fallback)
         if self.model_config:
-            with open(self.model_config) as f:
+            with open(self.model_config, encoding="utf-8") as f:
                 return json.load(f)
 
         models_dict = self._parse_models_str(self.models)
@@ -87,17 +83,18 @@ class hFL(Server):
     def _export_model_config(self):
         """Save resolved model_config.json for reproducibility."""
         path = os.path.join(self.save_path, "model_config.json")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.model_map, f, indent=2)
 
 
-class hFL_Client(Client):
+class hFL_Client(pFL_Client):
     """Client that reads its model assignment from the hFL model map."""
 
     def __init__(self, *args, **kwargs):
         configs = kwargs.get("configs") or args[1]
-        if hasattr(configs, "_hfl_model_map"):
-            client_cfg = configs._hfl_model_map[configs._client_id]
+        client_id = kwargs.get("id") or args[2] if len(args) > 2 else None
+        if hasattr(configs, "_hfl_model_map") and client_id is not None:
+            client_cfg = configs._hfl_model_map[client_id]
             configs.model = client_cfg.get("model", configs.model)
             for k, v in client_cfg.get("params", {}).items():
                 setattr(configs, k, v)

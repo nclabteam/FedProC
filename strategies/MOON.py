@@ -3,10 +3,10 @@ import copy
 import torch
 import torch.nn.functional as F
 
-from .base import Client, Server
+from .tFL import tFL, tFL_Client
 
 
-class MOON(Server):
+class MOON(tFL):
     optional = {
         "mu": 1.0,
         "temperature": 0.5,
@@ -18,7 +18,7 @@ class MOON(Server):
         parser.add_argument("--temperature", type=float, default=None)
 
 
-class MOON_Client(Client):
+class MOON_Client(tFL_Client):
     def receive_from_server(self, data):
         # [§Method] — save w_i^{t-1} (previous local model) before overwriting
         self.prev_model = copy.deepcopy(self.model).to("cpu")

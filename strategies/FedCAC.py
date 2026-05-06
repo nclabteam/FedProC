@@ -3,10 +3,10 @@ import copy
 import numpy as np
 import torch
 
-from .base import Client, Server
+from .pFL import pFL, pFL_Client
 
 
-class FedCAC(Server):
+class FedCAC(pFL):
     optional = {"tau": 0.5, "beta": 170}
 
     @classmethod
@@ -16,6 +16,12 @@ class FedCAC(Server):
 
     def get_customized_global_models(self):
         num_clients = len(self.client_data)
+
+        # Skip if any client lacks critical parameters (first round)
+        for i in range(num_clients):
+            if self.client_data[i].get("critical_parameter") is None:
+                return
+
         overlap_buffer = [[] for i in range(num_clients)]
 
         # calculate overlap rate between client i and client j in the selected clients
@@ -34,7 +40,7 @@ class FedCAC(Server):
                     ).cpu()
                     * 2
                 )
-                overlap_buffer[i].append(overlap_rate)
+                overlap_buffer[i].append(overlap_rate.item())
 
         # calculate the global threshold
         overlap_buffer_tensor = torch.tensor(overlap_buffer)
@@ -89,7 +95,7 @@ class FedCAC(Server):
         return {**super().variables_to_be_sent(), "customized_model": customized_models}
 
 
-class FedCAC_Client(Client):
+class FedCAC_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.critical_parameter = (
@@ -102,7 +108,7 @@ class FedCAC_Client(Client):
 
     def train(self):
         self.snapshot = copy.deepcopy(self.model)
-        super().train()
+        result = super().train()
         (
             self.critical_parameter,
             self.global_mask,
@@ -110,12 +116,15 @@ class FedCAC_Client(Client):
         ) = self.evaluate_critical_parameter(
             prevModel=self.snapshot, model=self.model, tau=self.tau
         )
+        return result
 
     def evaluate_critical_parameter(self, prevModel, model, tau):
         r"""
         Overview:
             Implement critical parameter selection.
         """
+        device = next(model.parameters()).device
+        prevModel = prevModel.to(device)
         global_mask = []  # mark non-critical parameter
         local_mask = []  # mark critical parameter
         critical_parameter = []
