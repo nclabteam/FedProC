@@ -16,10 +16,6 @@ class DFedSAM(dFL):
         "rho": 0.05,
     }
 
-    compulsory = {
-        "exclude_server_model_processes": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
         super().args_update(parser)

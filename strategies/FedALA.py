@@ -16,8 +16,6 @@ class FedALA(pFL):
         "local_patience": 10,
     }
 
-    compulsory = {}
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--eta", type=float, default=None)

@@ -194,20 +194,8 @@ class FedAWA(Server):
             self.weights = torch.ones_like(final_probabilities) / num_clients
 
 
-class DFedAWA(dFL):
+class DFedAWA(FedAWA, dFL):
     """Decentralized FedAWA: learn adaptive aggregation weights per receiver."""
-
-    optional = {
-        "server_epochs": 1,
-        "reg_distance": "cos",
-        "server_lr": 0.01,
-        "server_optimizer": "Adam",
-        "fedawa_gamma": 1.0,
-    }
-
-    compulsory = {
-        "exclude_server_model_processes": True,
-    }
 
     @classmethod
     def args_update(cls, parser):
@@ -216,9 +204,6 @@ class DFedAWA(dFL):
 
 
 class DFedAWA_Client(dFL_Client):
-    _flatten_params = staticmethod(FedAWA._flatten_params)
-    _cost_matrix = staticmethod(FedAWA._cost_matrix)
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.awa_weights = None

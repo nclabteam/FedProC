@@ -59,10 +59,6 @@ class DFedProx(dFL):
         "mu": 0.01,
     }
 
-    compulsory = {
-        "exclude_server_model_processes": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
         super().args_update(parser)

@@ -2,15 +2,9 @@ import copy
 
 import numpy as np
 
+from schedulers.BaseScheduler import BaseScheduler
+
 from .dFL import dFL, dFL_Client
-
-
-class _NoOpScheduler:
-    def step(self):
-        pass
-
-    def get_last_lr(self):
-        return [0.0]
 
 
 class DFedHPO(dFL):
@@ -26,7 +20,7 @@ class DFedHPO(dFL):
     }
 
     compulsory = {
-        "exclude_server_model_processes": True,
+        "scheduler": "BaseScheduler",
     }
 
     @classmethod
@@ -92,6 +86,8 @@ class DFedHPO_Client(dFL_Client):
         temp_optimizer = obj(params=self.model.parameters(), configs=self.configs)
         self.configs.learning_rate = original_lr
 
+        temp_scheduler = BaseScheduler(optimizer=temp_optimizer, configs=self.configs)
+
         train_loader = self.load_train_data()
         for _ in range(self.eval_epochs):
             self.train_one_epoch(
@@ -99,7 +95,7 @@ class DFedHPO_Client(dFL_Client):
                 dataloader=train_loader,
                 optimizer=temp_optimizer,
                 criterion=self.loss,
-                scheduler=_NoOpScheduler(),
+                scheduler=temp_scheduler,
                 device=self.device,
                 offload_after=False,
             )
