@@ -14,4 +14,4 @@ analysis/tables
 venv*
 .claude
 .vscode
-tmp
+tmpstrategies/_tmp/
