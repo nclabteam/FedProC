@@ -3,10 +3,10 @@ from typing import Dict, List
 
 import torch
 
-from .tFL import tFL, tFL_Client
+from .pFL import pFL, pFL_Client
 
 
-class FedRolex(tFL):
+class FedRolex(pFL):
     """
     FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction.
 
@@ -210,7 +210,7 @@ class FedRolex(tFL):
         self.round_counter += 1
 
 
-class FedRolex_Client(tFL_Client):
+class FedRolex_Client(pFL_Client):
     """Client that trains a physically narrower sub-model extracted from the global model."""
 
     def __init__(self, *args, **kwargs):
@@ -270,7 +270,7 @@ class FedRolex_Client(tFL_Client):
         self._sub_state = sub_model.state_dict()
         sub_model.to("cpu")
 
-        # Return training package (same format as tFL_Client.train)
+        # Return training package (same format as pFL_Client.train)
         model = self.model
         if self.parallel:
             model = self._clone_model_to_cpu(self.model)
