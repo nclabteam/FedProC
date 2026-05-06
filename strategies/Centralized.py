@@ -7,6 +7,9 @@ from .nFL import nFL, nFL_Client
 
 
 class Centralized(nFL):
+    def initialize_model(self):
+        super(nFL, self).initialize_model()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.initialize_loss()

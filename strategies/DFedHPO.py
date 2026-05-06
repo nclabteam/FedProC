@@ -20,6 +20,7 @@ class DFedHPO(dFL):
     }
 
     compulsory = {
+        **dFL.compulsory,
         "scheduler": "BaseScheduler",
     }
 

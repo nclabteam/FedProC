@@ -170,6 +170,9 @@ class FedRolex(tFL):
         for client in self.selected_clients:
             self.client_data.append(client.send_to_server())
 
+    def calculate_aggregation_weights(self):
+        pass  # Index-scatter aggregation doesn't use weights
+
     def aggregate_models(self):
         """Index-scatter aggregation: write sub-model params back to global positions."""
         global_state = self.model.state_dict()
@@ -254,7 +257,12 @@ class FedRolex_Client(tFL_Client):
 
                 optimizer.zero_grad()
                 output = sub_model(batch_x, x_mark=x_mark, y_mark=y_mark)
-                loss = self.loss(output, batch_y)
+                # Slice batch_y to match sub-model's narrowed output dim
+                target = batch_y
+                if output.shape[1] != batch_y.shape[1] and self._active_indices:
+                    last_key = list(self._active_indices.keys())[-1]
+                    target = batch_y[:, self._active_indices[last_key], :]
+                loss = self.loss(output, target)
                 loss.backward()
                 optimizer.step()
 
