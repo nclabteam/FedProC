@@ -16,7 +16,7 @@ class hFL(pFL):
     """
 
     optional = {
-        "models": "DLinear",
+        "models": "DLinear,TSMixer",
         "model_config": "",
         "model_assign": "robin",
     }
