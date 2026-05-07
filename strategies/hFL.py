@@ -76,9 +76,12 @@ class hFL(pFL):
         else:
             assignments = [configs.model] * n
 
-        return [
-            {"client": i, "model": m, "params": {}} for i, m in enumerate(assignments)
-        ]
+        result = []
+        for i, m in enumerate(assignments):
+            model_cls = self._get_objective_function("models", m)
+            params = dict(getattr(model_cls, "optional", {}))
+            result.append({"client": i, "model": m, "params": params})
+        return result
 
     def _export_model_config(self):
         """Save resolved model_config.json for reproducibility."""
