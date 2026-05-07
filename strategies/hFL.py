@@ -89,6 +89,67 @@ class hFL(pFL):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.model_map, f, indent=2)
 
+    def send_to_clients(self) -> None:
+        """No model broadcast — clients have heterogeneous architectures."""
+        current_iter = getattr(self, "current_iter", 0)
+        for client in self.clients:
+            client.current_iter = current_iter
+
+    def receive_from_clients(self) -> None:
+        """No model collection — clients keep their own models."""
+        pass
+
+    def calculate_aggregation_weights(self) -> None:
+        """No aggregation — heterogeneous models cannot be averaged."""
+        pass
+
+    def aggregate_models(self) -> None:
+        """No aggregation — heterogeneous models cannot be averaged."""
+        pass
+
+    def evaluate_generalization_loss(self, dataset_type: str) -> None:
+        """No generalization eval — no shared server model."""
+        pass
+
+    def save_models(self, save_type: str) -> None:
+        """Only save client models (no server model in hFL)."""
+        if save_type not in ["last", "best"]:
+            raise ValueError("save_type must be 'last' or 'best'")
+
+        should_save = True
+        if save_type == "best":
+            metric_key = "personal_avg_test_loss"
+            if metric_key not in self.metrics or not self.metrics[metric_key]:
+                should_save = False
+            else:
+                metric_values = self.metrics[metric_key]
+                if metric_values[-1] != min(metric_values):
+                    should_save = False
+
+        if not should_save:
+            return
+
+        for client in self.clients:
+            client.save_model(
+                model=client.model,
+                path=client.model_path,
+                name=client.name,
+                postfix=save_type,
+                configs=client.configs,
+                metadata={"save_type": save_type, "owner": client.name},
+                verbose=client.logger,
+            )
+
+    def early_stopping(self) -> bool:
+        metric = self.metrics["personal_avg_test_loss"]
+        if not self.patience or len(metric) < self.patience:
+            return False
+        best_so_far = min(metric)
+        if best_so_far not in metric[-self.patience :]:
+            self.logger.info("Early stopping activated.")
+            return True
+        return False
+
     def get_model_info(self):
         import gc
 
@@ -107,8 +168,8 @@ class hFL_Client(pFL_Client):
     """Client that reads its model assignment from the hFL model map."""
 
     def __init__(self, *args, **kwargs):
-        configs = kwargs.get("configs") or args[1]
-        client_id = kwargs.get("id") or args[2] if len(args) > 2 else None
+        configs = kwargs.get("configs", args[1] if len(args) > 1 else None)
+        client_id = kwargs.get("id", args[2] if len(args) > 2 else None)
         if hasattr(configs, "_hfl_model_map") and client_id is not None:
             client_cfg = configs._hfl_model_map[client_id]
             configs.model = client_cfg.get("model", configs.model)
