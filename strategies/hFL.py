@@ -86,6 +86,19 @@ class hFL(pFL):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.model_map, f, indent=2)
 
+    def get_model_info(self):
+        import gc
+
+        import torch.nn as nn
+
+        super().get_model_info()
+        for client in self.clients:
+            if isinstance(client.model, nn.Module):
+                dl = client.load_train_data()
+                client.summarize_model(dataloader=dl)
+                del dl
+                gc.collect()
+
 
 class hFL_Client(pFL_Client):
     """Client that reads its model assignment from the hFL model map."""

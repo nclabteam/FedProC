@@ -444,6 +444,11 @@ class SharedMethods:
             sys.stdout.buffer.write(b"\n")
             sys.stdout.buffer.flush()
 
+        name = self.name.lower().strip().replace(" ", "_")
+        path = os.path.join(self.models_info_path, f"{name}.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(result))
+
     def save_results(self) -> None:
         pl_df = pl.DataFrame(self.metrics)
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
@@ -504,11 +509,13 @@ class SharedMethods:
         self.model_path = os.path.join(self.save_path, "models")
         self.log_path = os.path.join(self.save_path, "logs")
         self.result_path = os.path.join(self.save_path, "results")
+        self.models_info_path = os.path.join(self.save_path, "models_info")
         for dir_path in [
             self.save_path,
             self.model_path,
             self.log_path,
             self.result_path,
+            self.models_info_path,
         ]:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)

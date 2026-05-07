@@ -1,5 +1,3 @@
-import gc
-
 from .tFL import tFL, tFL_Client
 
 
@@ -66,21 +64,7 @@ class pFL(tFL):
         return False
 
     def get_model_info(self) -> None:
-        import torch.nn as nn
-
-        if not self.exclude_server_model_processes and isinstance(
-            self.model, nn.Module
-        ):
-            dl = self.clients[0].load_train_data()
-            self.summarize_model(dataloader=dl)
-            del dl
-            gc.collect()
-        for client in self.clients:
-            if isinstance(client.model, nn.Module):
-                dl = client.load_train_data()
-                client.summarize_model(dataloader=dl)
-                del dl
-                gc.collect()
+        super().get_model_info()
 
 
 class pFL_Client(tFL_Client):

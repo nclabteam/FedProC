@@ -1,7 +1,3 @@
-import gc
-
-import torch.nn as nn
-
 from .tFL import tFL, tFL_Client
 
 
@@ -32,12 +28,7 @@ class nFL(tFL):
         pass
 
     def get_model_info(self) -> None:
-        for client in self.clients:
-            if hasattr(client, "model") and isinstance(client.model, nn.Module):
-                dl = client.load_train_data()
-                client.summarize_model(dataloader=dl)
-                del dl
-                gc.collect()
+        pass
 
 
 class nFL_Client(tFL_Client):
