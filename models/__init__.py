@@ -1,5 +1,6 @@
 import importlib
 import os
+import sys
 from collections.abc import Mapping
 from typing import Any, Callable, Dict
 
@@ -24,6 +25,9 @@ def _load_module(module_name: str):
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
         _MODULE_CACHE[module_name] = module
+        # Prevent the submodule binding from shadowing __getattr__ lookups.
+        # e.g. models.LLM_TPF must return the class, not the package module.
+        vars(sys.modules[__name__]).pop(module_name, None)
     return module
 
 

@@ -71,6 +71,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | GPT4TS | LLM || NeurIPS | 2023 | One Fits All:Power General Time Series Analysis by Pretrained LM | [Arxiv](https://arxiv.org/abs/2302.11939) - [REF](https://github.com/DAMO-DI-ML/NeurIPS2023-One-Fits-All/blob/main/Long-term_Forecasting/models/GPT4TS.py) |
 | T54TS | LLM || ICLR | 2024 | TEMPO: Prompt-based Generative Pre-trained Transformer for Time Series Forecasting | [Arxiv](https://arxiv.org/pdf/2310.04948) - [REF](https://github.com/DC-research/TEMPO/blob/main/tempo/models/T5.py) |
 | CALF | LLM || AAAI | 2025 | CALF: Aligning LLMs for Time Series Forecasting via Cross-modal Fine-Tuning | [Arxiv](https://arxiv.org/abs/2403.07300) - [REF](https://github.com/Hank0626/CALF/blob/main/models/CALF.py) |
+| LLM_TPF | LLM || IJCAI | 2025 | LLM-TPF: Multiscale Temporal Periodicity-Semantic Fusion LLMs for Time Series Forecasting | [REF](https://github.com/switchsky/LLM-TPF) |
 | VisionTS | Foundation || ICML | 2025 | VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series Forecasters | [Arxiv](https://arxiv.org/abs/2408.17253) - [REF](https://github.com/Keytoyze/VisionTS/blob/main/visionts/model.py) |
 ||||||||
 ||||||||
