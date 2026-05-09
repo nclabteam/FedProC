@@ -7,6 +7,8 @@ from .nFL import nFL, nFL_Client
 
 
 class Centralized(nFL):
+    compulsory = {"exclude_server_model_processes": False}
+
     def initialize_model(self):
         super(nFL, self).initialize_model()
 
