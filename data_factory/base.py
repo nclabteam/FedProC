@@ -965,9 +965,9 @@ class DataFrameOptimizer:
         for col in df.columns:
             col_type = df[col].dtype
 
-            if col_type == pl.Utf8:
+            if col_type in (pl.Utf8, pl.String):
                 df = df.with_columns(df[col].cast(pl.Categorical))
-            elif col_type == pl.Datetime:
+            elif isinstance(col_type, pl.Datetime):
                 # Check if all timestamps are at midnight (no time component)
                 if (
                     df[col].dt.hour().sum() == 0
@@ -977,8 +977,10 @@ class DataFrameOptimizer:
                     df = df.with_columns(df[col].cast(pl.Date))
             elif col_type in np_to_pl_type_mapping.values():
                 c_min, c_max = df[col].min(), df[col].max()
+                if c_min is None or c_max is None:
+                    continue
                 optimal_type = DataFrameOptimizer.cast_to_optimal_type(
-                    c_min, c_max, "float" if "float" in str(col_type) else "int"
+                    c_min, c_max, "float" if "float" in str(col_type).lower() else "int"
                 )
                 if optimal_type:
                     polars_type = np_to_pl_type_mapping.get(optimal_type)
