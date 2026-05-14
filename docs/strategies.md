@@ -34,6 +34,7 @@
 | FedProx | MLsys | 2020 | Federated Optimization in Heterogeneous Networks | [Arxiv](https://arxiv.org/abs/1812.06127) |
 | Ditto | ICML | 2021 | Ditto: Fair and Robust Federated Learning Through Personalization | [Arxiv](https://arxiv.org/abs/2012.04235) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverditto.py) |
 | pFedMe | NeurIPS | 2020 | Personalized Federated Learning with Moreau Envelopes | [Arxiv](https://arxiv.org/abs/2006.08848) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverpFedMe.py) |
+| APFL | arXiv | 2020 | Adaptive Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2003.13461) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverapfl.py) |
 | FML | NeurIPS | 2020 | Federated Mutual Learning | [Arxiv](https://arxiv.org/abs/2006.16765) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/clients/clientfml.py) |
 | FedDyn | ICLR | 2021 | Federated Learning Based on Dynamic Regularization | [Arxiv](https://arxiv.org/abs/2111.04263) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverdyn.py) |
 | FedALA | AAAI | 2023 | FedALA: Adaptive Local Aggregation for Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01197) |
