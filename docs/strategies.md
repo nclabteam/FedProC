@@ -12,6 +12,7 @@
 | Name | Venue | Year | Paper | URL |
 |------|-------|------| ----- | ----|
 | FedAvg | AISTATS | 2017 | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) |
+| SCAFFOLD | ICML | 2020 | SCAFFOLD: Stochastic Controlled Averaging for Federated Learning | [Arxiv](https://arxiv.org/abs/1910.06378) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverscaffold.py) |
 | Krum | NeurIPS | 2017 | Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent | [PUB](https://papers.nips.cc/paper_files/paper/2017/hash/f4b9ec30ad9f68f89b29639786cb62ef-Abstract.html) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/krum.py) |
 | FedMedian | ICML | 2018 | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedmedian.py) |
 | FedTrimmedAvg | ICML | 2018 | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedtrimmedavg.py) |
