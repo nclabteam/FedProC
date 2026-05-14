@@ -26,6 +26,7 @@
 | FedAWA | CVPR | 2025 | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
 | FedTrend | Science China Information Sciences | 2026 | Tackling Data Heterogeneity in Federated Time Series Forecasting | [PUB](https://doi.org/10.1007/s11432-025-4553-x) - [Arxiv](https://arxiv.org/abs/2411.15716) |
 | FedAvgM | | | Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification | [Arxiv](https://arxiv.org/abs/1909.06335) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedavgm.py) |
+| FedADMM | | | FedADMM: A Robust Federated Deep Learning Framework with Adaptability to System Heterogeneity | [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/fedadmm.py) |
 
 ## pFL — Personalized Federated Learning
 
