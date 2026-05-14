@@ -26,7 +26,7 @@
 | FedAWA | CVPR | 2025 | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
 | FedTrend | Science China Information Sciences | 2026 | Tackling Data Heterogeneity in Federated Time Series Forecasting | [PUB](https://doi.org/10.1007/s11432-025-4553-x) - [Arxiv](https://arxiv.org/abs/2411.15716) |
 | FedAvgM | | | Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification | [Arxiv](https://arxiv.org/abs/1909.06335) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedavgm.py) |
-| FedADMM | | | FedADMM: A Robust Federated Deep Learning Framework with Adaptability to System Heterogeneity | [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/fedadmm.py) |
+| FedADMM | ICDE | 2022 | FedADMM: A Robust Federated Deep Learning Framework with Adaptability to System Heterogeneity | [IEEE](https://ieeexplore.ieee.org/abstract/document/9835545) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/fedadmm.py) |
 
 ## pFL — Personalized Federated Learning
 
@@ -49,6 +49,7 @@
 | FedSA_LoRA | ICLR | 2025 | Selective Aggregation for Low-Rank Adaptation in Federated Learning | [Arxiv](https://arxiv.org/abs/2410.01463) |
 | LoRA_FAIR | ICCV | 2025 | LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement | [Arxiv](https://arxiv.org/abs/2411.14961) - [GitHub](https://github.com/jmbian/LoRA-FAIR) |
 | pFedHN | ICML | 2021 | Personalized Federated Learning using Hypernetworks | [Arxiv](https://arxiv.org/abs/2103.04628) - [GitHub](https://github.com/AvivSham/pFedHN) |
+| CFL | arXiv | 2019 | Clustered Federated Learning: Model-Agnostic Distributed Multi-Task Optimization under Privacy Constraints | [Arxiv](https://arxiv.org/abs/1910.01991) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/cfl.py) |
 
 ## hFL — Heterogeneous Federated Learning
 
