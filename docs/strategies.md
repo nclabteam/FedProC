@@ -47,7 +47,6 @@
 | FFA_LoRA | ICLR | 2024 | Improving LoRA in Privacy-preserving Federated Learning | [Arxiv](https://arxiv.org/abs/2403.12313) |
 | FedSA_LoRA | ICLR | 2025 | Selective Aggregation for Low-Rank Adaptation in Federated Learning | [Arxiv](https://arxiv.org/abs/2410.01463) |
 | LoRA_FAIR | ICCV | 2025 | LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement | [Arxiv](https://arxiv.org/abs/2411.14961) - [GitHub](https://github.com/jmbian/LoRA-FAIR) |
-| FedRevIN | | | | |
 | pFedHN | ICML | 2021 | Personalized Federated Learning using Hypernetworks | [Arxiv](https://arxiv.org/abs/2103.04628) - [GitHub](https://github.com/AvivSham/pFedHN) |
 
 ## hFL — Heterogeneous Federated Learning
