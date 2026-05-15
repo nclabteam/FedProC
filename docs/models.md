@@ -58,6 +58,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | MMK | KAN |||| Are KANs Effective for Multivariate Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2408.11306) - [REF](https://github.com/2448845600/EasyTSF/blob/main/easytsf/model/MMK.py) |
 ||||||||
 ||||||||
+| iTransformer | Transformer | Multivariate | ICLR | 2024 | iTransformer: Inverted Transformers Are Effective for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2310.06625) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/iTransformer.py) |
 | Transformer | Transformer | Multivariate | NeurIPS | 2017 | Attention Is All You Need | [Arxiv](https://arxiv.org/abs/1706.03762) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Transformer.py) |
 | Informer | Transformer | Multivariate | AAAI | 2021 | Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting | [Arxiv](https://arxiv.org/abs/2012.07436) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Informer.py) |
 | Autoformer | Transformer | Multivariate | NeurIPS | 2022 | Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting | [Arxiv](https://arxiv.org/abs/2106.13008) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Autoformer.py) |
