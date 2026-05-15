@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+from reformer_pytorch import LSHSelfAttention
 
 
 class TriangularCausalMask:
@@ -195,3 +196,22 @@ class AttentionLayer(nn.Module):
         out, attn = self.inner_attention(queries, keys, values, attn_mask)
         out = out.view(B, L, -1)
         return self.out_projection(out), attn
+
+
+class ReformerLayer(nn.Module):
+    def __init__(self, attention, d_model, n_heads, d_keys=None, d_values=None, causal=False, bucket_size=4, n_hashes=4):
+        super().__init__()
+        self.bucket_size = bucket_size
+        self.attn = LSHSelfAttention(dim=d_model, heads=n_heads, bucket_size=bucket_size, n_hashes=n_hashes, causal=causal)
+
+    def fit_length(self, queries):
+        B, N, C = queries.shape
+        if N % (self.bucket_size * 2) == 0:
+            return queries
+        fill_len = (self.bucket_size * 2) - (N % (self.bucket_size * 2))
+        return torch.cat([queries, torch.zeros(B, fill_len, C, device=queries.device)], dim=1)
+
+    def forward(self, queries, keys, values, attn_mask):
+        B, N, C = queries.shape
+        queries = self.attn(self.fit_length(queries))[:, :N, :]
+        return queries, None
