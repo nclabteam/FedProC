@@ -50,6 +50,7 @@
 | LoRA_FAIR | ICCV | 2025 | LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement | [Arxiv](https://arxiv.org/abs/2411.14961) - [GitHub](https://github.com/jmbian/LoRA-FAIR) |
 | pFedHN | ICML | 2021 | Personalized Federated Learning using Hypernetworks | [Arxiv](https://arxiv.org/abs/2103.04628) - [GitHub](https://github.com/AvivSham/pFedHN) |
 | CFL | arXiv | 2019 | Clustered Federated Learning: Model-Agnostic Distributed Multi-Task Optimization under Privacy Constraints | [Arxiv](https://arxiv.org/abs/1910.01991) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/cfl.py) |
+| LGFedAvg | arXiv | 2020 | Think Locally, Act Globally: Federated Learning with Local and Global Representations | [Arxiv](https://arxiv.org/abs/2001.01523) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/lgfedavg.py) |
 
 ## hFL — Heterogeneous Federated Learning
 
