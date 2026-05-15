@@ -7,6 +7,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | Name | Backbone | Type | Venue | Year | Paper | URL |
 |------|----------|------| ----- | ---- | ----- | --- |
 | Sonnet | Wavelet + Koopman + Attention | Multivariate | AAAI (Oral) | 2026 | Sonnet: Spectral Operator Neural Network for Multivariable Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2505.15312) - [GitHub](https://github.com/ClaudiaShu/Sonnet) |
+| SimTS | Causal CNN (contrastive pre-training) | Multivariate | ICASSP | 2024 | SimTS: Rethinking Contrastive Representation Learning for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.18205) - [IEEE](https://ieeexplore.ieee.org/document/10446875) - [GitHub](https://github.com/xingyu617/SimTS_Representation_Learning) |
 | Amplifier | MLP | Multivariate | AAAI | 2025 | Amplifier: Bringing Attention to Neglected Low-Energy Components in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2501.17216) - [REF](https://github.com/aikunyi/Amplifier/blob/main/models/Amplifier.py) |
 | Linear | MLP | Univariate | AAAI | 2023 | Are Transformers Effective for Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2205.13504) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Linear.py) |
 | LinearIC | MLP | Univariate | AAAI | 2023 | Are Transformers Effective for Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2205.13504) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Linear.py) |
