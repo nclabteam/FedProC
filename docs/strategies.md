@@ -52,6 +52,7 @@
 | CFL | arXiv | 2019 | Clustered Federated Learning: Model-Agnostic Distributed Multi-Task Optimization under Privacy Constraints | [Arxiv](https://arxiv.org/abs/1910.01991) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/cfl.py) |
 | LGFedAvg | arXiv | 2020 | Think Locally, Act Globally: Federated Learning with Local and Global Representations | [Arxiv](https://arxiv.org/abs/2001.01523) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/lgfedavg.py) |
 | FedNova | NeurIPS | 2020 | Tackling the Objective Inconsistency Problem in Heterogeneous Federated Optimization | [Arxiv](https://arxiv.org/abs/2007.07481) - [REF](https://github.com/JYWa/FedNova) |
+| FedSelect | CVPR | 2024 | FedSelect: Personalized Federated Learning with Customized Selection of Parameters for Fine-Tuning | [Arxiv](https://arxiv.org/abs/2404.02478) - [GitHub](https://github.com/lapisrocks/fedselect) |
 
 ## hFL — Heterogeneous Federated Learning
 
