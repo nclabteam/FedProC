@@ -19,9 +19,7 @@ def _max_norm(diffs: List[List[torch.Tensor]]) -> float:
 
 
 def _mean_norm(diffs: List[List[torch.Tensor]]) -> float:
-    return float(
-        torch.stack([_vectorize(d) for d in diffs]).mean(dim=0).norm().item()
-    )
+    return float(torch.stack([_vectorize(d) for d in diffs]).mean(dim=0).norm().item())
 
 
 class CFL(pFL):
@@ -74,8 +72,7 @@ class CFL(pFL):
         self._ensure_init()
         # Save the snapshot each client will subtract from after training
         models = [
-            copy.deepcopy(self._client_models[c.id])
-            for c in self.selected_clients
+            copy.deepcopy(self._client_models[c.id]) for c in self.selected_clients
         ]
         return {"model": models}
 
@@ -106,7 +103,9 @@ class CFL(pFL):
                 if db is None:
                     continue
                 vb = _vectorize(db)
-                score = float(F.cosine_similarity(va.unsqueeze(0), vb.unsqueeze(0)).item())
+                score = float(
+                    F.cosine_similarity(va.unsqueeze(0), vb.unsqueeze(0)).item()
+                )
                 sim[i, j] = score
                 sim[j, i] = score
 

@@ -3,7 +3,9 @@ from transformers import GenerationMixin
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
 
-def gpt2_pca_embeddings(model: "AccustumGPT2Model", n_components: int = 500, device=None) -> torch.Tensor:
+def gpt2_pca_embeddings(
+    model: "AccustumGPT2Model", n_components: int = 500, device=None
+) -> torch.Tensor:
     """Return PCA-reduced GPT-2 word-token embeddings as a float32 tensor of shape [n_components, vocab_size]."""
     from sklearn.decomposition import PCA
 

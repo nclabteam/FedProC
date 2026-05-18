@@ -104,7 +104,9 @@ class SimTS_Client(nFL_Client):
         self.model.train()
         for _ in range(self.pretrain_epochs):
             for batch_x, *_ in train_loader:
-                batch_x = batch_x.to(device=self.device, dtype=torch.float32, non_blocking=True)
+                batch_x = batch_x.to(
+                    device=self.device, dtype=torch.float32, non_blocking=True
+                )
                 loss = self.model.pretrain_loss(batch_x)
                 pretrain_opt.zero_grad(set_to_none=True)
                 loss.backward()

@@ -69,7 +69,7 @@ class TS_Adam(Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
                 # Only first-moment bias correction; second moment is uncorrected
-                bias_correction1 = 1 - beta1 ** t
+                bias_correction1 = 1 - beta1**t
                 step_size = group["lr"] / bias_correction1
 
                 denom = exp_avg_sq.sqrt().add_(group["eps"])

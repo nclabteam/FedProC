@@ -71,14 +71,16 @@ class FedLAW(tFL):
         self.model.to(device)
 
         # Collect flat parameter vectors from clients
-        flat_params = torch.stack([
-            client["flat_params"].to(device) for client in self.client_data
-        ])  # [N, D]
+        flat_params = torch.stack(
+            [client["flat_params"].to(device) for client in self.client_data]
+        )  # [N, D]
         n_clients = flat_params.shape[0]
 
         # Learnable log-weights (a) and log-scale (g); init from data-size weights
         scores = torch.tensor(
-            [client["score"] for client in self.client_data], dtype=torch.float32, device=device
+            [client["score"] for client in self.client_data],
+            dtype=torch.float32,
+            device=device,
         )
         init_a = torch.log(scores / scores.sum() + 1e-8)
         a = init_a.detach().clone().requires_grad_(True)
@@ -99,20 +101,22 @@ class FedLAW(tFL):
                 x_mark = x_mark.to(device=device, non_blocking=True)
                 y_mark = y_mark.to(device=device, non_blocking=True)
 
-                lam = torch.softmax(a, dim=0)          # [N]
-                gamma = torch.exp(g)                    # scalar
-                merged = gamma * (lam @ flat_params)    # [D]
+                lam = torch.softmax(a, dim=0)  # [N]
+                gamma = torch.exp(g)  # scalar
+                merged = gamma * (lam @ flat_params)  # [D]
 
                 # Build param dict for functional_call
                 param_dict = {}
                 offset = 0
                 for name, shape, numel in zip(param_names, param_shapes, param_numels):
-                    param_dict[name] = merged[offset:offset + numel].view(shape)
+                    param_dict[name] = merged[offset : offset + numel].view(shape)
                     offset += numel
 
                 pred = torch.func.functional_call(
-                    self.model, param_dict, (batch_x,),
-                    kwargs={"x_mark": x_mark, "y_mark": y_mark}
+                    self.model,
+                    param_dict,
+                    (batch_x,),
+                    kwargs={"x_mark": x_mark, "y_mark": y_mark},
                 )
                 loss = F.mse_loss(pred, batch_y)
 

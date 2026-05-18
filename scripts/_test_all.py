@@ -9,13 +9,20 @@ strategies = sorted(s for s in STRATEGIES if s not in skip)
 results = []
 for s in strategies:
     cmd = [
-        sys.executable, "main.py",
-        "--dataset", "ETDatasetHour",
-        "--strategy", s,
-        "--model", "DLinear",
-        "--iterations", "2",
-        "--times", "1",
-        "--seed", "42",
+        sys.executable,
+        "main.py",
+        "--dataset",
+        "ETDatasetHour",
+        "--strategy",
+        s,
+        "--model",
+        "DLinear",
+        "--iterations",
+        "2",
+        "--times",
+        "1",
+        "--seed",
+        "42",
     ]
     if s.startswith("DFed"):
         cmd += ["--topology", "Ring"]

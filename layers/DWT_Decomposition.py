@@ -12,7 +12,9 @@ class Decomposition(nn.Module):
     Original: https://github.com/Secure-and-Intelligent-Systems-Lab/WPMixer
     """
 
-    def __init__(self, input_length, pred_length, wavelet_name="db2", level=1, **kwargs):
+    def __init__(
+        self, input_length, pred_length, wavelet_name="db2", level=1, **kwargs
+    ):
         super().__init__()
         self.input_length = input_length
         self.pred_length = pred_length
@@ -169,11 +171,28 @@ class SFB1D(Function):
 
 
 def _mode_to_int(mode):
-    return {"zero": 0, "symmetric": 1, "per": 2, "periodization": 2, "constant": 3, "reflect": 4, "replicate": 5, "periodic": 6}[mode]
+    return {
+        "zero": 0,
+        "symmetric": 1,
+        "per": 2,
+        "periodization": 2,
+        "constant": 3,
+        "reflect": 4,
+        "replicate": 5,
+        "periodic": 6,
+    }[mode]
 
 
 def _int_to_mode(mode):
-    return {0: "zero", 1: "symmetric", 2: "periodization", 3: "constant", 4: "reflect", 5: "replicate", 6: "periodic"}[mode]
+    return {
+        0: "zero",
+        1: "symmetric",
+        2: "periodization",
+        3: "constant",
+        4: "reflect",
+        5: "replicate",
+        6: "periodic",
+    }[mode]
 
 
 def _roll(x, n, dim):
@@ -244,7 +263,9 @@ def _afb1d(x, h0, h1, use_amp, mode="zero", dim=-1):
             pad = (p // 2, 0) if d == 2 else (0, p // 2)
             lohi = F.conv2d(x, h, padding=pad, stride=s, groups=C)
         elif mode in ("symmetric", "reflect", "periodic"):
-            pad = (0, 0, p // 2, (p + 1) // 2) if d == 2 else (p // 2, (p + 1) // 2, 0, 0)
+            pad = (
+                (0, 0, p // 2, (p + 1) // 2) if d == 2 else (p // 2, (p + 1) // 2, 0, 0)
+            )
             x = _mypad(x, pad=pad, mode=mode)
             lohi = F.conv2d(x, h, stride=s, groups=C)
         else:
@@ -268,7 +289,9 @@ def _sfb1d(lo, hi, g0, g1, use_amp, mode="zero", dim=-1):
     g1 = torch.cat([g1] * C, dim=0)
 
     if mode in ("per", "periodization"):
-        y = F.conv_transpose2d(lo, g0, stride=s, groups=C) + F.conv_transpose2d(hi, g1, stride=s, groups=C)
+        y = F.conv_transpose2d(lo, g0, stride=s, groups=C) + F.conv_transpose2d(
+            hi, g1, stride=s, groups=C
+        )
         if d == 2:
             y[:, :, : L - 2] += y[:, :, N : N + L - 2]
             y = y[:, :, :N]
@@ -278,7 +301,9 @@ def _sfb1d(lo, hi, g0, g1, use_amp, mode="zero", dim=-1):
         y = _roll(y, 1 - L // 2, dim=dim)
     else:
         pad = (L - 2, 0) if d == 2 else (0, L - 2)
-        y = F.conv_transpose2d(lo, g0, stride=s, padding=pad, groups=C) + F.conv_transpose2d(hi, g1, stride=s, padding=pad, groups=C)
+        y = F.conv_transpose2d(
+            lo, g0, stride=s, padding=pad, groups=C
+        ) + F.conv_transpose2d(hi, g1, stride=s, padding=pad, groups=C)
     return y
 
 
@@ -306,4 +331,7 @@ def _reflect(x, minx, maxx):
     rng_by_2 = 2 * rng
     mod = np.fmod(x - minx, rng_by_2)
     normed_mod = np.where(mod < 0, mod + rng_by_2, mod)
-    return np.array(np.where(normed_mod >= rng, rng_by_2 - normed_mod, normed_mod) + minx, dtype=x.dtype)
+    return np.array(
+        np.where(normed_mod >= rng, rng_by_2 - normed_mod, normed_mod) + minx,
+        dtype=x.dtype,
+    )

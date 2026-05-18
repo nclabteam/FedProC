@@ -15,7 +15,9 @@ class SCAFFOLDOptimizer(Optimizer):
     def __init__(self, params, lr: float) -> None:
         super().__init__(params, dict(lr=lr))
 
-    def step(self, server_cs: List[torch.Tensor], client_cs: List[torch.Tensor]) -> None:
+    def step(
+        self, server_cs: List[torch.Tensor], client_cs: List[torch.Tensor]
+    ) -> None:
         for group in self.param_groups:
             for p, sc, cc in zip(group["params"], server_cs, client_cs):
                 if p.grad is None:
@@ -62,7 +64,8 @@ class SCAFFOLD(tFL):
         # Global model update: theta += server_lr / K * sum(theta_local - theta_global)
         for i, param in enumerate(self.model.parameters()):
             delta_sum = sum(
-                list(cd["model"].parameters())[i].data.to(param.device) - snapshot_params[i].data
+                list(cd["model"].parameters())[i].data.to(param.device)
+                - snapshot_params[i].data
                 for cd in self.client_data
             )
             param.data.add_(delta_sum / K, alpha=self.server_lr)
@@ -96,14 +99,18 @@ class SCAFFOLD_Client(tFL_Client):
     def receive_from_server(self, data: dict) -> None:
         if "global_c" in data:
             self._global_c = [c.clone().cpu() for c in data["global_c"]]
-        self._global_snapshot = [p.data.clone().cpu() for p in data["model"].parameters()]
+        self._global_snapshot = [
+            p.data.clone().cpu() for p in data["model"].parameters()
+        ]
         self.update_model_params(old=self.model, new=data["model"])
 
     def train(self):
         train_loader = self.load_train_data()
         start_time = time.time()
 
-        scaffold_optim = SCAFFOLDOptimizer(self.model.parameters(), lr=self.learning_rate)
+        scaffold_optim = SCAFFOLDOptimizer(
+            self.model.parameters(), lr=self.learning_rate
+        )
         self.model.to(self.device)
         self.model.train()
 
@@ -142,7 +149,11 @@ class SCAFFOLD_Client(tFL_Client):
         self.metrics["train_time"].append(time.time() - start_time)
 
     def variables_to_be_sent(self) -> Dict[str, Any]:
-        return {"model": self.model, "delta_c": self.delta_c, "score": self.train_samples}
+        return {
+            "model": self.model,
+            "delta_c": self.delta_c,
+            "score": self.train_samples,
+        }
 
     def send_to_server(self) -> Dict[str, Any]:
         to_be_sent = self.variables_to_be_sent()

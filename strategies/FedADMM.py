@@ -1,4 +1,3 @@
-import copy
 import time
 from argparse import Namespace
 from typing import Any, Dict
@@ -36,8 +35,7 @@ class FedADMM(tFL):
         super().__init__(configs=configs, times=times)
         self.parallel = False
         self.theta: Dict[str, torch.Tensor] = {
-            name: p.data.clone().cpu()
-            for name, p in self.model.named_parameters()
+            name: p.data.clone().cpu() for name, p in self.model.named_parameters()
         }
 
     def aggregate_models(self) -> None:
@@ -77,12 +75,10 @@ class FedADMM_Client(tFL_Client):
     def receive_from_server(self, data: dict) -> None:
         self.update_model_params(old=self.model, new=data["model"])
         self._theta = {
-            name: p.data.clone().cpu()
-            for name, p in data["model"].named_parameters()
+            name: p.data.clone().cpu() for name, p in data["model"].named_parameters()
         }
         self._model_prev = {
-            name: p.data.clone().cpu()
-            for name, p in self.model.named_parameters()
+            name: p.data.clone().cpu() for name, p in self.model.named_parameters()
         }
         self._alpha_prev = {name: a.clone() for name, a in self.alpha.items()}
 
@@ -134,5 +130,7 @@ class FedADMM_Client(tFL_Client):
             w_prev = self._model_prev[name]
             alpha_new = self.alpha[name]
             alpha_prev = self._alpha_prev[name]
-            local_sum[name] = (w_new - w_prev) + (1.0 / self.rho) * (alpha_new - alpha_prev)
+            local_sum[name] = (w_new - w_prev) + (1.0 / self.rho) * (
+                alpha_new - alpha_prev
+            )
         return {"local_sum": local_sum, "score": self.train_samples}

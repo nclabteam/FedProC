@@ -62,7 +62,9 @@ class ExponentialSmoothing(nn.Module):
         powers = torch.arange(T, dtype=torch.float, device=self.weight.device)
         weight = (1 - self.weight) * (self.weight ** torch.flip(powers, dims=(0,)))
         init_weight = self.weight ** (powers + 1)
-        return rearrange(init_weight, "h t -> 1 t h 1"), rearrange(weight, "h t -> 1 t h 1")
+        return rearrange(init_weight, "h t -> 1 t h 1"), rearrange(
+            weight, "h t -> 1 t h 1"
+        )
 
     @property
     def weight(self):
@@ -126,8 +128,12 @@ class FourierLayer(nn.Module):
         return reduce(x_time, "b f t d -> b t d", "sum")
 
     def _topk_freq(self, x_freq):
-        values, indices = torch.topk(x_freq.abs(), self.k, dim=1, largest=True, sorted=True)
-        mesh_a, mesh_b = torch.meshgrid(torch.arange(x_freq.size(0)), torch.arange(x_freq.size(2)), indexing="ij")
+        values, indices = torch.topk(
+            x_freq.abs(), self.k, dim=1, largest=True, sorted=True
+        )
+        mesh_a, mesh_b = torch.meshgrid(
+            torch.arange(x_freq.size(0)), torch.arange(x_freq.size(2)), indexing="ij"
+        )
         index_tuple = (
             mesh_a.unsqueeze(1).to(indices.device),
             indices,
@@ -154,14 +160,27 @@ class LevelLayer(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d_model, nhead, c_out, seq_len, pred_len, k, dim_feedforward=None, dropout=0.1, activation="sigmoid"):
+    def __init__(
+        self,
+        d_model,
+        nhead,
+        c_out,
+        seq_len,
+        pred_len,
+        k,
+        dim_feedforward=None,
+        dropout=0.1,
+        activation="sigmoid",
+    ):
         super().__init__()
         self.pred_len = pred_len
         dim_feedforward = dim_feedforward or 4 * d_model
         self.growth_layer = GrowthLayer(d_model, nhead, dropout=dropout)
         self.seasonal_layer = FourierLayer(d_model, pred_len, k=k)
         self.level_layer = LevelLayer(d_model, c_out, dropout=dropout)
-        self.ff = _Feedforward(d_model, dim_feedforward, dropout=dropout, activation=activation)
+        self.ff = _Feedforward(
+            d_model, dim_feedforward, dropout=dropout, activation=activation
+        )
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout1 = nn.Dropout(dropout)
@@ -254,4 +273,6 @@ class _Feedforward(nn.Module):
         self.activation = getattr(F, activation)
 
     def forward(self, x):
-        return self.dropout2(self.linear2(self.dropout1(self.activation(self.linear1(x)))))
+        return self.dropout2(
+            self.linear2(self.dropout1(self.activation(self.linear1(x))))
+        )

@@ -1,5 +1,3 @@
-from argparse import Namespace
-
 from .pFL import pFL, pFL_Client
 
 

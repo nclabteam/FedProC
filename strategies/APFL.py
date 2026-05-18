@@ -137,10 +137,14 @@ class APFL_Client(pFL_Client):
             if pp.grad is None or gp.grad is None:
                 continue
             dif = (pp.data - gp.data).view(-1)
-            grad = (self.alpha * pp.grad.data + (1.0 - self.alpha) * gp.grad.data).view(-1)
+            grad = (self.alpha * pp.grad.data + (1.0 - self.alpha) * gp.grad.data).view(
+                -1
+            )
             grad_alpha += float(dif.dot(grad))
         grad_alpha += 0.02 * self.alpha
-        self.alpha = float(np.clip(self.alpha - self.learning_rate * grad_alpha, 0.0, 1.0))
+        self.alpha = float(
+            np.clip(self.alpha - self.learning_rate * grad_alpha, 0.0, 1.0)
+        )
 
     def get_train_loss(self) -> float:
         losses = self.calculate_loss(

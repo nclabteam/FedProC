@@ -1,6 +1,5 @@
 import random
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
@@ -23,10 +22,14 @@ class _CausalConvBlock(nn.Module):
     def __init__(self, in_ch, out_ch, kernel_size, dilation, final=False):
         super().__init__()
         pad = (kernel_size - 1) * dilation
-        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, padding=pad, dilation=dilation)
+        self.conv1 = nn.Conv1d(
+            in_ch, out_ch, kernel_size, padding=pad, dilation=dilation
+        )
         self.chomp1 = _Chomp1d(pad)
         self.drop1 = nn.Dropout(0.1)
-        self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, padding=pad, dilation=dilation)
+        self.conv2 = nn.Conv1d(
+            out_ch, out_ch, kernel_size, padding=pad, dilation=dilation
+        )
         self.chomp2 = _Chomp1d(pad)
         self.drop2 = nn.Dropout(0.1)
         self.residual = nn.Conv1d(in_ch, out_ch, 1) if in_ch != out_ch else None
@@ -59,11 +62,11 @@ class _CausalCNNEncoder(nn.Module):
 
     def _encode(self, x):
         # x: [B, T, C]
-        x = x.transpose(2, 1)                  # [B, C, T]
-        x = self.input_fc(x)                   # [B, repr_dim, T]
+        x = x.transpose(2, 1)  # [B, C, T]
+        x = self.input_fc(x)  # [B, repr_dim, T]
         parts = []
         for idx, mod in enumerate(self.multi_cnn):
-            out = mod(x)                       # [B, repr_dim, T + pad]
+            out = mod(x)  # [B, repr_dim, T + pad]
             if self.kernel_list[idx] != 1:
                 out = out[..., : -(self.kernel_list[idx] - 1)]
             parts.append(out.transpose(1, 2))  # [B, T, repr_dim]
@@ -72,7 +75,7 @@ class _CausalCNNEncoder(nn.Module):
             "list b t d -> b t d",
             "mean",
         )
-        return self.repr_dropout(trend)        # [B, T, repr_dim]
+        return self.repr_dropout(trend)  # [B, T, repr_dim]
 
     def forward(self, x_h, x_f=None, train=True):
         trend_h = self._encode(x_h)
@@ -96,7 +99,7 @@ class _Predictor(nn.Module):
     def forward(self, x):
         # x: [B, repr_dim, 1]
         x = self.relu(self.wl(x)).transpose(1, 2)  # [B, timestep, repr_dim]
-        return self.wl2(x)                          # [B, timestep, repr_dim]
+        return self.wl2(x)  # [B, timestep, repr_dim]
 
 
 class SimTS(nn.Module):
@@ -164,13 +167,13 @@ class SimTS(nn.Module):
         Returns:
             scalar loss tensor
         """
-        x1 = x[:, : self.K, :]          # history  [B, K, in_ch]
-        x2 = x[:, self.K :, :]          # future   [B, timestep, in_ch]
+        x1 = x[:, : self.K, :]  # history  [B, K, in_ch]
+        x2 = x[:, self.K :, :]  # future   [B, timestep, in_ch]
 
         z1, _, z2 = self.encoder(x1, x2, train=True)
         # pick a random history timestep as the summary to predict from
         rand_idx = random.randint(0, z1.shape[1] - 1)
-        summary = z1[:, rand_idx, :]     # [B, repr_dim]
+        summary = z1[:, rand_idx, :]  # [B, repr_dim]
 
         fcst = self.predictor(summary.unsqueeze(-1))  # [B, timestep, repr_dim]
         # negative cosine similarity averaged over timestep and batch
@@ -188,6 +191,6 @@ class SimTS(nn.Module):
         Returns:
             [B, pred_len, out_ch]
         """
-        _, repr_, _ = self.encoder(x, train=False)    # [B, repr_dim]
-        out = self.head(repr_)                         # [B, pred_len * out_ch]
+        _, repr_, _ = self.encoder(x, train=False)  # [B, repr_dim]
+        out = self.head(repr_)  # [B, pred_len * out_ch]
         return out.view(x.shape[0], self._pred_len, self._out_ch)

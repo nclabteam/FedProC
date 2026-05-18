@@ -93,7 +93,9 @@ class PerAvg_Client(tFL_Client):
 
                 # Inner step α on first half
                 self.optimizer.zero_grad()
-                out = self.model(batch_x[:half], x_mark=x_mark[:half], y_mark=y_mark[:half])
+                out = self.model(
+                    batch_x[:half], x_mark=x_mark[:half], y_mark=y_mark[:half]
+                )
                 loss = self.loss(out, batch_y[:half])
                 loss.backward()
                 with torch.no_grad():
@@ -183,13 +185,19 @@ class PerAvg_Client(tFL_Client):
 
                 self._model_plus.zero_grad()
                 self._model_minus.zero_grad()
-                self.loss(self._model_plus(bx2, x_mark=bxm2, y_mark=bym2), by2).backward()
-                self.loss(self._model_minus(bx2, x_mark=bxm2, y_mark=bym2), by2).backward()
+                self.loss(
+                    self._model_plus(bx2, x_mark=bxm2, y_mark=bym2), by2
+                ).backward()
+                self.loss(
+                    self._model_minus(bx2, x_mark=bxm2, y_mark=bym2), by2
+                ).backward()
 
                 # g_hf = g - (α/2δ)·(grad_plus - grad_minus)
                 hf_coef = self.learning_rate / (2.0 * self.delta)
                 hf_grads = [
-                    g - hf_coef * (
+                    g
+                    - hf_coef
+                    * (
                         (pp.grad if pp.grad is not None else torch.zeros_like(g))
                         - (pm.grad if pm.grad is not None else torch.zeros_like(g))
                     )
@@ -202,7 +210,9 @@ class PerAvg_Client(tFL_Client):
 
                 # Restore frz_params, apply outer step β
                 with torch.no_grad():
-                    for p, fp, g_hf in zip(self.model.parameters(), frz_params, hf_grads):
+                    for p, fp, g_hf in zip(
+                        self.model.parameters(), frz_params, hf_grads
+                    ):
                         p.data.copy_(fp - self.beta * g_hf)
 
         self._model_plus.to("cpu")

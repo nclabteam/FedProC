@@ -31,11 +31,22 @@ class Reformer(nn.Module):
         super().__init__()
         self.pred_len = configs.output_len
 
-        self.enc_embedding = DataEmbedding_wo_pos(configs.input_channels, configs.d_model, embed_type="timeF", dropout=configs.dropout)
+        self.enc_embedding = DataEmbedding_wo_pos(
+            configs.input_channels,
+            configs.d_model,
+            embed_type="timeF",
+            dropout=configs.dropout,
+        )
         self.encoder = Encoder(
             [
                 EncoderLayer(
-                    ReformerLayer(None, configs.d_model, configs.n_heads, bucket_size=bucket_size, n_hashes=n_hashes),
+                    ReformerLayer(
+                        None,
+                        configs.d_model,
+                        configs.n_heads,
+                        bucket_size=bucket_size,
+                        n_hashes=n_hashes,
+                    ),
                     configs.d_model,
                     configs.d_ff,
                     dropout=configs.dropout,
@@ -57,7 +68,15 @@ class Reformer(nn.Module):
         x_placeholder = torch.zeros_like(x[:, -self.pred_len :, :])
         x_full = torch.cat([x, x_placeholder], dim=1)
         if x_mark is not None:
-            x_mark_full = torch.cat([x_mark, torch.zeros(x.shape[0], self.pred_len, x_mark.shape[-1], device=x.device)], dim=1)
+            x_mark_full = torch.cat(
+                [
+                    x_mark,
+                    torch.zeros(
+                        x.shape[0], self.pred_len, x_mark.shape[-1], device=x.device
+                    ),
+                ],
+                dim=1,
+            )
         else:
             x_mark_full = None
 

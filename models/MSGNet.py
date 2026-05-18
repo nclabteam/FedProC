@@ -17,15 +17,44 @@ def _fft_for_period(x, k=2):
 
 
 class _ScaleGraphBlock(nn.Module):
-    def __init__(self, seq_len, top_k, d_model, d_ff, n_heads, dropout, c_out, conv_channel, skip_channel, gcn_depth, propalpha, node_dim):
+    def __init__(
+        self,
+        seq_len,
+        top_k,
+        d_model,
+        d_ff,
+        n_heads,
+        dropout,
+        c_out,
+        conv_channel,
+        skip_channel,
+        gcn_depth,
+        propalpha,
+        node_dim,
+    ):
         super().__init__()
         self.seq_len = seq_len
         self.k = top_k
-        self.att0 = Attention_Block(d_model, d_ff, n_heads=n_heads, dropout=dropout, activation="gelu")
+        self.att0 = Attention_Block(
+            d_model, d_ff, n_heads=n_heads, dropout=dropout, activation="gelu"
+        )
         self.norm = nn.LayerNorm(d_model)
         self.gelu = nn.GELU()
         self.gconv = nn.ModuleList(
-            [GraphBlock(c_out, d_model, conv_channel, skip_channel, gcn_depth, dropout, propalpha, seq_len, node_dim) for _ in range(top_k)]
+            [
+                GraphBlock(
+                    c_out,
+                    d_model,
+                    conv_channel,
+                    skip_channel,
+                    gcn_depth,
+                    dropout,
+                    propalpha,
+                    seq_len,
+                    node_dim,
+                )
+                for _ in range(top_k)
+            ]
         )
 
     def forward(self, x):
@@ -93,7 +122,12 @@ class MSGNet(nn.Module):
         self.pred_len = configs.output_len
         c_out = configs.output_channels
 
-        self.enc_embedding = DataEmbedding_wo_pos(configs.input_channels, configs.d_model, embed_type="timeF", dropout=configs.dropout)
+        self.enc_embedding = DataEmbedding_wo_pos(
+            configs.input_channels,
+            configs.d_model,
+            embed_type="timeF",
+            dropout=configs.dropout,
+        )
         self.model = nn.ModuleList(
             [
                 _ScaleGraphBlock(
@@ -115,7 +149,13 @@ class MSGNet(nn.Module):
         )
         self.layer_norm = nn.LayerNorm(configs.d_model)
         self.projection = nn.Linear(configs.d_model, c_out)
-        self.seq2pred = Predict(bool(configs.individual), c_out, configs.input_len, configs.output_len, configs.dropout)
+        self.seq2pred = Predict(
+            bool(configs.individual),
+            c_out,
+            configs.input_len,
+            configs.output_len,
+            configs.dropout,
+        )
 
     def forward(self, x, **kwargs):
         x_mark = kwargs.get("x_mark", None)

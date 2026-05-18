@@ -1,4 +1,3 @@
-import copy
 import time
 from argparse import Namespace
 from typing import List
@@ -65,9 +64,7 @@ class pFedMe(pFL):
 
     def aggregate_models(self) -> None:
         # Save global model before standard aggregation for beta-blend
-        self._prev_global_params = [
-            p.data.clone() for p in self.model.parameters()
-        ]
+        self._prev_global_params = [p.data.clone() for p in self.model.parameters()]
         super().aggregate_models()
         # β-blend: global = (1-β)*prev + β*aggregated
         if self.beta < 1.0:
@@ -130,7 +127,9 @@ class pFedMe_Client(pFL_Client):
 
         # Store updated local params and reset model to w_i for aggregation
         self.local_params = [lp.detach().cpu() for lp in local_dev]
-        self.personalized_params = [pp.detach().cpu() for pp in self.personalized_params]
+        self.personalized_params = [
+            pp.detach().cpu() for pp in self.personalized_params
+        ]
         for param, lp in zip(self.model.parameters(), self.local_params):
             param.data.copy_(lp)
         self.model.to("cpu")

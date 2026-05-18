@@ -44,7 +44,19 @@ class _Mixer(nn.Module):
 
 
 class _ResolutionBranch(nn.Module):
-    def __init__(self, input_seq, pred_seq, channel, d_model, dropout, embedding_dropout, tfactor, dfactor, patch_len, patch_stride):
+    def __init__(
+        self,
+        input_seq,
+        pred_seq,
+        channel,
+        d_model,
+        dropout,
+        embedding_dropout,
+        tfactor,
+        dfactor,
+        patch_len,
+        patch_stride,
+    ):
         super().__init__()
         self.patch_len = patch_len
         self.patch_stride = patch_stride
@@ -52,8 +64,12 @@ class _ResolutionBranch(nn.Module):
 
         self.patch_norm = nn.BatchNorm2d(channel)
         self.patch_embedding_layer = nn.Linear(patch_len, d_model)
-        self.mixer1 = _Mixer(self.patch_num, self.patch_num, channel, d_model, dropout, tfactor, dfactor)
-        self.mixer2 = _Mixer(self.patch_num, self.patch_num, channel, d_model, dropout, tfactor, dfactor)
+        self.mixer1 = _Mixer(
+            self.patch_num, self.patch_num, channel, d_model, dropout, tfactor, dfactor
+        )
+        self.mixer2 = _Mixer(
+            self.patch_num, self.patch_num, channel, d_model, dropout, tfactor, dfactor
+        )
         self.norm = nn.BatchNorm2d(channel)
         self.emb_dropout = nn.Dropout(embedding_dropout)
         self.head = nn.Sequential(
@@ -100,7 +116,9 @@ class WPMixer(nn.Module):
         patch_len = configs.patch_len
         patch_stride = stride
 
-        self.decomp = Decomposition(configs.input_len, configs.output_len, wavelet_name=wavelet, level=level)
+        self.decomp = Decomposition(
+            configs.input_len, configs.output_len, wavelet_name=wavelet, level=level
+        )
 
         self.branches = nn.ModuleList(
             [

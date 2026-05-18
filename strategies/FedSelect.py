@@ -1,4 +1,3 @@
-import copy
 import time
 from argparse import Namespace
 from typing import Any, Dict, List
@@ -62,8 +61,7 @@ class FedSelect(pFL):
         self._ensure_init()
         # Snapshot global params before sending (used for delta later)
         self._sent_params = {
-            name: p.data.clone().cpu()
-            for name, p in self.model.named_parameters()
+            name: p.data.clone().cpu() for name, p in self.model.named_parameters()
         }
         masks = [self._client_masks[c.id] for c in self.clients]
         return {"model": self.model, "mask": masks}
@@ -93,7 +91,7 @@ class FedSelect(pFL):
         for name, param in trained_model.named_parameters():
             if name not in mask:
                 continue
-            global_mask = (mask[name] == 0)
+            global_mask = mask[name] == 0
             if not global_mask.any():
                 continue
             delta = (param.data.cpu() - self._sent_params[name]).abs()
@@ -113,7 +111,7 @@ class FedSelect(pFL):
         for name, param in trained_model.named_parameters():
             if name not in mask or promoted >= remaining_budget:
                 break
-            global_mask = (mask[name] == 0)
+            global_mask = mask[name] == 0
             delta = (param.data.cpu() - self._sent_params[name]).abs()
             to_promote = global_mask & (delta >= threshold)
             can_promote = min(to_promote.sum().item(), remaining_budget - promoted)
@@ -156,7 +154,7 @@ class FedSelect(pFL):
             for name, param in cd["model"].named_parameters():
                 if name not in sum_vals:
                     continue
-                global_w = (1.0 - mask[name])  # 1 where global, 0 where local
+                global_w = 1.0 - mask[name]  # 1 where global, 0 where local
                 sum_vals[name].add_(param.data.cpu() * global_w, alpha=weight)
                 sum_counts[name].add_(global_w * weight)
 
@@ -188,7 +186,10 @@ class FedSelect(pFL):
                     if name not in mask:
                         continue
                     global_w = (mask[name] == 0).float()
-                    merged = global_w * srv_param.data.cpu() + (1 - global_w) * cli_param.data.cpu()
+                    merged = (
+                        global_w * srv_param.data.cpu()
+                        + (1 - global_w) * cli_param.data.cpu()
+                    )
                     cli_param.data.copy_(merged)
 
     def save_models(self, save_type: str) -> None:
@@ -203,15 +204,21 @@ class FedSelect(pFL):
             return
         if not self.exclude_server_model_processes:
             self.save_model(
-                model=self.model, path=self.model_path, name=self.name,
-                postfix=save_type, configs=self.configs,
+                model=self.model,
+                path=self.model_path,
+                name=self.name,
+                postfix=save_type,
+                configs=self.configs,
                 metadata={"save_type": save_type, "owner": "server"},
                 verbose=self.logger,
             )
         for client in self.clients:
             client.save_model(
-                model=client.model, path=client.model_path, name=client.name,
-                postfix=save_type, configs=client.configs,
+                model=client.model,
+                path=client.model_path,
+                name=client.name,
+                postfix=save_type,
+                configs=client.configs,
                 metadata={"save_type": save_type, "owner": client.name},
                 verbose=client.logger,
             )
@@ -239,8 +246,10 @@ class FedSelect_Client(pFL_Client):
                     local_param.data.copy_(srv_param.data)
                     continue
                 global_w = (self._mask[name] == 0).to(local_param.device).float()
-                merged = global_w * srv_param.data.to(local_param.device) + \
-                         (1.0 - global_w) * local_param.data
+                merged = (
+                    global_w * srv_param.data.to(local_param.device)
+                    + (1.0 - global_w) * local_param.data
+                )
                 local_param.data.copy_(merged)
 
     def train(self):

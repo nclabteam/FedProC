@@ -100,12 +100,25 @@ class _mixprop(nn.Module):
 
 
 class GraphBlock(nn.Module):
-    def __init__(self, c_out, d_model, conv_channel, skip_channel, gcn_depth, dropout, propalpha, seq_len, node_dim):
+    def __init__(
+        self,
+        c_out,
+        d_model,
+        conv_channel,
+        skip_channel,
+        gcn_depth,
+        dropout,
+        propalpha,
+        seq_len,
+        node_dim,
+    ):
         super().__init__()
         self.nodevec1 = nn.Parameter(torch.randn(c_out, node_dim))
         self.nodevec2 = nn.Parameter(torch.randn(node_dim, c_out))
         self.start_conv = nn.Conv2d(1, conv_channel, (d_model - c_out + 1, 1))
-        self.gconv1 = _mixprop(conv_channel, skip_channel, gcn_depth, dropout, propalpha)
+        self.gconv1 = _mixprop(
+            conv_channel, skip_channel, gcn_depth, dropout, propalpha
+        )
         self.gelu = nn.GELU()
         self.end_conv = nn.Conv2d(skip_channel, seq_len, (1, seq_len))
         self.linear = nn.Linear(c_out, d_model)
@@ -127,7 +140,9 @@ class Predict(nn.Module):
         self.individual = individual
         self.c_out = c_out
         if individual:
-            self.seq2pred = nn.ModuleList([nn.Linear(seq_len, pred_len) for _ in range(c_out)])
+            self.seq2pred = nn.ModuleList(
+                [nn.Linear(seq_len, pred_len) for _ in range(c_out)]
+            )
             self.dropout = nn.ModuleList([nn.Dropout(dropout) for _ in range(c_out)])
         else:
             self.seq2pred = nn.Linear(seq_len, pred_len)
@@ -136,6 +151,8 @@ class Predict(nn.Module):
     def forward(self, x):
         # x: [B, c_out, seq_len]
         if self.individual:
-            out = [self.dropout[i](self.seq2pred[i](x[:, i, :])) for i in range(self.c_out)]
+            out = [
+                self.dropout[i](self.seq2pred[i](x[:, i, :])) for i in range(self.c_out)
+            ]
             return torch.stack(out, dim=1)
         return self.dropout(self.seq2pred(x))

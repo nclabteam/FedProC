@@ -97,19 +97,15 @@ class hFL(pFL):
 
     def receive_from_clients(self) -> None:
         """No model collection — clients keep their own models."""
-        pass
 
     def calculate_aggregation_weights(self) -> None:
         """No aggregation — heterogeneous models cannot be averaged."""
-        pass
 
     def aggregate_models(self) -> None:
         """No aggregation — heterogeneous models cannot be averaged."""
-        pass
 
     def evaluate_generalization_loss(self, dataset_type: str) -> None:
         """No generalization eval — no shared server model."""
-        pass
 
     def save_models(self, save_type: str) -> None:
         """Only save client models (no server model in hFL)."""

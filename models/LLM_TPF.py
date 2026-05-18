@@ -1,28 +1,34 @@
 import torch
+import torch.fft
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.fft
 from einops import rearrange
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import GPT2Tokenizer
-from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
 
+from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
 
 # ---------------------------------------------------------------------------
 # Inception blocks (used only by LLM_TPF via Freq_Block)
 # ---------------------------------------------------------------------------
+
 
 class Inception_Block_V1(nn.Module):
     def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
         super().__init__()
         self.num_kernels = num_kernels
         self.kernels = nn.ModuleList(
-            [nn.Conv2d(in_channels, out_channels, kernel_size=2 * i + 1, padding=i) for i in range(num_kernels)]
+            [
+                nn.Conv2d(in_channels, out_channels, kernel_size=2 * i + 1, padding=i)
+                for i in range(num_kernels)
+            ]
         )
         if init_weight:
             for m in self.modules():
                 if isinstance(m, nn.Conv2d):
-                    nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                    nn.init.kaiming_normal_(
+                        m.weight, mode="fan_out", nonlinearity="relu"
+                    )
                     if m.bias is not None:
                         nn.init.constant_(m.bias, 0)
 
@@ -36,14 +42,30 @@ class Inception_Block_V2(nn.Module):
         self.num_kernels = num_kernels
         kernels = []
         for i in range(num_kernels // 2):
-            kernels.append(nn.Conv2d(in_channels, out_channels, kernel_size=[1, 2 * i + 3], padding=[0, i + 1]))
-            kernels.append(nn.Conv2d(in_channels, out_channels, kernel_size=[2 * i + 3, 1], padding=[i + 1, 0]))
+            kernels.append(
+                nn.Conv2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=[1, 2 * i + 3],
+                    padding=[0, i + 1],
+                )
+            )
+            kernels.append(
+                nn.Conv2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=[2 * i + 3, 1],
+                    padding=[i + 1, 0],
+                )
+            )
         kernels.append(nn.Conv2d(in_channels, out_channels, kernel_size=1))
         self.kernels = nn.ModuleList(kernels)
         if init_weight:
             for m in self.modules():
                 if isinstance(m, nn.Conv2d):
-                    nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                    nn.init.kaiming_normal_(
+                        m.weight, mode="fan_out", nonlinearity="relu"
+                    )
                     if m.bias is not None:
                         nn.init.constant_(m.bias, 0)
 
@@ -54,6 +76,7 @@ class Inception_Block_V2(nn.Module):
 # ---------------------------------------------------------------------------
 # Frequency block (used only by LLM_TPF)
 # ---------------------------------------------------------------------------
+
 
 def _random_select_with_temperature(frequency_list, k, temperature=0.9):
     freq = torch.tensor(frequency_list, dtype=torch.float32)
@@ -112,7 +135,11 @@ class Freq_Block(nn.Module):
             else:
                 length = self.seq_len
                 out = x
-            out = out.reshape(B, length // period, period, N).permute(0, 3, 1, 2).contiguous()
+            out = (
+                out.reshape(B, length // period, period, N)
+                .permute(0, 3, 1, 2)
+                .contiguous()
+            )
             out = conv(out)
             out = out.permute(0, 2, 3, 1).reshape(B, -1, N)
             out = out[:, : self.seq_len, :]
@@ -120,7 +147,9 @@ class Freq_Block(nn.Module):
             linear2 = nn.Linear(768, out.shape[-1]).to(self.device)
             out = linear1(out.transpose(0, 1))
             out, _ = self.cross_attention(
-                out, self.word_embedding.transpose(0, 1), self.word_embedding.transpose(0, 1)
+                out,
+                self.word_embedding.transpose(0, 1),
+                self.word_embedding.transpose(0, 1),
             )
             out = linear2(out.transpose(0, 1))
             res.append(out)
@@ -136,13 +165,25 @@ class Freq_Block(nn.Module):
 # Encoder
 # ---------------------------------------------------------------------------
 
+
 class Encoder_PCA(nn.Module):
-    def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=12, num_encoder_layers=1):
+    def __init__(
+        self,
+        input_dim,
+        word_embedding,
+        hidden_dim=768,
+        num_heads=12,
+        num_encoder_layers=1,
+    ):
         super().__init__()
         self.linear = nn.Linear(input_dim, hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=num_heads)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
-        self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads)
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, num_layers=num_encoder_layers
+        )
+        self.cross_attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads
+        )
         self.self_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=1)
         self.word_embedding = word_embedding.T
 
@@ -164,9 +205,9 @@ class Encoder_PCA(nn.Module):
         time_pub = time_pub.transpose(0, 1)
         time_private_fusion = time_fusion
         time_private_prompt = time_private_prompt.transpose(1, 2)
-        time_private_prompt = nn.Linear(time_private_prompt.shape[-1], time_private_fusion.shape[1]).to(
-            self.linear.weight.device
-        )(time_private_prompt)
+        time_private_prompt = nn.Linear(
+            time_private_prompt.shape[-1], time_private_fusion.shape[1]
+        ).to(self.linear.weight.device)(time_private_prompt)
         time_private_prompt = time_private_prompt.transpose(1, 2)
         return time_pub, time_private_fusion, time_private_prompt
 
@@ -174,6 +215,7 @@ class Encoder_PCA(nn.Module):
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
+
 
 def _prompt_build(x, description, factor, seq_len, pred_len):
     B = x.shape[0]
@@ -190,6 +232,7 @@ def _prompt_build(x, description, factor, seq_len, pred_len):
 # ---------------------------------------------------------------------------
 # Main model
 # ---------------------------------------------------------------------------
+
 
 class LLM_TPF(nn.Module):
 
@@ -234,9 +277,15 @@ class LLM_TPF(nn.Module):
             target_modules=["c_attn", "c_proj"],
         )
 
-        self.gpt2 = AccustumGPT2Model.from_pretrained("gpt2", output_attentions=True, output_hidden_states=True)
-        self.gpt2_fussion = AccustumGPT2Model.from_pretrained("gpt2", output_attentions=True, output_hidden_states=True)
-        self.gpt2_prompt = AccustumGPT2Model.from_pretrained("gpt2", output_attentions=True, output_hidden_states=True)
+        self.gpt2 = AccustumGPT2Model.from_pretrained(
+            "gpt2", output_attentions=True, output_hidden_states=True
+        )
+        self.gpt2_fussion = AccustumGPT2Model.from_pretrained(
+            "gpt2", output_attentions=True, output_hidden_states=True
+        )
+        self.gpt2_prompt = AccustumGPT2Model.from_pretrained(
+            "gpt2", output_attentions=True, output_hidden_states=True
+        )
         self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -261,22 +310,39 @@ class LLM_TPF(nn.Module):
                 param.requires_grad = False
 
         self.time_proj = nn.ModuleList(
-            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)]
+            [
+                nn.Linear(configs.d_model, configs.d_model, bias=False)
+                for _ in range(configs.gpt_layers + 1)
+            ]
         )
         self.text_proj = nn.ModuleList(
-            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)]
+            [
+                nn.Linear(configs.d_model, configs.d_model, bias=False)
+                for _ in range(configs.gpt_layers + 1)
+            ]
         )
 
-        self.in_layer = Encoder_PCA(self.seq_len, word_embedding, hidden_dim=configs.d_model)
+        self.in_layer = Encoder_PCA(
+            self.seq_len, word_embedding, hidden_dim=configs.d_model
+        )
         self.out_layer = nn.Linear(configs.d_model, self.pred_len)
 
-        for layer in (self.gpt2_fussion, self.gpt2, self.in_layer, self.out_layer, self.time_proj, self.text_proj):
+        for layer in (
+            self.gpt2_fussion,
+            self.gpt2,
+            self.in_layer,
+            self.out_layer,
+            self.time_proj,
+            self.text_proj,
+        ):
             layer.to(device=self.device)
             layer.train()
 
         if not hasattr(configs, "seq_len"):
             configs.seq_len = self.seq_len
-        self.freq_block = Freq_Block(configs, self.device, word_embedding).to(self.device)
+        self.freq_block = Freq_Block(configs, self.device, word_embedding).to(
+            self.device
+        )
 
     def _create_pca_embeddings(self):
         return gpt2_pca_embeddings(self.gpt2_prompt, device=self.device)
@@ -286,11 +352,17 @@ class LLM_TPF(nn.Module):
 
         means = x.mean(1, keepdim=True).detach()
         x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
+        stdev = torch.sqrt(
+            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
+        ).detach()
         x /= stdev
 
-        prompt = _prompt_build(x, self.content, self.factor, self.seq_len, self.pred_len)
-        prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
+        prompt = _prompt_build(
+            x, self.content, self.factor, self.seq_len, self.pred_len
+        )
+        prompt = self.tokenizer(
+            prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048
+        ).input_ids
         prompt_embeddings = self.gpt2.get_input_embeddings()(prompt.to(x.device))
 
         time_fusion = self.freq_block(x)

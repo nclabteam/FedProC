@@ -94,7 +94,9 @@ class pFedHN(pFL):
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
 
-        embed_dim = self.embed_dim if self.embed_dim > 0 else int(1 + self.num_clients / 4)
+        embed_dim = (
+            self.embed_dim if self.embed_dim > 0 else int(1 + self.num_clients / 4)
+        )
         embed_lr = self.embed_lr if self.embed_lr > 0 else self.hn_lr
 
         self.hnet = HyperNetwork(
@@ -167,7 +169,11 @@ class pFedHN(pFL):
 
             # Send weights to client; client stores initial state internally
             client.receive_from_server(
-                {"weights": OrderedDict({k: v.detach().cpu() for k, v in weights.items()})}
+                {
+                    "weights": OrderedDict(
+                        {k: v.detach().cpu() for k, v in weights.items()}
+                    )
+                }
             )
 
             # Client runs K local steps and returns Δθ = θ_initial − θ_final
@@ -192,10 +198,9 @@ class pFedHN(pFL):
             self.hnet.to("cpu")
 
             # Track communication cost (size of target weights sent)
-            send_mb = (
-                sum(t.element_size() * t.numel() for t in delta_theta.values())
-                / (1024 ** 2)
-            )
+            send_mb = sum(
+                t.element_size() * t.numel() for t in delta_theta.values()
+            ) / (1024**2)
             self.metrics["send_mb"].append(send_mb)
             client.metrics["train_time"].append(time.time() - round_start_time)
 

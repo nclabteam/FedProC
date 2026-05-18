@@ -85,7 +85,7 @@ class NovaOptimizer(Optimizer):
             self.local_normalizing_vec += self.local_counter
         if self.prox_mu != 0:
             etamu = group["lr"] * self.prox_mu
-            self.local_normalizing_vec *= (1.0 - etamu)
+            self.local_normalizing_vec *= 1.0 - etamu
             self.local_normalizing_vec += 1.0
         if self.momentum == 0 and self.prox_mu == 0:
             self.local_normalizing_vec += 1.0
@@ -151,8 +151,7 @@ class FedNova(tFL):
         if self.gmf != 0.0:
             if not self._global_momentum_buffer:
                 self._global_momentum_buffer = [
-                    (tau_eff * d / self.learning_rate).clone()
-                    for d in avg_d
+                    (tau_eff * d / self.learning_rate).clone() for d in avg_d
                 ]
             else:
                 for buf, d in zip(self._global_momentum_buffer, avg_d):
@@ -199,7 +198,11 @@ class FedNova_Client(tFL_Client):
                 nova_opt.step()
 
         # Collect normalized gradient: d_i = cum_grad / a_i
-        a_i = nova_opt.local_normalizing_vec if nova_opt.local_normalizing_vec > 0 else 1.0
+        a_i = (
+            nova_opt.local_normalizing_vec
+            if nova_opt.local_normalizing_vec > 0
+            else 1.0
+        )
         nova_grad = []
         for p in self.model.parameters():
             state = nova_opt.state[p]

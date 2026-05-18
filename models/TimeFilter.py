@@ -76,12 +76,20 @@ class TimeFilter(nn.Module):
         dtype = torch.float32
         masks = []
         for k in range(L):
-            S = ((torch.arange(L) % N == k % N) & (torch.arange(L) != k)).to(dtype).to(device)
+            S = (
+                ((torch.arange(L) % N == k % N) & (torch.arange(L) != k))
+                .to(dtype)
+                .to(device)
+            )
             T = (
-                (torch.arange(L) >= k // N * N)
-                & (torch.arange(L) < k // N * N + N)
-                & (torch.arange(L) != k)
-            ).to(dtype).to(device)
+                (
+                    (torch.arange(L) >= k // N * N)
+                    & (torch.arange(L) < k // N * N + N)
+                    & (torch.arange(L) != k)
+                )
+                .to(dtype)
+                .to(device)
+            )
             ST = torch.ones(L, dtype=dtype, device=device) - S - T
             ST[k] = 0.0
             masks.append(torch.stack([S, T, ST], dim=0))

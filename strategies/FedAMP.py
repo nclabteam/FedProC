@@ -123,7 +123,9 @@ class FedAMP_Client(pFL_Client):
                 loss = self.loss(outputs, batch_y)
                 # Proximal term: (λ/2αK) * ||w - u_i||²
                 for p, u in zip(self.model.parameters(), u_params):
-                    loss = loss + prox_coef * torch.norm(p - u.to(self.device), p=2) ** 2
+                    loss = (
+                        loss + prox_coef * torch.norm(p - u.to(self.device), p=2) ** 2
+                    )
                 loss.backward()
                 self.optimizer.step()
             self.scheduler.step()

@@ -73,8 +73,7 @@ def main():
 
     # Step 2: Find all experiment directories (those with config.json) in INPUT
     experiment_dirs = sorted(
-        d for d in base.iterdir()
-        if d.is_dir() and (d / "config.json").exists()
+        d for d in base.iterdir() if d.is_dir() and (d / "config.json").exists()
     )
 
     if not experiment_dirs:
@@ -98,10 +97,11 @@ def main():
         print("Step 2: Cleaning incomplete runs in output directory...\n")
         deleted, kept = clean_experiments(output_base)
         print(f"  Deleted: {deleted}, Kept: {kept}\n")
-        
+
         # Re-scan for valid experiments after cleaning
         experiment_dirs = sorted(
-            d for d in output_base.iterdir()
+            d
+            for d in output_base.iterdir()
             if d.is_dir() and (d / "config.json").exists()
         )
         print(f"Remaining experiments after clean: {len(experiment_dirs)}\n")

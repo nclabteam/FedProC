@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.normal import Normal
 
 
 class GCN(nn.Module):
@@ -56,11 +55,17 @@ class _MaskMoE(nn.Module):
         cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
         mask = cumulative_probs > self.top_p
         threshold_indices = mask.long().argmax(dim=-1)
-        threshold_mask = F.one_hot(threshold_indices, num_classes=sorted_indices.size(-1)).bool()
+        threshold_mask = F.one_hot(
+            threshold_indices, num_classes=sorted_indices.size(-1)
+        ).bool()
         mask = mask & ~threshold_mask
         top_p_mask = torch.zeros_like(mask)
         zero_indices = (mask == 0).nonzero(as_tuple=True)
-        top_p_mask[zero_indices[0], zero_indices[1], sorted_indices[zero_indices[0], zero_indices[1], zero_indices[2]]] = 1
+        top_p_mask[
+            zero_indices[0],
+            zero_indices[1],
+            sorted_indices[zero_indices[0], zero_indices[1], zero_indices[2]],
+        ] = 1
         sorted_probs = torch.where(mask, 0.0, sorted_probs)
         loss_importance = self._cv_squared(sorted_probs.sum(0))
         loss = loss_importance + 0.1 * loss_dynamic
@@ -80,8 +85,19 @@ class _MaskMoE(nn.Module):
             N = L // self.n_vars
             masks = []
             for k in range(L):
-                S = ((torch.arange(L) % N == k % N) & (torch.arange(L) != k)).to(dtype).to(device)
-                T = ((torch.arange(L) >= k // N * N) & (torch.arange(L) < k // N * N + N)).to(dtype).to(device)
+                S = (
+                    ((torch.arange(L) % N == k % N) & (torch.arange(L) != k))
+                    .to(dtype)
+                    .to(device)
+                )
+                T = (
+                    (
+                        (torch.arange(L) >= k // N * N)
+                        & (torch.arange(L) < k // N * N + N)
+                    )
+                    .to(dtype)
+                    .to(device)
+                )
                 ST = torch.ones(L).to(dtype).to(device) - S - T
                 masks.append(torch.stack([S, T, ST], dim=0))
             masks = torch.stack(masks, dim=0)
@@ -114,7 +130,9 @@ class _GraphLearner(nn.Module):
 
 
 class _GraphFilter(nn.Module):
-    def __init__(self, dim, n_vars, n_heads=4, scale=None, top_p=0.5, dropout=0.0, in_dim=96):
+    def __init__(
+        self, dim, n_vars, n_heads=4, scale=None, top_p=0.5, dropout=0.0, in_dim=96
+    ):
         super().__init__()
         self.n_heads = n_heads
         self.dropout = nn.Dropout(dropout)
@@ -123,7 +141,9 @@ class _GraphFilter(nn.Module):
 
     def forward(self, x, masks=None, alpha=0.5):
         B, L, D = x.shape
-        adj, loss = self.graph_learner(x.reshape(B, L, self.n_heads, -1).permute(0, 2, 1, 3), masks, alpha)
+        adj, loss = self.graph_learner(
+            x.reshape(B, L, self.n_heads, -1).permute(0, 2, 1, 3), masks, alpha
+        )
         adj = torch.softmax(adj, dim=-1)
         adj = self.dropout(adj)
         out = self.graph_conv(adj, x)
@@ -131,10 +151,14 @@ class _GraphFilter(nn.Module):
 
 
 class GraphBlock(nn.Module):
-    def __init__(self, dim, n_vars, d_ff=None, n_heads=4, top_p=0.5, dropout=0.0, in_dim=96):
+    def __init__(
+        self, dim, n_vars, d_ff=None, n_heads=4, top_p=0.5, dropout=0.0, in_dim=96
+    ):
         super().__init__()
         d_ff = dim * 4 if d_ff is None else d_ff
-        self.gnn = _GraphFilter(dim, n_vars, n_heads, top_p=top_p, dropout=dropout, in_dim=in_dim)
+        self.gnn = _GraphFilter(
+            dim, n_vars, n_heads, top_p=top_p, dropout=dropout, in_dim=in_dim
+        )
         self.norm1 = nn.LayerNorm(dim)
         self.ffn = nn.Sequential(
             nn.Linear(dim, d_ff),
@@ -152,11 +176,24 @@ class GraphBlock(nn.Module):
 
 
 class TimeFilter_Backbone(nn.Module):
-    def __init__(self, hidden_dim, n_vars, d_ff=None, n_heads=4, n_blocks=3, top_p=0.5, dropout=0.0, in_dim=96):
+    def __init__(
+        self,
+        hidden_dim,
+        n_vars,
+        d_ff=None,
+        n_heads=4,
+        n_blocks=3,
+        top_p=0.5,
+        dropout=0.0,
+        in_dim=96,
+    ):
         super().__init__()
         d_ff = hidden_dim * 2 if d_ff is None else d_ff
         self.blocks = nn.ModuleList(
-            [GraphBlock(hidden_dim, n_vars, d_ff, n_heads, top_p, dropout, in_dim) for _ in range(n_blocks)]
+            [
+                GraphBlock(hidden_dim, n_vars, d_ff, n_heads, top_p, dropout, in_dim)
+                for _ in range(n_blocks)
+            ]
         )
         self.n_blocks = n_blocks
 

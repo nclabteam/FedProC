@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 
 from layers.DataEmbedding import DataEmbedding_wo_pos
-from layers.ETSformer_EncDec import Decoder, DecoderLayer, Encoder, EncoderLayer, Transform
+from layers.ETSformer_EncDec import (
+    Decoder,
+    DecoderLayer,
+    Encoder,
+    EncoderLayer,
+    Transform,
+)
 
 
 class ETSformer(nn.Module):
@@ -37,9 +43,13 @@ class ETSformer(nn.Module):
         enc_in = configs.input_channels
         c_out = configs.output_channels
 
-        assert configs.e_layers == configs.d_layers, "ETSformer requires e_layers == d_layers"
+        assert (
+            configs.e_layers == configs.d_layers
+        ), "ETSformer requires e_layers == d_layers"
 
-        self.enc_embedding = DataEmbedding_wo_pos(enc_in, configs.d_model, embed_type="timeF", dropout=configs.dropout)
+        self.enc_embedding = DataEmbedding_wo_pos(
+            enc_in, configs.d_model, embed_type="timeF", dropout=configs.dropout
+        )
         self.level_proj = nn.Linear(enc_in, c_out) if enc_in != c_out else nn.Identity()
 
         self.encoder = Encoder(
@@ -60,7 +70,13 @@ class ETSformer(nn.Module):
         )
         self.decoder = Decoder(
             [
-                DecoderLayer(configs.d_model, configs.n_heads, c_out, configs.output_len, dropout=configs.dropout)
+                DecoderLayer(
+                    configs.d_model,
+                    configs.n_heads,
+                    c_out,
+                    configs.output_len,
+                    dropout=configs.dropout,
+                )
                 for _ in range(configs.d_layers)
             ]
         )

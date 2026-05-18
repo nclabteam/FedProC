@@ -92,8 +92,10 @@ class FedTrend(tFL):
                 for name in end_params:
                     if name in start_params:
                         curr_delta[name] = (
-                            end_params[name].data - start_params[name].data
-                        ).cpu().clone()
+                            (end_params[name].data - start_params[name].data)
+                            .cpu()
+                            .clone()
+                        )
 
             # Consistency mask: keep only params whose sign matches the previous interval.
             # First interval has no prior delta → no masking (full distance used).
@@ -106,7 +108,11 @@ class FedTrend(tFL):
                     if name in prev_delta
                 }
 
-            self.T_ct[client_id] = {"start": start_model, "end": end_model, "mask": mask}
+            self.T_ct[client_id] = {
+                "start": start_model,
+                "end": end_model,
+                "mask": mask,
+            }
 
             # Advance interval boundary.
             self.T_ct_start[client_id] = copy.deepcopy(end_model)
@@ -129,8 +135,12 @@ class FedTrend(tFL):
         y_mark_shape=None,
         is_client_trajectory=False,
     ):
-        synthetic_x = torch.randn(data_size, *input_shape, requires_grad=True, device="cpu")
-        synthetic_y = torch.randn(data_size, *output_shape, requires_grad=True, device="cpu")
+        synthetic_x = torch.randn(
+            data_size, *input_shape, requires_grad=True, device="cpu"
+        )
+        synthetic_y = torch.randn(
+            data_size, *output_shape, requires_grad=True, device="cpu"
+        )
         synthetic_data = TensorDataset(synthetic_x, synthetic_y)
         optimizer_data = torch.optim.Adam([synthetic_x, synthetic_y], lr=synthetic_lr)
 
@@ -151,7 +161,9 @@ class FedTrend(tFL):
             # Inner loop: train a temporary model on D_syn from W_start.
             temp_model = copy.deepcopy(self.model).to("cpu")
             temp_model.load_state_dict(model_start_state)
-            optimizer_model = torch.optim.SGD(temp_model.parameters(), lr=self.learning_rate)
+            optimizer_model = torch.optim.SGD(
+                temp_model.parameters(), lr=self.learning_rate
+            )
 
             with higher.innerloop_ctx(
                 temp_model, optimizer_model, track_higher_grads=False
@@ -194,7 +206,8 @@ class FedTrend(tFL):
         sy = synthetic_y.detach().cpu()
         if x_mark_shape is not None and y_mark_shape is not None:
             return TensorDataset(
-                sx, sy,
+                sx,
+                sy,
                 torch.zeros(data_size, *x_mark_shape),
                 torch.zeros(data_size, *y_mark_shape),
             )
@@ -311,4 +324,6 @@ class FedTrend_Client(tFL_Client):
             final_dataset = local_dataset
 
         self.train_samples = len(final_dataset)
-        return DataLoader(dataset=final_dataset, batch_size=self.batch_size, shuffle=True)
+        return DataLoader(
+            dataset=final_dataset, batch_size=self.batch_size, shuffle=True
+        )
