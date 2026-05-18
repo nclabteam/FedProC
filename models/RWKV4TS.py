@@ -3,6 +3,7 @@ import torch.nn as nn
 from einops import rearrange
 from torch.nn import functional as F
 
+from layers.RevIN import RevIN
 from utils.parsing import str2bool
 
 
@@ -51,6 +52,7 @@ class RWKV4TS(nn.Module):
         self.patch_size = configs.patch_size
         self.stride = configs.stride
         self.patch_num = (configs.input_len - self.patch_size) // self.stride + 1
+        self.revin_layer = RevIN(configs.input_channels, affine=False)
 
         self.padding_patch_layer = nn.ReplicationPad1d((0, self.stride))
         self.patch_num += 1
@@ -70,12 +72,7 @@ class RWKV4TS(nn.Module):
     def forward(self, x, **kwargs):
         B, L, M = x.shape
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x /= stdev
+        x = self.revin_layer(x, "norm")
 
         x = rearrange(x, "b l m -> b m l")
 
@@ -90,10 +87,7 @@ class RWKV4TS(nn.Module):
         outputs = self.out_layer(outputs.reshape(B * M, -1))
         outputs = rearrange(outputs, "(b m) l -> b l m", b=B)
 
-        outputs = outputs * stdev
-        outputs = outputs + means
-
-        return outputs
+        return self.revin_layer(outputs, "denorm")
 
 
 class Block(nn.Module):

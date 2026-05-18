@@ -4,6 +4,7 @@ from einops import rearrange
 from peft import LoraConfig, TaskType, get_peft_model
 
 from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
+from layers.RevIN import RevIN
 
 
 class CALF(nn.Module):
@@ -27,6 +28,7 @@ class CALF(nn.Module):
     def __init__(self, configs):
         super().__init__()
         self.pred_len = configs.output_len
+        self.revin_layer = RevIN(configs.input_channels, affine=False)
 
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
@@ -126,13 +128,7 @@ class CALF(nn.Module):
         # x: [B, L, M] where B=batch, L=seq_len, M=features
         B, L, M = x.shape
 
-        # Normalize input
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x /= stdev
+        x = self.revin_layer(x, "norm")
 
         # Rearrange for processing: [B, M, L]
         x = rearrange(x, "b l m -> b m l")
@@ -172,9 +168,8 @@ class CALF(nn.Module):
         outputs_time = rearrange(outputs_time, "b m l -> b l m")
         outputs_text = rearrange(outputs_text, "b m l -> b l m")
 
-        # Denormalize
-        outputs_text = outputs_text * stdev + means
-        outputs_time = outputs_time * stdev + means
+        outputs_text = self.revin_layer(outputs_text, "denorm")
+        outputs_time = self.revin_layer(outputs_time, "denorm")
 
         output = {
             "outputs_text": outputs_text,

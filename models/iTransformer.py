@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers.DataEmbedding import DataEmbedding_inverted
+from layers.RevIN import RevIN
 from layers.SelfAttention_Family import AttentionLayer, FullAttention
 from layers.Transformer_EncDec import Encoder, EncoderLayer
 
@@ -34,6 +35,9 @@ class iTransformer(nn.Module):
     def __init__(self, configs):
         super().__init__()
         self.pred_len = configs.output_len
+        self.revin_layer = RevIN(
+            configs.input_channels, affine=False, stdev_detach=False
+        )
         self.enc_embedding = DataEmbedding_inverted(
             configs.input_len, configs.d_model, dropout=configs.dropout
         )
@@ -65,10 +69,7 @@ class iTransformer(nn.Module):
         # x: [B, input_len, N]
         x_mark = kwargs.get("x_mark", None)
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         N = x.shape[2]
         enc_out = self.enc_embedding(x, x_mark)  # [B, N, d_model]
@@ -77,6 +78,4 @@ class iTransformer(nn.Module):
             :, :, :N
         ]  # [B, pred_len, N]
 
-        dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return dec_out
+        return self.revin_layer(dec_out, "denorm")

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from layers.RevIN import RevIN
+
 
 class _LayerNorm(nn.Module):
     def __init__(self, ndim, bias=True):
@@ -53,6 +55,9 @@ class TiDE(nn.Module):
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         c_out = configs.output_channels
+        self.revin_layer = RevIN(
+            configs.input_channels, affine=False, stdev_detach=False
+        )
         hidden = configs.d_model
         dropout = configs.dropout
 
@@ -104,10 +109,7 @@ class TiDE(nn.Module):
         x_mark = kwargs.get("x_mark", None)
         B, T, N = x.shape
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         if x_mark is None:
             full_mark = torch.zeros(
@@ -123,6 +125,4 @@ class TiDE(nn.Module):
             [self._forecast_channel(x[:, :, i], full_mark) for i in range(N)], dim=-1
         )  # [B, pred_len, N]
 
-        out = out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        out = out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return out
+        return self.revin_layer(out, "denorm")

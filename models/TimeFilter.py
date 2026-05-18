@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers.PositionalEmbedding import PositionalEmbedding
-from layers.StandardNorm import Normalize
+from layers.RevIN import RevIN as Normalize
 from layers.TimeFilter_layers import TimeFilter_Backbone
 
 

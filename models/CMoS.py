@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from layers.RevIN import RevIN
+
 
 class CMoS(nn.Module):
     """
@@ -40,6 +42,9 @@ class CMoS(nn.Module):
         self.num_map = configs.num_map
         self.kernel_size = configs.kernel_size
         self.conv_stride = configs.conv_stride
+        self.revin_layer = RevIN(
+            configs.input_channels, eps=1e-10, affine=False, stdev_detach=False
+        )
 
         # Foundation correlation matrices
         in_chunks = self.seq_len // self.seg_size
@@ -75,13 +80,8 @@ class CMoS(nn.Module):
 
     def forward(self, x, **kwargs):
         # x: [B, seq_len, c]
+        x = self.revin_layer(x, "norm")
         x = x.transpose(1, 2)  # [B, c, seq_len]
-
-        # RevIN normalization
-        means = x.mean(2, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=2, keepdim=True, unbiased=False) + 1e-10)
-        x = x / stdev
 
         # Per-channel conv for gating
         conv_out = torch.cat(
@@ -106,5 +106,5 @@ class CMoS(nn.Module):
         x = torch.einsum("bcns,bcn->bcs", x_out, gates_out)  # [B, c, pred_len]
 
         # De-normalization
-        x = x * stdev + means
-        return x.transpose(1, 2)  # [B, pred_len, c]
+        x = x.transpose(1, 2)
+        return self.revin_layer(x, "denorm")  # [B, pred_len, c]

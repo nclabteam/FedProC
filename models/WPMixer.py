@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers.DWT_Decomposition import Decomposition
+from layers.RevIN import RevIN
 
 
 class _TokenMixer(nn.Module):
@@ -111,6 +112,9 @@ class WPMixer(nn.Module):
         super().__init__()
         self.pred_len = configs.output_len
         channel = configs.output_channels
+        self.revin_layer = RevIN(
+            configs.input_channels, affine=False, stdev_detach=False
+        )
         d_model = configs.d_model
         dropout = configs.dropout
         patch_len = configs.patch_len
@@ -139,10 +143,7 @@ class WPMixer(nn.Module):
         )
 
     def forward(self, x, **kwargs):
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         x_t = x.transpose(1, 2)  # [B, channel, input_len]
         yl, yh = self.decomp.transform(x_t)
@@ -153,6 +154,4 @@ class WPMixer(nn.Module):
         out = self.decomp.inv_transform(pred_yl, pred_yh)  # [B, channel, pred_len+]
         out = out.transpose(1, 2)[:, : self.pred_len, :]  # [B, pred_len, channel]
 
-        out = out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        out = out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return out
+        return self.revin_layer(out, "denorm")

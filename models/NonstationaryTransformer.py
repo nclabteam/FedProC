@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from layers.DataEmbedding import DataEmbedding_wo_pos
+from layers.RevIN import RevIN
 
 
 class _DSAttention(nn.Module):
@@ -145,6 +146,7 @@ class NonstationaryTransformer(nn.Module):
         c_out = configs.output_channels
         p_hidden_dim = 128
         p_hidden_layers = 2
+        self.revin_layer = RevIN(enc_in, affine=False)
 
         self.enc_embedding = DataEmbedding_wo_pos(
             enc_in, configs.d_model, embed_type="timeF", dropout=configs.dropout
@@ -180,12 +182,9 @@ class NonstationaryTransformer(nn.Module):
         x_mark = kwargs.get("x_mark", None)
         x_raw = x.clone().detach()
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
+        stdev = self.revin_layer.stdev
+        means = self.revin_layer.mean
 
         tau = self.tau_learner(x_raw, stdev)  # [B, 1]
         tau = torch.clamp(tau, max=80.0).exp()
@@ -195,6 +194,4 @@ class NonstationaryTransformer(nn.Module):
         enc_out = self.encoder(enc_out, tau=tau, delta=delta)
         dec_out = self.projection(enc_out)[:, -self.pred_len :, :]
 
-        dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return dec_out
+        return self.revin_layer(dec_out, "denorm")

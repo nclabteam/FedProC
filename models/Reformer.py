@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from layers.DataEmbedding import DataEmbedding_wo_pos
+from layers.RevIN import RevIN
 from layers.SelfAttention_Family import ReformerLayer
 from layers.Transformer_EncDec import Encoder, EncoderLayer
 
@@ -30,6 +31,9 @@ class Reformer(nn.Module):
     def __init__(self, configs, bucket_size=4, n_hashes=4):
         super().__init__()
         self.pred_len = configs.output_len
+        self.revin_layer = RevIN(
+            configs.input_channels, affine=False, stdev_detach=False
+        )
 
         self.enc_embedding = DataEmbedding_wo_pos(
             configs.input_channels,
@@ -60,10 +64,7 @@ class Reformer(nn.Module):
 
     def forward(self, x, **kwargs):
         x_mark = kwargs.get("x_mark", None)
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         x_placeholder = torch.zeros_like(x[:, -self.pred_len :, :])
         x_full = torch.cat([x, x_placeholder], dim=1)
@@ -84,6 +85,5 @@ class Reformer(nn.Module):
         enc_out, _ = self.encoder(enc_out)
         dec_out = self.projection(enc_out)
 
-        dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(1, dec_out.shape[1], 1)
-        dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(1, dec_out.shape[1], 1)
+        dec_out = self.revin_layer(dec_out, "denorm")
         return dec_out[:, -self.pred_len :, :]

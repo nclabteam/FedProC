@@ -3,6 +3,8 @@ import math
 import torch
 import torch.nn as nn
 
+from layers.RevIN import RevIN
+
 
 class _FourierFilter(nn.Module):
     """Split time series into time-variant and time-invariant components via FFT masking."""
@@ -159,6 +161,7 @@ class Koopa(nn.Module):
         num_blocks = configs.e_layers
         dropout = configs.dropout
         alpha = 0.2
+        self.revin_layer = RevIN(enc_in, affine=False)
 
         self.num_blocks = num_blocks
         self.alpha = alpha
@@ -221,12 +224,7 @@ class Koopa(nn.Module):
         if not self._mask_initialized:
             self._init_mask(x)
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         residual, forecast = x, None
         for i in range(self.num_blocks):
@@ -239,6 +237,4 @@ class Koopa(nn.Module):
             else:
                 forecast = forecast + time_inv_output + time_var_output
 
-        forecast = forecast * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        forecast = forecast + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return forecast
+        return self.revin_layer(forecast, "denorm")

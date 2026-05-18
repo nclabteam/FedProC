@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from scipy import signal
 from scipy import special as ss
 
+from layers.RevIN import RevIN
+
 
 class FiLM(nn.Module):
 
@@ -21,6 +23,7 @@ class FiLM(nn.Module):
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.enc_in = configs.input_channels
+        self.revin_layer = RevIN(self.enc_in, affine=False)
 
         # b, s, f means b, f
         self.affine_weight = nn.Parameter(torch.ones(1, 1, self.enc_in))
@@ -51,12 +54,7 @@ class FiLM(nn.Module):
 
     def forward(self, x, **kwargs):
         # Normalization from Non-stationary Transformer
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x /= stdev
+        x = self.revin_layer(x, "norm")
 
         x = x * self.affine_weight + self.affine_bias
         x_decs = []
@@ -81,9 +79,7 @@ class FiLM(nn.Module):
         # De-Normalization from Non-stationary Transformer
         x_dec = x_dec - self.affine_bias
         x_dec = x_dec / (self.affine_weight + 1e-10)
-        x_dec = x_dec * stdev
-        x_dec = x_dec + means
-        return x_dec  # [B, L, D]
+        return self.revin_layer(x_dec, "denorm")  # [B, L, D]
 
 
 def transition(N):

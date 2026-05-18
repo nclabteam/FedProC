@@ -20,7 +20,9 @@ class Standard(BaseScaler):
         self.std = data.std(axis=0)
 
     def transform(self, data):
-        return self.divide_no_nan((data - self.mean), self.std)
+        mean = np.asarray(self.mean, dtype=np.float32)
+        std = np.asarray(self.std, dtype=np.float32)
+        return self.divide_no_nan((np.asarray(data, dtype=np.float32) - mean), std)
 
     def inverse_transform(self, data):
-        return (data * self.std) + self.mean
+        return (np.asarray(data, dtype=np.float32) * np.asarray(self.std, dtype=np.float32)) + np.asarray(self.mean, dtype=np.float32)

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from layers.Conv_Blocks import Inception_Block_V1
 from layers.DataEmbedding import DataEmbedding_wo_pos
+from layers.RevIN import RevIN
 
 
 def FFT_for_Period(x, k=2):
@@ -88,6 +89,7 @@ class TimesNet(nn.Module):
         self.pred_len = configs.output_len
         enc_in = configs.input_channels
         c_out = configs.output_channels
+        self.revin_layer = RevIN(enc_in, affine=False, stdev_detach=False)
 
         self.model = nn.ModuleList(
             [
@@ -115,10 +117,7 @@ class TimesNet(nn.Module):
     def forward(self, x, **kwargs):
         x_mark = kwargs.get("x_mark", None)
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         enc_out = self.enc_embedding(x, x_mark)
         enc_out = self.predict_linear(enc_out.permute(0, 2, 1)).permute(0, 2, 1)
@@ -128,10 +127,5 @@ class TimesNet(nn.Module):
 
         dec_out = self.projection(enc_out)
 
-        dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(
-            1, self.pred_len + self.seq_len, 1
-        )
-        dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(
-            1, self.pred_len + self.seq_len, 1
-        )
+        dec_out = self.revin_layer(dec_out, "denorm")
         return dec_out[:, -self.pred_len :, :]

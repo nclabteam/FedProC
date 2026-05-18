@@ -10,6 +10,7 @@ class RevIN(nn.Module):
         affine=True,
         subtract_last=False,
         non_norm=False,
+        stdev_detach=True,
     ):
         super().__init__()
         self.num_features = num_features
@@ -17,6 +18,7 @@ class RevIN(nn.Module):
         self.affine = affine
         self.subtract_last = subtract_last
         self.non_norm = non_norm
+        self.stdev_detach = stdev_detach
         if self.affine:
             self._init_params()
 
@@ -41,9 +43,10 @@ class RevIN(nn.Module):
             self.last = x[:, -1, :].unsqueeze(1)
         else:
             self.mean = torch.mean(x, dim=dim2reduce, keepdim=True).detach()
-        self.stdev = torch.sqrt(
+        stdev = torch.sqrt(
             torch.var(x, dim=dim2reduce, keepdim=True, unbiased=False) + self.eps
-        ).detach()
+        )
+        self.stdev = stdev.detach() if self.stdev_detach else stdev
 
     def _normalize(self, x):
         if self.non_norm:

@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
+from layers.RevIN import RevIN
+
 
 class PAttn(nn.Module):
 
@@ -30,39 +32,21 @@ class PAttn(nn.Module):
         )
         self.d_model = configs.d_model
         self.patch_num = (self.seq_len - self.patch_size) // self.stride + 2
+        self.revin_layer = RevIN(configs.input_channels, affine=False)
 
         self.padding_patch_layer = nn.ReplicationPad1d((0, self.stride))
         self.in_layer = nn.Linear(self.patch_size, self.d_model)
         self.basic_attn = MultiHeadAttention(d_model=self.d_model)
         self.out_layer = nn.Linear(self.d_model * self.patch_num, self.pred_len)
 
-    def norm(self, x, dim=1, means=None, stdev=None):
-        """
-        Normalization function
-        For input [B, L, C], normalize along the sequence length dimension (dim=1)
-        """
-        if means is not None:
-            # Denormalization
-            return x * stdev + means
-        else:
-            # Normalization
-            means = x.mean(dim, keepdim=True).detach()
-            x = x - means
-            stdev = torch.sqrt(
-                torch.var(x, dim=dim, keepdim=True, unbiased=False) + 1e-5
-            ).detach()
-            x /= stdev
-            return x, means, stdev
-
     def forward(self, x, **kwargs):
+        x = self.revin_layer(x, "norm")
+
         # Input: [Batch, input_len, Channel] -> [Batch, Channel, input_len]
         x = x.transpose(1, 2)
 
         B, C = x.size(0), x.size(1)
         # Now: [Batch, Channel, input_len] e.g., [Batch, Channel, 336]
-
-        # Normalize along sequence dimension
-        x, means, stdev = self.norm(x, dim=2)
 
         # Apply padding: [Batch, Channel, input_len + stride]
         x = self.padding_patch_layer(x)
@@ -85,13 +69,10 @@ class PAttn(nn.Module):
         # Project to prediction length: [Batch, Channel, pred_len]
         x = self.out_layer(x)
 
-        # Denormalize
-        x = self.norm(x, means=means, stdev=stdev)
-
         # Transpose back to original format: [Batch, pred_len, Channel]
         x = x.transpose(1, 2)
 
-        return x
+        return self.revin_layer(x, "denorm")
 
 
 class MultiHeadAttention(nn.Module):

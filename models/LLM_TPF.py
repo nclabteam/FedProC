@@ -7,6 +7,7 @@ from peft import LoraConfig, TaskType, get_peft_model
 from transformers import GPT2Tokenizer
 
 from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
+from layers.RevIN import RevIN
 
 # ---------------------------------------------------------------------------
 # Inception blocks (used only by LLM_TPF via Freq_Block)
@@ -267,6 +268,7 @@ class LLM_TPF(nn.Module):
         self.content = getattr(configs, "content", "time series forecasting")
         self.device = configs.device
         self.factor = getattr(configs, "factor", "none")
+        self.revin_layer = RevIN(configs.input_channels, affine=False)
 
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
@@ -350,12 +352,7 @@ class LLM_TPF(nn.Module):
     def forward(self, x, **kwargs):
         B, L, M = x.shape
 
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(
-            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5
-        ).detach()
-        x /= stdev
+        x = self.revin_layer(x, "norm")
 
         prompt = _prompt_build(
             x, self.content, self.factor, self.seq_len, self.pred_len
@@ -390,9 +387,9 @@ class LLM_TPF(nn.Module):
         outputs_text = rearrange(outputs_text, "b m l -> b l m")
         outputs_time = rearrange(outputs_time, "b m l -> b l m")
 
-        outputs_prompt = outputs_prompt * stdev + means
-        outputs_time = outputs_time * stdev + means
-        outputs_text = outputs_text * stdev + means
+        outputs_prompt = self.revin_layer(outputs_prompt, "denorm")
+        outputs_time = self.revin_layer(outputs_time, "denorm")
+        outputs_text = self.revin_layer(outputs_text, "denorm")
 
         w = nn.Parameter(torch.ones(3, device=x.device))
         w = w / w.sum()

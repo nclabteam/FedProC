@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
+from layers.RevIN import RevIN
 from layers.SelfAttention_Family import AttentionLayer, FullAttention
 
 
@@ -70,6 +71,9 @@ class MultiPatchFormer(nn.Module):
         super().__init__()
         self.pred_len = configs.output_len
         self.d_channel = configs.input_channels
+        self.revin_layer = RevIN(
+            configs.input_channels, affine=False, stdev_detach=False
+        )
         N = configs.e_layers
         d_model = configs.d_model
         d_hidden = configs.d_ff
@@ -145,10 +149,7 @@ class MultiPatchFormer(nn.Module):
         self.out8 = nn.Linear(d_model + 7 * p8, p_last)
 
     def forward(self, x, **kwargs):
-        means = x.mean(1, keepdim=True).detach()
-        x = x - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        x = self.revin_layer(x, "norm")
 
         x_i = x.permute(0, 2, 1)  # [B, C, T]
         bc_l = rearrange(x_i, "b c l -> (b c) l").unsqueeze(-2)  # [B*C, 1, T]
@@ -186,6 +187,4 @@ class MultiPatchFormer(nn.Module):
             0, 2, 1
         )  # [B, pred_len, C]
 
-        out = out * stdev[:, 0].unsqueeze(1).repeat(1, self.pred_len, 1)
-        out = out + means[:, 0].unsqueeze(1).repeat(1, self.pred_len, 1)
-        return out
+        return self.revin_layer(out, "denorm")
