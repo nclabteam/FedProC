@@ -35,6 +35,7 @@
 | Name | Venue | Year | Paper | URL |
 |------|-------|------| ----- | ----|
 | FedProx | MLsys | 2020 | Federated Optimization in Heterogeneous Networks | [Arxiv](https://arxiv.org/abs/1812.06127) |
+| FedRidge | arXiv | 2026 | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
 | Ditto | ICML | 2021 | Ditto: Fair and Robust Federated Learning Through Personalization | [Arxiv](https://arxiv.org/abs/2012.04235) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverditto.py) |
 | pFedMe | NeurIPS | 2020 | Personalized Federated Learning with Moreau Envelopes | [Arxiv](https://arxiv.org/abs/2006.08848) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverpFedMe.py) |
 | APFL | arXiv | 2020 | Adaptive Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2003.13461) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverapfl.py) |

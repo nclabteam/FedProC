@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 from layers.DataEmbedding import DataEmbedding_wo_pos
-from layers.SeriesDecompMA import SeriesDecompMA
 from layers.RevIN import RevIN as Normalize
+from layers.SeriesDecompMA import SeriesDecompMA
 
 
 class DFT_series_decomp(nn.Module):

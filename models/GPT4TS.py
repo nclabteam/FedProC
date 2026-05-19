@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 from einops import rearrange
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
