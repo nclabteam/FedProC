@@ -6,16 +6,27 @@ import torch
 from .pFL import pFL, pFL_Client
 
 
-class FedRidge(pFL):
+class _LinearWeightsMixin:
+    """Shared mixin that provides _load_linear_weights for server and client classes."""
+
+    @staticmethod
+    def _load_linear_weights(model: torch.nn.Module, W: torch.Tensor) -> None:
+        """Load OLS solution W (L×H) into the model's Linear(L,H) layer."""
+        H, L = W.shape[1], W.shape[0]
+        with torch.no_grad():
+            for param in model.parameters():
+                if param.ndim == 2 and param.shape == (H, L):
+                    param.data.copy_(W.T.to(param.device))
+                elif param.ndim == 1 and param.shape[0] == H:
+                    param.data.zero_()
+
+
+class FedRidge(_LinearWeightsMixin, pFL):
     """
     FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF.
 
     Clients upload full Sigma_xx (L×L) and Sigma_xy (L×H). Server aggregates
-    and solves the global ridge regression exactly in one round. Clients
-    personalize by blending local and global covariance matrices.
-
-    This one-shot strategy uses sufficient statistics instead of iterative
-    model averaging.
+    and solves the global ridge regression exactly in one round.
     """
 
     optional = {"gamma": 0.1}
@@ -80,27 +91,19 @@ class FedRidge(pFL):
 
         self.Sigma_xx_g = Sigma_xx_g
         self.Sigma_xy_g = Sigma_xy_g
-        _load_linear_weights(self.model, W)
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        base = super().variables_to_be_sent()
-        base["Sigma_xx_g"] = getattr(self, "Sigma_xx_g", None)
-        base["Sigma_xy_g"] = getattr(self, "Sigma_xy_g", None)
-        return base
+        self._load_linear_weights(self.model, W)
 
 
-class FedRidge_Client(pFL_Client):
+class FedRidge_Client(_LinearWeightsMixin, pFL_Client):
     """
     Client for FedRidge.
 
-    Computes full Sigma_xx and Sigma_xy from local data. Personalizes the
-    received global model via ridge blend of local and global statistics.
+    Computes full Sigma_xx and Sigma_xy from local data and uploads them.
+    Receives and loads the global model only — no personalization.
     """
 
     _Sigma_xx: Optional[torch.Tensor] = None
     _Sigma_xy: Optional[torch.Tensor] = None
-    Sigma_xx_g: Optional[torch.Tensor] = None
-    Sigma_xy_g: Optional[torch.Tensor] = None
 
     def compute_statistics(self) -> None:
         loader = self.load_train_data()
@@ -127,38 +130,5 @@ class FedRidge_Client(pFL_Client):
             "score": self.train_samples,
         }
 
-    def receive_from_server(self, data: Dict[str, Any]) -> None:
-        self.Sigma_xx_g = data.pop("Sigma_xx_g", None)
-        self.Sigma_xy_g = data.pop("Sigma_xy_g", None)
-        super().receive_from_server(data)
-        if (
-            self.Sigma_xx_g is not None
-            and self._Sigma_xx is not None
-            and self._Sigma_xy is not None
-        ):
-            self._personalize()
-
-    def _personalize(self) -> None:
-        gamma = getattr(self, "gamma", 0.1)
-        L = self.input_len
-        A = self._Sigma_xx + gamma * self.Sigma_xx_g + gamma * torch.eye(L)
-        b = self._Sigma_xy + gamma * self.Sigma_xy_g
-        W_pers = torch.linalg.solve(A, b)
-        _load_linear_weights(self.model, W_pers)
-
     def train(self) -> Optional[Dict[str, Any]]:
         return None
-
-
-# ------------------------------------------------------------------ utilities
-
-
-def _load_linear_weights(model: torch.nn.Module, W: torch.Tensor) -> None:
-    """Load OLS solution W (L, H) into the model's first linear layer."""
-    H, L = W.shape[1], W.shape[0]
-    with torch.no_grad():
-        for name, param in model.named_parameters():
-            if param.ndim == 2 and param.shape == (H, L):
-                param.data.copy_(W.T.to(param.device))
-            elif param.ndim == 1 and param.shape[0] == H:
-                param.data.zero_()
