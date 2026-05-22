@@ -11,14 +11,17 @@ class _LinearWeightsMixin:
 
     @staticmethod
     def _load_linear_weights(model: torch.nn.Module, W: torch.Tensor) -> None:
-        """Load OLS solution W (L×H) into the model's Linear(L,H) layer."""
+        """Load W (L×H) into the last nn.Linear(L,H) layer of model."""
         H, L = W.shape[1], W.shape[0]
-        with torch.no_grad():
-            for param in model.parameters():
-                if param.ndim == 2 and param.shape == (H, L):
-                    param.data.copy_(W.T.to(param.device))
-                elif param.ndim == 1 and param.shape[0] == H:
-                    param.data.zero_()
+        target = None
+        for module in model.modules():
+            if isinstance(module, torch.nn.Linear) and module.weight.shape == (H, L):
+                target = module
+        if target is not None:
+            with torch.no_grad():
+                target.weight.data.copy_(W.T.to(target.weight.device))
+                if target.bias is not None:
+                    target.bias.data.zero_()
 
 
 class FedRidge(_LinearWeightsMixin, pFL):
