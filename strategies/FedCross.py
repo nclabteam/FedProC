@@ -37,6 +37,33 @@ class FedCross(Server):
     def variables_to_be_sent(self):
         return {"model": self.w_locals}
 
+    def _resize_w_locals(self, target_size):
+        if target_size < 1:
+            raise ValueError("FedCross requires at least one selected client")
+        if target_size == self.w_locals_num:
+            return
+
+        if target_size < self.w_locals_num:
+            self.w_locals = self.w_locals[:target_size]
+        else:
+            template = self.w_locals[-1] if self.w_locals else self.model
+            self.w_locals.extend(
+                copy.deepcopy(template) for _ in range(target_size - self.w_locals_num)
+            )
+        self.w_locals_num = target_size
+
+    def send_to_clients(self):
+        self._resize_w_locals(len(self.selected_clients))
+        current_iter = getattr(self, "current_iter", 0)
+        total_bytes_sent = 0.0
+
+        for client, model in zip(self.selected_clients, self.w_locals):
+            client.current_iter = current_iter
+            total_bytes_sent += self.get_size(model)
+            client.receive_from_server({"model": model})
+
+        self.metrics["send_mb"].append(total_bytes_sent)
+
     def receive_from_clients(self):
         super().receive_from_clients()
         for w_local, client in zip(self.w_locals, self.client_data):

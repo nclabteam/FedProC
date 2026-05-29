@@ -123,6 +123,28 @@ class TestStrategies(unittest.TestCase):
             sorted(client.id for client in server.selected_clients),
         )
 
+    def test_fedcross_sends_slot_model_to_each_selected_client(self):
+        from strategies.FedCross import FedCross
+
+        server = object.__new__(FedCross)
+        clients = [DummyClient(0), DummyClient(1), DummyClient(2)]
+        server.clients = clients
+        server.selected_clients = [clients[2], clients[0]]
+        server.w_locals = ["slot_0", "slot_1"]
+        server.w_locals_num = 2
+        server.current_iter = 7
+        server.metrics = {"send_mb": []}
+        server.get_size = lambda _: 1.25
+
+        FedCross.send_to_clients(server)
+
+        self.assertEqual(clients[2].received, [{"model": "slot_0"}])
+        self.assertEqual(clients[0].received, [{"model": "slot_1"}])
+        self.assertEqual(clients[1].received, [])
+        self.assertEqual(clients[2].current_iter, 7)
+        self.assertEqual(clients[0].current_iter, 7)
+        self.assertEqual(server.metrics["send_mb"], [2.5])
+
     def test_localonly_round_hooks_are_noops(self):
         from strategies.LocalOnly import LocalOnly
 
