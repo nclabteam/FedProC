@@ -14,7 +14,9 @@ class FedPAQ(tFL):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-            "--s",
+            "-s",
+            "--s_levels",
+            dest="s",
             type=int,
             default=None,
             help="Number of quantization levels for FedPAQ (set to 0 or leave empty to disable quantization)",
