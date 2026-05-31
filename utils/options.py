@@ -132,6 +132,13 @@ class Options:
             help="data normalization method",
         )
         parser.add_argument("--train_ratio", type=float, default=0.8, help="batch size")
+        parser.add_argument(
+            "--sample_ratio",
+            type=float,
+            default=1.0,
+            help="sample ratio to downsample the dataset",
+        )
+
 
         # server
         parser.add_argument(

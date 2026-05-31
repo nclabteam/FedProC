@@ -52,6 +52,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | ModernTCN | CNN || ICLR | 2024 | ModernTCN: A Modern Pure Convolution Structure for General Time Series Analysis | [OpenReview](https://openreview.net/forum?id=vpJMJerXHU) - [REF](https://github.com/luodhhh/ModernTCN/blob/main/ModernTCN-Long-term-forecasting/models/ModernTCN.py) |
 | xPatch | CNN | Univariate | AAAI | 2025 | xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend Decomposition | [Arxiv](https://arxiv.org/abs/2412.17323) |
 | TimePoint | CNN | Multivariate | ICML | 2025 | TimePoint: Accelerated Time Series Alignment via Self-Supervised Keypoint and Descriptor Learning | [OpenReview](https://openreview.net/forum?id=bUGdGaNFhi) - [Arxiv](https://arxiv.org/abs/2505.23475) - [REF](https://github.com/BGU-CS-VIL/TimePoint/blob/main/TimePoint/models/timepoint.py) |
+| InfoTS | Causal CNN + AutoAUG | Multivariate | ICLR | 2023 | InfoTS: Information-Aware Time Series Meta-Contrastive Learning | [Arxiv](https://arxiv.org/abs/2303.01186) - [REF](https://github.com/Sec-Sci-Lab/InfoTS) |
 ||||||||
 ||||||||
 | TimeKAN | KAN || ICLR | 2025 | TimeKAN: KAN-based Frequency Decomposition Learning Architecture for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2502.06910) - [REF](https://github.com/huangst21/TimeKAN/blob/main/models/TimeKAN.py) |
