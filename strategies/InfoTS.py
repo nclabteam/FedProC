@@ -27,6 +27,8 @@ class InfoTS(nFL):
         "pretrain_lr": 1e-3,
         "pretrain_meta_lr": 1e-2,
         "pretrain_meta_epoch": 2,
+        "pretrain_temp_t0": 2.0,
+        "pretrain_temp_t1": 0.1,
     }
 
     @classmethod
@@ -35,6 +37,8 @@ class InfoTS(nFL):
         parser.add_argument("--pretrain_lr", type=float, default=None)
         parser.add_argument("--pretrain_meta_lr", type=float, default=None)
         parser.add_argument("--pretrain_meta_epoch", type=int, default=None)
+        parser.add_argument("--pretrain_temp_t0", type=float, default=None)
+        parser.add_argument("--pretrain_temp_t1", type=float, default=None)
 
     def evaluate_generalization_loss(self, *args, **kwargs):
         pass
@@ -57,6 +61,8 @@ class InfoTS_Client(nFL_Client):
         self.pretrain_lr = getattr(self, "pretrain_lr", 1e-3)
         self.pretrain_meta_lr = getattr(self, "pretrain_meta_lr", 1e-2)
         self.pretrain_meta_epoch = getattr(self, "pretrain_meta_epoch", 2)
+        self.pretrain_temp_t0 = getattr(self, "pretrain_temp_t0", 2.0)
+        self.pretrain_temp_t1 = getattr(self, "pretrain_temp_t1", 0.1)
 
         # Phase 1: self-supervised meta-pretraining
         if hasattr(self.model, "pretrain_loss") and self.pretrain_epochs > 0:
@@ -108,7 +114,11 @@ class InfoTS_Client(nFL_Client):
 
         self.model.train()
         meta_epoch = self.pretrain_meta_epoch
-        for epoch in range(self.pretrain_epochs):
+        t0, t1 = self.pretrain_temp_t0, self.pretrain_temp_t1
+        n_epochs = self.pretrain_epochs
+        for epoch in range(n_epochs):
+            temperature = float(t0 * np.power(t1 / t0, (epoch + 1) / n_epochs))
+
             # Alternate meta update step
             if (epoch + 1) % meta_epoch == 0:
                 for batch_x, *_ in train_loader:
@@ -116,7 +126,7 @@ class InfoTS_Client(nFL_Client):
                         self.device, dtype=torch.float32, non_blocking=True
                     )
                     if batch_x.size(0) == self.batch_size:
-                        self.model.meta_step(batch_x, meta_opt, meta_head_opt)
+                        self.model.meta_step(batch_x, meta_opt, meta_head_opt, temperature=temperature)
 
             # Normal encoder contrastive update step
             for batch_x, *_ in train_loader:
@@ -124,6 +134,6 @@ class InfoTS_Client(nFL_Client):
                     self.device, dtype=torch.float32, non_blocking=True
                 )
                 encoder_opt.zero_grad(set_to_none=True)
-                loss = self.model.pretrain_loss(batch_x)
+                loss = self.model.pretrain_loss(batch_x, temperature=temperature)
                 loss.backward()
                 encoder_opt.step()

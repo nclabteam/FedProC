@@ -206,12 +206,12 @@ class AutoAUG(nn.Module):
         else:
             return torch.softmax(self.weight, -1)
 
-    def forward(self, x):
+    def forward(self, x, temperature=1.0):
         # x: [B, T, D]
         if self.aug_p1 == 0.0 and self.aug_p2 == 0.0:
             return x.clone(), x.clone()
 
-        para = self.get_sampling()
+        para = self.get_sampling(temperature=temperature)
 
         if random.random() > self.aug_p1 and self.training:
             aug1 = x.clone()
@@ -384,8 +384,8 @@ class InfoTS(nn.Module):
         self.meta_unsup_head = nn.Linear(repr_dim, configs.batch_size)
         self.CE = nn.CrossEntropyLoss()
 
-    def get_features(self, x):
-        a1, a2 = self.aug(x)
+    def get_features(self, x, temperature=1.0):
+        a1, a2 = self.aug(x, temperature=temperature)
         out1 = self.encoder(a1)
         out2 = self.encoder(a2)
         return out1, out2
@@ -394,15 +394,16 @@ class InfoTS(nn.Module):
     # Self-supervised pre-training contrastive objective
     # ------------------------------------------------------------------
 
-    def pretrain_loss(self, x):
+    def pretrain_loss(self, x, temperature=1.0):
         """Computes InfoTS contrastive pretraining loss on the device.
 
         Args:
             x: [B, T, D] tensor
+            temperature: Gumbel-Softmax temperature for AutoAUG sampling
         Returns:
             scalar loss tensor
         """
-        out1, out2 = self.get_features(x)
+        out1, out2 = self.get_features(x, temperature=temperature)
         loss = (
             global_infoNCE(out1, out2) + local_infoNCE(out1, out2, k=self.k) * self.beta
         )
@@ -412,7 +413,7 @@ class InfoTS(nn.Module):
     # Meta alternating optimization step
     # ------------------------------------------------------------------
 
-    def meta_step(self, x, meta_opt, meta_head_opt):
+    def meta_step(self, x, meta_opt, meta_head_opt, temperature=1.0):
         """Performs one step of AutoAUG weight tuning to optimize representation variety."""
         B = x.size(0)
         self.encoder.eval()
@@ -420,7 +421,7 @@ class InfoTS(nn.Module):
         meta_opt.zero_grad(set_to_none=True)
         meta_head_opt.zero_grad(set_to_none=True)
 
-        outv, outx = self.get_features(x)
+        outv, outx = self.get_features(x, temperature=temperature)
 
         # Pick random target class indexes for batch validation
         y = torch.arange(B, dtype=torch.long, device=x.device)
