@@ -7,6 +7,8 @@
 | LocalOnly | | | | |
 | Centralized | | | | |
 | SimTS | ICASSP | 2024 | SimTS: Rethinking Contrastive Representation Learning for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.18205) - [IEEE](https://ieeexplore.ieee.org/document/10446875) - [GitHub](https://github.com/xingyu617/SimTS_Representation_Learning) |
+| InfoTS | ICLR | 2023 | InfoTS: Information-Aware Time Series Meta-Contrastive Learning | [Arxiv](https://arxiv.org/abs/2303.01186) - [REF](https://github.com/Sec-Sci-Lab/InfoTS) |
+| SL | NeurIPS | 2025 | Selective Learning for Deep Time Series Forecasting | [OpenReview](https://openreview.net/forum?id=kgzRy6nD6D) - [GitHub](https://github.com/GestaltCogTeam/selective-learning) |
 
 ## tFL — Traditional Federated Learning
 
@@ -29,6 +31,7 @@
 | FedAvgM | | | Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification | [Arxiv](https://arxiv.org/abs/1909.06335) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedavgm.py) |
 | FedADMM | ICDE | 2022 | FedADMM: A Robust Federated Deep Learning Framework with Adaptability to System Heterogeneity | [IEEE](https://ieeexplore.ieee.org/abstract/document/9835545) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/fedadmm.py) |
 | FedLAW | ICML | 2023 | Revisiting Weighted Aggregation in Federated Learning with Neural Networks | [Arxiv](https://arxiv.org/abs/2302.10911) - [GitHub](https://github.com/ZexiLee/ICML-2023-FedLAW) |
+| FedPAQ | AISTATS | 2020 | FedPAQ: A Communication-Efficient Federated Learning Method with Periodic Averaging and Quantization | [Arxiv](https://arxiv.org/abs/1909.13014) |
 
 ## pFL — Personalized Federated Learning
 

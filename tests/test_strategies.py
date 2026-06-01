@@ -43,9 +43,10 @@ class TestStrategies(unittest.TestCase):
 
     def build_server(self, strategy_cls):
         # Reimport to get fresh class objects (test_lazy_registries may reload modules)
-        from strategies.tFL import tFL as _tFL, tFL_Client as _tFL_Client
-        from strategies.pFL import pFL as _pFL
         from strategies.nFL import nFL as _nFL
+        from strategies.pFL import pFL as _pFL
+        from strategies.tFL import tFL as _tFL
+        from strategies.tFL import tFL_Client as _tFL_Client
 
         with tempfile.TemporaryDirectory() as tmpdir:
             configs = self.make_configs(tmpdir)
@@ -74,7 +75,8 @@ class TestStrategies(unittest.TestCase):
         return server
 
     def test_localonly_uses_strategy_specific_client_class(self):
-        from strategies.LocalOnly import LocalOnly, LocalOnly_Client as CurrentClient
+        from strategies.LocalOnly import LocalOnly
+        from strategies.LocalOnly import LocalOnly_Client as CurrentClient
 
         server = self.build_server(LocalOnly)
         self.assertTrue(
@@ -84,7 +86,8 @@ class TestStrategies(unittest.TestCase):
         self.assertEqual(server.num_gpus, 0)
 
     def test_fedavg_uses_strategy_specific_client_class(self):
-        from strategies.FedAvg import FedAvg, FedAvg_Client as CurrentClient
+        from strategies.FedAvg import FedAvg
+        from strategies.FedAvg import FedAvg_Client as CurrentClient
 
         server = self.build_server(FedAvg)
         self.assertTrue(
@@ -94,8 +97,8 @@ class TestStrategies(unittest.TestCase):
         self.assertEqual(server.num_gpus, 0)
 
     def test_fedavg_one_round_smoke(self):
-        from strategies.tFL import tFL
         from strategies.FedAvg import FedAvg
+        from strategies.tFL import tFL
 
         server = object.__new__(FedAvg)
         server.random_join_ratio = False
@@ -154,6 +157,32 @@ class TestStrategies(unittest.TestCase):
         self.assertIsNone(LocalOnly.aggregate_models(local_only))
         self.assertIsNone(LocalOnly.send_to_clients(local_only))
         self.assertIsNone(LocalOnly.initialize_model(local_only))
+
+    def test_fedpaq_uses_strategy_specific_client_class(self):
+        from strategies.FedPAQ import FedPAQ
+        from strategies.FedPAQ import FedPAQ_Client as CurrentClient
+
+        server = self.build_server(FedPAQ)
+        self.assertTrue(
+            all(isinstance(client, CurrentClient) for client in server.clients)
+        )
+        self.assertTrue(FedPAQ.compulsory.get("return_diff"))
+
+    def test_fedpaq_quantize_tensor(self):
+        import torch
+
+        from strategies.FedPAQ import FedPAQ_Client
+
+        # Test unbiased stochastic quantization on constant tensor
+        tensor = torch.ones(100000)
+        quantized = FedPAQ_Client.quantize_tensor(tensor, 4)
+        mean_diff = torch.abs(torch.mean(quantized) - 1.0).item()
+        self.assertLess(mean_diff, 0.08)
+
+        # Test zero tensor
+        zeros = torch.zeros(10)
+        quantized_zeros = FedPAQ_Client.quantize_tensor(zeros, 4)
+        self.assertTrue(torch.equal(quantized_zeros, zeros))
 
 
 if __name__ == "__main__":

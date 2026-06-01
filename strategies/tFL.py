@@ -445,8 +445,10 @@ class tFL_Client(SharedMethods):
         return to_be_sent
 
     def load_train_data(
-        self, sample_ratio: float = 1.0, shuffle: bool = True
+        self, sample_ratio: float = None, shuffle: bool = True
     ) -> DataLoader:
+        if sample_ratio is None:
+            sample_ratio = getattr(self, "sample_ratio", 1.0)
         trainloader = self.load_data(
             file=self.train_file,
             sample_ratio=sample_ratio,
@@ -459,8 +461,10 @@ class tFL_Client(SharedMethods):
         return trainloader
 
     def load_test_data(
-        self, sample_ratio: float = 1.0, shuffle: bool = False
+        self, sample_ratio: float = None, shuffle: bool = False
     ) -> DataLoader:
+        if sample_ratio is None:
+            sample_ratio = getattr(self, "sample_ratio", 1.0)
         testloader = self.load_data(
             file=self.test_file,
             sample_ratio=sample_ratio,
