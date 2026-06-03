@@ -2,39 +2,40 @@
 
 ## Available Datasets
 
-| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples       | URL |
-|--------------------------|---------------|--------------|----------|---------------|-------------- | --- |
-| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 4_192-15_927  | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
-| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            |               | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
-| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
-| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |               | [Github](https://github.com/ashfarhangi/COVID-19) |
-| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |               | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
-| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
-| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400        | [Github](https://github.com/zhouhaoyi/ETDataset) | 
-| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600        | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256       | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
-| ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272        | [Github](https://github.com/liyaguang/DCRNN) |
-| MekongSalinity           | Environment   |              |          |               |               | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
-| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856        | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116        | [Github](https://github.com/liyaguang/DCRNN) |
-| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345        | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
-| SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 20_352-70_176 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
-| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| StatesILI                | Healthcare    | 1 week       | 1        | 37            |               | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
-| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416        | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
-| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544        | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |               | [Github](https://github.com/taohan10200/WEATHER-5K) |
-| WindCSGREGFC             | Energy        | 15 minutes   | 10       | 6             | 69_999-70_176 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
+| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples       | CV (mean±std) | URL |
+|--------------------------|---------------|--------------|----------|---------------|---------------|-----------------|-----|
+| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 9_004±5_018 |                 | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
+| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            | 31_847±981  | 0.93±0.03     | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
+| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               |                 | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |               |                 | [Github](https://github.com/ashfarhangi/COVID-19) |
+| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304±0    | 0.41±0.28     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256±0   |                 | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
+| ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588±0     |                 | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272±0    |                 | [Github](https://github.com/liyaguang/DCRNN) |
+| MekongSalinity           | Environment   | 1 day        | 1        | 38            | 1_500±953   | 0.90±0.40     | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
+| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116±0    |                 | [Github](https://github.com/liyaguang/DCRNN) |
+| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345±0    |                 | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
+| SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 63_852±16_443 |               | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
+| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560±0    | 1.46±0.04     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| StatesILI                | Healthcare    | 1 week       | 1        | 37            |               |                 | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416±0    |                 | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
+| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544±0    | 0.81±0.22     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| TinyWeather5K            | Environment   | 1 hour       | 5        | 200           | 87_648±0    | 0.57±0.22     | [Github](https://github.com/taohan10200/WEATHER-5K) |
+| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |               |                 | [Github](https://github.com/taohan10200/WEATHER-5K) |
+| WindCSGREGFC             | Energy        | 15 minutes   | 10       | 6             | 70_146±66   |                 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
 
 **Note**: Number of clients will be decided after splitting the data since clients with insufficient data (cannot form at least 10 samples) will be discarded. `Clients (max)` is the maximum number of clients possible.
 
@@ -130,12 +131,12 @@ Models that accept time marks (e.g., `Transformer`) use them automatically. Mode
 
 The number of mark columns depends on the dataset granularity:
 
-| Granularity | Columns | Count |
-|-------------|---------|-------|
-| `s` (second) | month, day, weekday, hour, minute, second | 6 |
-| `t` (minute) | month, day, weekday, hour, minute | 5 |
-| `h` (hour) | month, day, weekday, hour | 4 |
-| `d` (day) | month, day, weekday | 3 |
-| `w` (week) | month, day, week_of_year | 3 |
-| `mo` (month) | month | 1 |
-| `q` (quarter) | month | 1 |
+| Granularity | Columns | Count |               |
+|-------------|---------|------- |               |
+| `s` (second) | month, day, weekday, hour, minute, second | 6 |               |
+| `t` (minute) | month, day, weekday, hour, minute | 5 |               |
+| `h` (hour) | month, day, weekday, hour | 4 |               |
+| `d` (day) | month, day, weekday | 3 |               |
+| `w` (week) | month, day, week_of_year | 3 |               |
+| `mo` (month) | month | 1 |               |
+| `q` (quarter) | month | 1 |               |
