@@ -43,6 +43,7 @@
 | pFedMe | NeurIPS | 2020 | Personalized Federated Learning with Moreau Envelopes | [Arxiv](https://arxiv.org/abs/2006.08848) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverpFedMe.py) |
 | APFL | arXiv | 2020 | Adaptive Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2003.13461) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverapfl.py) |
 | PerAvg | NeurIPS | 2020 | Personalized Federated Learning with Theoretical Guarantees: A Model-Agnostic Meta-Learning Approach | [Arxiv](https://arxiv.org/abs/2002.07948) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverperavg.py) |
+| AirMetapFL | arXiv | 2025 | Pre-Training and Personalized Fine-Tuning via Over-the-Air Federated Meta-Learning: Convergence-Generalization Trade-Offs | [Arxiv](https://arxiv.org/abs/2406.11569) |
 | FedAMP | AAAI | 2021 | Personalized Cross-Silo Federated Learning on Non-IID Data | [Arxiv](https://arxiv.org/abs/2007.03797) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serveramp.py) |
 | FedBN | ICLR | 2021 | FedBN: Federated Learning on Non-IID Features via Local Batch Normalization | [Arxiv](https://arxiv.org/abs/2102.07623) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverbn.py) |
 | FML | NeurIPS | 2020 | Federated Mutual Learning | [Arxiv](https://arxiv.org/abs/2006.16765) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/clients/clientfml.py) |
