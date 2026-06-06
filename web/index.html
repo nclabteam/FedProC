@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FedProC // Papers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:         #0a0a0a;
+      --bg-alt:     #111111;
+      --bg-hover:   #1a1a1a;
+      --border:     #1e1e1e;
+      --border-mid: #2e2e2e;
+      --text:       #e0e0e0;
+      --text-dim:   #888888;
+      --text-faint: #444444;
+      --accent:     #ffffff;
+      --accent-dim: #333333;
+      --red:        #aaaaaa;
+      --font:       'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────────── */
+    #header {
+      padding: 20px 28px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .ascii-art {
+      font-size: 9px;
+      line-height: 1.15;
+      color: var(--accent);
+      white-space: pre;
+      margin-bottom: 8px;
+      text-shadow: 0 0 24px rgba(255,255,255,0.08);
+      letter-spacing: 0;
+    }
+
+    .header-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .header-sub {
+      font-size: 11px;
+      color: var(--text-faint);
+      letter-spacing: 0.05em;
+    }
+    .header-sub em { color: var(--accent); font-style: normal; }
+    .gh-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 11px; border: 1px solid var(--border-mid);
+      color: var(--text-faint); font-family: var(--font); font-size: 10px;
+      text-decoration: none; letter-spacing: 0.05em; white-space: nowrap;
+      transition: border-color 0.12s, color 0.12s; flex-shrink: 0;
+    }
+    .gh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── LAYOUT ──────────────────────────────────────────────────── */
+    #main {
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────────────── */
+    .sidebar {
+      width: 240px;
+      min-width: 240px;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .fg { display: flex; flex-direction: column; gap: 6px; }
+
+    .fl {
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+    }
+
+    /* Search */
+    .search-wrap { position: relative; }
+    .search-input {
+      width: 100%;
+      background: var(--bg-alt);
+      border: 1px solid var(--border-mid);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 7px 52px 7px 9px;
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .search-input::placeholder {
+      color: var(--text-faint);
+      animation: blink 1.1s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-dim);
+    }
+    .search-hint {
+      position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+      font-size: 9px; color: var(--text-faint); pointer-events: none;
+    }
+
+    /* Year Slider */
+    .year-display {
+      text-align: center; font-size: 11px; color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+    .range-wrap {
+      position: relative; height: 24px; margin: 2px 6px 0;
+    }
+    .range-track {
+      position: absolute; top: 10px; left: 0; right: 0;
+      height: 3px; background: var(--border-mid);
+    }
+    .range-fill {
+      position: absolute; height: 100%; background: var(--accent-dim);
+    }
+    .range-wrap input[type=range] {
+      position: absolute; width: 100%; top: 4px;
+      appearance: none; background: transparent;
+      pointer-events: none; height: 15px;
+    }
+    .range-wrap input[type=range]::-webkit-slider-thumb {
+      appearance: none; width: 13px; height: 13px;
+      background: var(--accent); cursor: pointer; pointer-events: all;
+      border: 2px solid var(--bg);
+    }
+    .range-wrap input[type=range]::-moz-range-thumb {
+      width: 13px; height: 13px; background: var(--accent);
+      cursor: pointer; pointer-events: all;
+      border: 2px solid var(--bg); border-radius: 0;
+    }
+
+    /* Venue list */
+    .venue-list {
+      max-height: 160px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .venue-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 3px 5px; cursor: pointer; transition: background 0.1s;
+    }
+    .venue-item:hover { background: var(--bg-hover); }
+    .venue-item input[type=checkbox] {
+      appearance: none; width: 11px; height: 11px;
+      border: 1px solid var(--border-mid); background: var(--bg);
+      cursor: pointer; flex-shrink: 0; position: relative;
+    }
+    .venue-item input[type=checkbox]:checked {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .venue-item input[type=checkbox]:checked::after {
+      content: '✓'; position: absolute; top: -2px; left: 1px;
+      font-size: 9px; color: var(--bg); font-weight: 700;
+    }
+    .vname {
+      flex: 1; font-size: 10px; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .vcount { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+
+    /* Tags */
+    .tags-row { display: flex; gap: 5px; flex-wrap: wrap; }
+    .tag-pill {
+      padding: 3px 9px; border: 1px solid var(--border-mid);
+      font-size: 9px; letter-spacing: 0.12em; cursor: pointer;
+      color: var(--text-faint); transition: all 0.12s; user-select: none;
+    }
+    .tag-pill:hover { border-color: var(--accent); color: var(--accent); }
+    .tag-pill.active {
+      border-color: var(--accent); color: var(--accent);
+      background: rgba(255,255,255,0.05);
+    }
+
+    /* Checkbox row */
+    .cb-row {
+      display: flex; align-items: center; gap: 7px;
+      cursor: pointer; font-size: 11px; color: var(--text-dim);
+    }
+    .cb-row input[type=checkbox] {
+      appearance: none; width: 12px; height: 12px;
+      border: 1px solid var(--border-mid); background: var(--bg);
+      cursor: pointer; position: relative; flex-shrink: 0;
+    }
+    .cb-row input[type=checkbox]:checked {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .cb-row input[type=checkbox]:checked::after {
+      content: '✓'; position: absolute; top: -2px; left: 1px;
+      font-size: 10px; color: var(--bg); font-weight: 700;
+    }
+
+    /* Per page */
+    .pp-select {
+      width: 100%; background: var(--bg-alt);
+      border: 1px solid var(--border-mid); color: var(--text);
+      font-family: var(--font); font-size: 11px;
+      padding: 6px 7px; outline: none; cursor: pointer;
+    }
+    .pp-select:focus { border-color: var(--accent); }
+    option { background: #111; }
+
+    /* Reset */
+    .reset-btn {
+      width: 100%; padding: 7px; background: transparent;
+      border: 1px solid var(--border-mid); color: var(--text-faint);
+      font-family: var(--font); font-size: 9px; letter-spacing: 0.18em;
+      text-transform: uppercase; cursor: pointer; transition: all 0.12s;
+    }
+    .reset-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── CONTENT ─────────────────────────────────────────────────── */
+    .content {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+      min-width: 0;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .stat-card {
+      flex: 1; padding: 10px 14px; border-right: 1px solid var(--border);
+    }
+    .stat-card:last-child { border-right: none; }
+    .stat-lbl {
+      font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--text-faint);
+    }
+    .stat-val {
+      font-size: 18px; font-weight: 600; color: var(--accent); line-height: 1.2;
+    }
+    .stat-val.sm { font-size: 13px; padding-top: 2px; }
+
+    /* Table area */
+    .table-wrap { flex: 1; overflow-y: auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--bg); border-bottom: 1px solid var(--border-mid);
+    }
+
+    th {
+      padding: 8px 10px; text-align: left;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text-faint); cursor: pointer; user-select: none;
+      white-space: nowrap; transition: color 0.1s;
+    }
+    th:hover { color: var(--text-dim); }
+    th.sorted { color: var(--accent); }
+
+    td {
+      padding: 8px 10px; border-bottom: 1px solid var(--border);
+      font-size: 11px; vertical-align: middle;
+    }
+
+    tr.dr:nth-child(odd)  td { background: var(--bg); }
+    tr.dr:nth-child(even) td { background: var(--bg-alt); }
+    tr.dr:hover td { background: var(--bg-hover); }
+    tr.dr:hover td:first-child { border-left: 2px solid var(--accent); padding-left: 8px; }
+
+    .col-id { width: 60px; min-width: 60px; }
+    .col-ti { min-width: 250px; }
+    .col-ve { width: 160px; min-width: 160px; }
+    .col-yr { width: 52px; min-width: 52px; text-align: center; }
+    .col-lk { width: 160px; min-width: 160px; white-space: nowrap; }
+
+    .tc {
+      display: block;
+      line-height: 1.5;
+    }
+    .vc {
+      display: block;
+      font-size: 11px; color: var(--text-dim);
+      line-height: 1.4;
+    }
+    .nc { color: var(--text-faint); font-size: 11px; text-align: center; }
+    .yc { color: var(--accent); text-align: center; }
+
+    /* Link buttons */
+    .lb {
+      display: inline-block; padding: 1px 6px;
+      border: 1px solid var(--border-mid); color: var(--text-faint);
+      font-size: 9px; text-decoration: none; margin-right: 2px;
+      transition: all 0.1s; font-family: var(--font); letter-spacing: 0.05em;
+    }
+    .lb:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Expanded row */
+    tr.exp-row td {
+      background: #131313 !important;
+      border-left: 2px solid var(--accent);
+      padding: 14px 18px;
+    }
+    .exp-inner { display: flex; flex-direction: column; gap: 9px; }
+    .exp-title { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.45; }
+    .exp-meta { font-size: 10px; color: var(--text-dim); }
+    .exp-links { display: flex; gap: 6px; flex-wrap: wrap; }
+    .exp-lb {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 11px; border: 1px solid var(--border-mid);
+      color: var(--text-dim); font-size: 10px; text-decoration: none;
+      transition: all 0.12s; font-family: var(--font);
+    }
+    .exp-lb:hover { border-color: var(--accent); color: var(--accent); }
+    .tag-badge {
+      padding: 1px 7px; border: 1px solid var(--accent-dim);
+      font-size: 9px; color: var(--accent); letter-spacing: 0.1em;
+    }
+    .badges { display: flex; gap: 5px; }
+
+    /* Pagination */
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 14px; border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+    .pg-btn {
+      padding: 5px 12px; background: transparent;
+      border: 1px solid var(--border-mid); color: var(--text-dim);
+      font-family: var(--font); font-size: 9px; letter-spacing: 0.12em;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pg-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .pg-info { font-size: 10px; color: var(--text-faint); }
+    .pg-info span { color: var(--text-dim); }
+
+    /* Shortcuts footer */
+    .shortcuts {
+      display: flex; gap: 14px; padding: 6px 14px;
+      border-top: 1px solid var(--border); flex-shrink: 0;
+      background: var(--bg);
+    }
+    .sc { font-size: 9px; color: var(--text-faint); }
+    kbd {
+      display: inline-block; padding: 0 4px;
+      border: 1px solid var(--border-mid); font-family: var(--font);
+      font-size: 8px; color: var(--text-faint); margin-right: 2px;
+    }
+
+    /* Status / empty */
+    .status-msg {
+      padding: 60px 20px; text-align: center;
+      color: var(--text-faint); font-size: 12px;
+    }
+    .spin { display: inline-block; animation: rot 1s linear infinite; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
+    .no-results { padding: 50px 20px; text-align: center; color: var(--text-faint); }
+    .no-results pre { font-size: 10px; line-height: 1.35; margin-bottom: 10px; color: var(--border-mid); }
+
+    /* Scanline overlay */
+    body::after {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+      );
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <pre class="ascii-art">███████╗███████╗██████╗ ██████╗ ██████╗  ██████╗  ██████╗
+██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██╔════╝
+█████╗  █████╗  ██║  ██║██████╔╝██████╔╝██║   ██║██║
+██╔══╝  ██╔══╝  ██║  ██║██╔═══╝ ██╔══██╗██║   ██║██║
+██║     ███████╗██████╔╝██║     ██║  ██║╚██████╔╝╚██████╗
+╚═╝     ╚══════╝╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝</pre>
+  <div class="header-row">
+    <div class="header-sub">// <em>federated learning</em> &amp; <em>time series forecasting</em> — paper explorer</div>
+    <a class="gh-btn" href="https://github.com/nclabteam/FedProC" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      nclabteam/FedProC
+    </a>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="fg">
+      <div class="fl">Search</div>
+      <div class="search-wrap">
+        <input id="searchInput" class="search-input" type="text"
+               placeholder="_ filter titles..." autocomplete="off" spellcheck="false">
+        <span class="search-hint">Ctrl+K</span>
+      </div>
+    </div>
+
+    <div class="fg">
+      <div class="fl">Year Range</div>
+      <div class="year-display" id="yearDisplay">---- — ----</div>
+      <div class="range-wrap" id="rangeWrap">
+        <div class="range-track"><div class="range-fill" id="rangeFill"></div></div>
+        <input type="range" id="yearMin">
+        <input type="range" id="yearMax">
+      </div>
+    </div>
+
+    <div class="fg">
+      <div class="fl">Venue</div>
+      <div class="venue-list" id="venueList"></div>
+    </div>
+
+
+    <div class="fg">
+      <div class="fl">Code</div>
+      <label class="cb-row">
+        <input type="checkbox" id="codeChk">
+        <span>With Code only</span>
+      </label>
+    </div>
+
+    <div class="fg">
+      <div class="fl">Per Page</div>
+      <select class="pp-select" id="perPage">
+        <option value="25">25 per page</option>
+        <option value="50">50 per page</option>
+        <option value="100">100 per page</option>
+        <option value="200">200 per page</option>
+        <option value="0">Show All</option>
+      </select>
+    </div>
+
+    <button class="reset-btn" id="resetBtn">[ RESET ALL FILTERS ]</button>
+
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-lbl">Papers</div>
+        <div class="stat-val" id="stPapers">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Venues</div>
+        <div class="stat-val" id="stVenues">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Year Range</div>
+        <div class="stat-val sm" id="stYears">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">With Code</div>
+        <div class="stat-val" id="stCode">—</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" id="tableWrap">
+      <div class="status-msg"><span class="spin">◌</span>&nbsp; Loading papers.csv&hellip;</div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <button class="pg-btn" id="prevBtn" disabled>&lt; PREV</button>
+      <div class="pg-info">Page <span id="curPage">1</span> of <span id="totPages">1</span>
+        &nbsp;·&nbsp; <span id="rowRange">—</span> results</div>
+      <button class="pg-btn" id="nextBtn" disabled>NEXT &gt;</button>
+    </div>
+
+    <!-- Shortcuts -->
+    <div class="shortcuts">
+      <span class="sc"><kbd>Ctrl+K</kbd>search</span>
+      <span class="sc"><kbd>Esc</kbd>clear</span>
+      <span class="sc"><kbd>↑↓</kbd>navigate</span>
+      <span class="sc"><kbd>Enter</kbd>expand</span>
+      <span class="sc"><kbd>R</kbd>refresh</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CSV PARSER ───────────────────────────────────────────────────────────────
+function parseCSV(raw) {
+  const lines = raw.split(/\r?\n/);
+  if (!lines.length) return [];
+  const headers = parseLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const vals = parseLine(line);
+    const obj = {};
+    headers.forEach((h, j) => { obj[h.trim()] = (vals[j] || '').trim(); });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function parseLine(line) {
+  const out = []; let cur = ''; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (q && line[i+1] === '"') { cur += '"'; i++; }
+      else q = !q;
+    } else if (c === ',' && !q) { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseYear(val) {
+  if (!val) return 0;
+  const n = +val;
+  if (n >= 1900 && n < 2100) return n;
+  const m = /\b(1[89]\d\d|20\d\d)\b/.exec(val);
+  return m ? +m[1] : 0;
+}
+
+// ── TAG DETECTION ─────────────────────────────────────────────────────────────
+function tags(p) {
+  const t = (p.Title + ' ' + p.Venue).toLowerCase();
+  return {
+    TSF: /time.?series|forecast|temporal|predict/.test(t),
+    FL:  /federat/.test(t),
+  };
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let all = [], filtered = [];
+let sortCol = 'Year', sortDir = -1;
+let page = 1, selIdx = -1;
+
+const S = {
+  q: '', yMin: 0, yMax: 9999,
+  venues: new Set(), code: false, pp: 25,
+};
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const searchInput = $('searchInput');
+const yearMin = $('yearMin'), yearMax = $('yearMax');
+const yearDisplay = $('yearDisplay'), rangeFill = $('rangeFill');
+const venueList = $('venueList');
+const codeChk = $('codeChk');
+const perPage = $('perPage');
+const resetBtn = $('resetBtn');
+const tableWrap = $('tableWrap');
+const prevBtn = $('prevBtn'), nextBtn = $('nextBtn');
+const curPage = $('curPage'), totPages = $('totPages'), rowRange = $('rowRange');
+
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+async function load() {
+  if (location.protocol === 'file:') {
+    tableWrap.innerHTML = `<div class="status-msg">
+      ✗ Cannot load via file:// — serve with a local HTTP server:<br>
+      <small style="color:#555;margin-top:8px;display:block">python -m http.server 8080</small>
+      <small style="color:#555">then open http://localhost:8080/index.html</small>
+    </div>`;
+    return;
+  }
+  tableWrap.innerHTML = '<div class="status-msg"><span class="spin">◌</span>&nbsp; Loading papers.csv&hellip;</div>';
+  try {
+    const r = await fetch('./papers.csv');
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' — papers.csv not found at this path');
+    const txt = await r.text();
+    if (!txt.trim()) throw new Error('papers.csv is empty');
+    all = parseCSV(txt).filter(p => p.Title);
+    if (!all.length) throw new Error('CSV parsed but no rows with Title found — check the file');
+    all.forEach(p => {
+      const y = parseYear(p.Year);
+      p.Year = y ? String(y) : '';
+      p._t = tags(p);
+    });
+    initFilters();
+    loadHash();
+    apply();
+  } catch(e) {
+    tableWrap.innerHTML = `<div class="status-msg">✗ ${e.message}<br>
+      <small style="color:#444;margin-top:6px;display:block">Run: python -m http.server 8080 from the web/ directory</small></div>`;
+  }
+}
+
+// ── INIT FILTERS ──────────────────────────────────────────────────────────────
+function initFilters() {
+  const yrs = all.map(p => +p.Year).filter(y => y > 0);
+  const mn = Math.min(...yrs), mx = Math.max(...yrs);
+  [yearMin, yearMax].forEach(el => { el.min = mn; el.max = mx; });
+  yearMin.value = mn; yearMax.value = mx;
+  S.yMin = mn; S.yMax = mx;
+  updateSlider();
+
+  // venue counts
+  const vc = {};
+  all.forEach(p => { if (p.Venue) vc[p.Venue] = (vc[p.Venue]||0)+1; });
+  venueList.innerHTML = '';
+  Object.entries(vc).sort((a,b)=>b[1]-a[1]).forEach(([v,c]) => {
+    const lbl = document.createElement('label');
+    lbl.className = 'venue-item';
+    lbl.innerHTML = `<input type="checkbox" data-v="${v.replace(/"/g,'&quot;')}">
+      <span class="vname" title="${h(v)}">${h(v)}</span>
+      <span class="vcount">(${c})</span>`;
+    lbl.querySelector('input').addEventListener('change', e => {
+      e.target.checked ? S.venues.add(v) : S.venues.delete(v);
+      page=1; apply();
+    });
+    venueList.appendChild(lbl);
+  });
+}
+
+// ── SLIDER ────────────────────────────────────────────────────────────────────
+function updateSlider() {
+  const mn = +yearMin.min, mx = +yearMax.max;
+  const lo = +yearMin.value, hi = +yearMax.value;
+  yearDisplay.textContent = `${lo} — ${hi}`;
+  const span = mx - mn || 1;
+  rangeFill.style.left  = ((lo-mn)/span*100)+'%';
+  rangeFill.style.right = ((mx-hi)/span*100)+'%';
+}
+yearMin.addEventListener('input', () => {
+  if (+yearMin.value > +yearMax.value) yearMin.value = yearMax.value;
+  S.yMin = +yearMin.value; updateSlider(); page=1; apply();
+});
+yearMax.addEventListener('input', () => {
+  if (+yearMax.value < +yearMin.value) yearMax.value = yearMin.value;
+  S.yMax = +yearMax.value; updateSlider(); page=1; apply();
+});
+
+// ── APPLY FILTERS ─────────────────────────────────────────────────────────────
+function apply() {
+  const q = S.q.toLowerCase();
+  filtered = all.filter(p => {
+    if (q && !(p.Title||'').toLowerCase().includes(q) &&
+             !(p.Venue||'').toLowerCase().includes(q)) return false;
+    const y = +p.Year;
+    if (y && (y < S.yMin || y > S.yMax)) return false;
+    if (S.venues.size && !S.venues.has(p.Venue)) return false;
+    if (S.code && !p.Code) return false;
+    return true;
+  });
+
+  filtered.sort((a,b) => {
+    let av = a[sortCol]||'', bv = b[sortCol]||'';
+    if (sortCol==='Year') { av=+av||0; bv=+bv||0; }
+    return av<bv ? -sortDir : av>bv ? sortDir : 0;
+  });
+
+  updateStats();
+  render();
+  pushHash();
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const yrs = filtered.map(p=>+p.Year).filter(y=>y>0);
+  const vns = new Set(filtered.map(p=>p.Venue).filter(Boolean));
+  const wc  = filtered.filter(p=>p.Code).length;
+  $('stPapers').textContent = filtered.length;
+  $('stVenues').textContent = vns.size;
+  $('stYears').textContent  = yrs.length ? `${Math.min(...yrs)}–${Math.max(...yrs)}` : '—';
+  $('stCode').textContent   = wc;
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function render() {
+  const pp = S.pp || filtered.length;
+  const total = pp ? Math.ceil(filtered.length / pp) : 1;
+  if (page > total) page = Math.max(1,total);
+
+  curPage.textContent = page;
+  totPages.textContent = total||1;
+  prevBtn.disabled = page<=1;
+  nextBtn.disabled = page>=total;
+
+  const start = (page-1)*(pp||filtered.length);
+  const end   = Math.min(start+(pp||filtered.length), filtered.length);
+  rowRange.innerHTML = `<span>${start+1}–${end}</span> of <span>${filtered.length}</span>`;
+
+  if (!filtered.length) {
+    tableWrap.innerHTML = `<div class="no-results">
+      <pre>  ╔══════════════════╗\n  ║   0 RESULTS      ║\n  ╚══════════════════╝</pre>
+      No papers match the current filters.</div>`;
+    return;
+  }
+
+  const slice = filtered.slice(start, end);
+  const cols = ['ID','Title','Venue','Year'];
+
+  let html = `<table><thead><tr>
+    ${cols.map(c => `<th class="col-${c.toLowerCase().slice(0,2)} ${c===sortCol?'sorted':''}" data-col="${c}">
+      ${c}${c===sortCol?` ${sortDir===-1?'↓':'↑'}`:''}</th>`).join('')}
+    <th class="col-lk">Links</th>
+  </tr></thead><tbody>`;
+
+  slice.forEach((p) => {
+
+    html += `<tr class="dr">
+      <td class="col-id nc">${h(p.ID||'')}</td>
+      <td class="col-ti"><span class="tc" title="${h(p.Title||'')}">${h(p.Title||'')}</span></td>
+      <td class="col-ve"><span class="vc" title="${h(p.Venue||'')}">${h(p.Venue||'—')}</span></td>
+      <td class="col-yr yc">${p.Year||'—'}</td>
+      <td class="col-lk">${links(p)}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  tableWrap.innerHTML = html;
+
+  tableWrap.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const c = th.dataset.col;
+      sortDir = c===sortCol ? -sortDir : (c==='Year'?-1:1);
+      sortCol = c; page=1; apply();
+    });
+  });
+
+  tableWrap.querySelectorAll('a').forEach(a =>
+    a.addEventListener('click', e => e.stopPropagation()));
+}
+
+function links(p) {
+  let s = '';
+  if (p.Arxiv)      s += `<a class="lb" href="${p.Arxiv}" target="_blank" rel="noopener">arXiv</a>`;
+  if (p.DOI)        s += `<a class="lb" href="${p.DOI}"   target="_blank" rel="noopener">DOI</a>`;
+  if (p.Code)       s += `<a class="lb" href="${p.Code}"  target="_blank" rel="noopener">Code</a>`;
+  if (p.Video)      s += `<a class="lb" href="${p.Video}" target="_blank" rel="noopener">Video</a>`;
+  if (p.OpenReview) s += `<a class="lb" href="${p.OpenReview}" target="_blank" rel="noopener">OR</a>`;
+  return s || '<span style="color:#2a2a2a">—</span>';
+}
+
+
+function h(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+searchInput.addEventListener('input', () => {
+  S.q = searchInput.value; page=1; expandId=null; apply();
+});
+
+
+codeChk.addEventListener('change', () => { S.code=codeChk.checked; page=1; apply(); });
+perPage.addEventListener('change', () => { S.pp=+perPage.value; page=1; render(); });
+prevBtn.addEventListener('click', () => { if(page>1){page--;render();} });
+nextBtn.addEventListener('click', () => {
+  const pp=S.pp||filtered.length, tot=Math.ceil(filtered.length/pp);
+  if(page<tot){page++;render();}
+});
+
+resetBtn.addEventListener('click', () => {
+  S.q=''; searchInput.value='';
+  S.yMin=+yearMin.min; S.yMax=+yearMax.max;
+  yearMin.value=yearMin.min; yearMax.value=yearMax.max; updateSlider();
+  S.venues.clear();
+  venueList.querySelectorAll('input').forEach(c=>c.checked=false);
+  S.code=false; codeChk.checked=false;
+  S.pp=25; perPage.value='25';
+  selIdx=-1; page=1; apply();
+});
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') {
+    e.preventDefault(); searchInput.focus(); searchInput.select(); return;
+  }
+  if (e.key==='Escape') {
+    S.q=''; searchInput.value=''; apply();
+    searchInput.blur(); return;
+  }
+  if (e.target===searchInput) return;
+  const pp = S.pp||filtered.length;
+  const start = (page-1)*pp;
+  const end   = Math.min(start+pp, filtered.length)-1;
+  if (e.key==='ArrowDown') {
+    e.preventDefault();
+    selIdx = Math.min(selIdx<start?start:selIdx+1, end);
+    render();
+  }
+  if (e.key==='ArrowUp') {
+    e.preventDefault();
+    selIdx = Math.max(selIdx>end?end:selIdx-1, start);
+    render();
+  }
+  if (e.key==='Enter' && selIdx>=0) render();
+  if ((e.key==='r'||e.key==='R') && !e.ctrlKey && !e.metaKey) load();
+});
+
+// ── URL HASH ──────────────────────────────────────────────────────────────────
+function pushHash() {
+  const p = new URLSearchParams();
+  if (S.q) p.set('q', S.q);
+  if (S.yMin!==+yearMin.min||S.yMax!==+yearMax.max) p.set('year',`${S.yMin}-${S.yMax}`);
+  if (S.venues.size) p.set('venues',[...S.venues].join('|'));
+  if (S.code) p.set('code','1');
+  if (page>1) p.set('page',page);
+  const str=p.toString();
+  history.replaceState(null,'',str?'#'+str:location.pathname+location.search);
+}
+
+function loadHash() {
+  const h = location.hash.slice(1); if(!h) return;
+  const p = new URLSearchParams(h);
+  if (p.get('q')) { S.q=p.get('q'); searchInput.value=S.q; }
+  if (p.get('year')) {
+    const [a,b]=p.get('year').split('-').map(Number);
+    if(!isNaN(a)){S.yMin=a;yearMin.value=a;}
+    if(!isNaN(b)){S.yMax=b;yearMax.value=b;}
+    updateSlider();
+  }
+  if (p.get('venues')) {
+    p.get('venues').split('|').forEach(v=>{
+      S.venues.add(v);
+      const cb=venueList.querySelector(`input[data-v="${v.replace(/"/g,'&quot;')}"]`);
+      if(cb) cb.checked=true;
+    });
+  }
+  if (p.get('code')==='1') { S.code=true; codeChk.checked=true; }
+  if (p.get('page')) page=+p.get('page')||1;
+}
+
+// ── LAYOUT ────────────────────────────────────────────────────────────────────
+function layout() {
+  const hh = $('header').offsetHeight;
+  $('main').style.height = `calc(100vh - ${hh}px)`;
+  document.querySelector('.sidebar').style.height = `calc(100vh - ${hh}px)`;
+}
+window.addEventListener('resize', layout);
+layout();
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+load();
+</script>
+</body>
+</html>
