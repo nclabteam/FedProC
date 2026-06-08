@@ -2,7 +2,7 @@
 
 **Federated Prognos Chronos** – A federated learning framework for time-series forecasting.
 
-📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/)
+📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/) &nbsp;|&nbsp; 🗂️ **Paper Explorer**: [fedproc-lemon.vercel.app](https://fedproc-lemon.vercel.app)
 
 
 ## Overview
