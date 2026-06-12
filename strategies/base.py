@@ -33,6 +33,24 @@ class SharedMethods:
     checkpoint_format_version = 1
 
     @staticmethod
+    def load_data_head(
+        file: str,
+        T: int,
+        batch_size: int = 32,
+        shuffle: bool = False,
+        scaler: Any = None,
+    ) -> DataLoader:
+        with np.load(file) as data:
+            x = data["x"][:T]
+            y = data["y"][:T]
+            x_mark = torch.as_tensor(np.asarray(data["x_mark"][:T], dtype=np.float32))
+            y_mark = torch.as_tensor(np.asarray(data["y_mark"][:T], dtype=np.float32))
+        x = torch.as_tensor(np.asarray(scaler.transform(x), dtype=np.float32))
+        y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
+        dataset = TensorDataset(x, y, x_mark, y_mark)
+        return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle)
+
+    @staticmethod
     def load_data(
         file: str,
         sample_ratio: float = 1.0,

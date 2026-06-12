@@ -66,7 +66,7 @@ class dFL(pFL):
         pass
 
     def select_clients(self, *args, **kwargs):
-        self.selected_clients = self.clients
+        self.selected_clients = [c for c in self.clients if not c.is_new]
 
     def receive_from_clients(self):
         for node in self.clients:

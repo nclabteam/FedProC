@@ -53,7 +53,7 @@ class FedRidge(_LinearWeightsMixin, pFL):
         )
         round_start = time.time()
 
-        self.selected_clients = list(self.clients)
+        self.selected_clients = [c for c in self.clients if not c.is_new]
         self.train_clients()
         self.receive_from_clients()
         self.calculate_aggregation_weights()

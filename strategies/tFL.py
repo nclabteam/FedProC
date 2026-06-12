@@ -64,14 +64,15 @@ class tFL(SharedMethods):
         self.get_model_info()
 
     def select_clients(self) -> None:
+        incumbent_clients = [c for c in self.clients if not c.is_new]
         if self.random_join_ratio:
             self.current_num_join_clients = np.random.choice(
-                range(self.num_join_clients, self.num_clients + 1), 1, replace=False
+                range(self.num_join_clients, len(incumbent_clients) + 1), 1, replace=False
             )[0]
         else:
             self.current_num_join_clients = self.num_join_clients
         self.selected_clients = list(
-            np.random.choice(self.clients, self.current_num_join_clients, replace=False)
+            np.random.choice(incumbent_clients, self.current_num_join_clients, replace=False)
         )
 
     def variables_to_be_sent(self) -> Dict[str, Any]:
@@ -122,11 +123,26 @@ class tFL(SharedMethods):
             client_class(configs=self.configs, id=cid, times=self.times)
             for cid in range(self.num_clients)
         ]
+        exclude_ratio = getattr(self, "exclude_ratio", 0.0)
+        if exclude_ratio > 0.0:
+            num_new = max(1, int(self.num_clients * exclude_ratio))
+            rng = np.random.default_rng(getattr(self, "seed", 0))
+            new_ids = set(rng.choice(self.num_clients, num_new, replace=False).tolist())
+            for client in self.clients:
+                if client.id in new_ids:
+                    client.is_new = True
+            self.logger.info(f"New clients ({num_new}): {sorted(new_ids)}")
 
     def save_results(self) -> None:
         super().save_results()
         for client in self.clients:
-            client.save_results()
+            if not client.is_new:
+                client.save_results()
+        if getattr(self, "new_client_test_loss", None) is not None:
+            import json, os
+            path = os.path.join(self.save_path, "new_client_results.json")
+            with open(path, "w") as f:
+                json.dump({"new_client_avg_test_loss": self.new_client_test_loss}, f, indent=2)
 
     def save_models(self, save_type: str) -> None:
         if save_type not in ["last", "best"]:
@@ -167,9 +183,10 @@ class tFL(SharedMethods):
         return False
 
     def evaluate_generalization_loss(self, dataset_type: str) -> None:
+        incumbent_clients = [c for c in self.clients if not c.is_new]
         if self.parallel:
             futures = []
-            for client in self.clients:
+            for client in incumbent_clients:
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
                 future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
@@ -194,7 +211,7 @@ class tFL(SharedMethods):
                         )
                     )
                 )
-                for client in self.clients
+                for client in incumbent_clients
             ]
         metric_name = f"global_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
@@ -204,9 +221,10 @@ class tFL(SharedMethods):
         )
 
     def evaluate_personalization_loss(self, dataset_type: str) -> None:
+        incumbent_clients = [c for c in self.clients if not c.is_new]
         if self.parallel:
             futures = []
-            for client in self.clients:
+            for client in incumbent_clients:
                 device = "cuda" if self.num_gpus > 0 else "cpu"
                 num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
                 future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
@@ -220,7 +238,7 @@ class tFL(SharedMethods):
         else:
             losses = [
                 float(getattr(client, f"get_{dataset_type}_loss")())
-                for client in self.clients
+                for client in incumbent_clients
             ]
         metric_name = f"personal_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
@@ -228,6 +246,22 @@ class tFL(SharedMethods):
             f"Personalization {dataset_type.capitalize()} Loss: "
             f"{self.metrics[metric_name][-1]:.4f}"
         )
+
+    def adapt_new_clients(self) -> None:
+        new_clients = [c for c in self.clients if c.is_new]
+        if not new_clients:
+            return
+        global_model = self.model if isinstance(self.model, torch.nn.Module) else None
+        for client in new_clients:
+            client.adapt(global_model)
+
+    def evaluate_new_clients(self) -> None:
+        new_clients = [c for c in self.clients if c.is_new]
+        if not new_clients:
+            return
+        losses = [float(client.get_test_loss()) for client in new_clients]
+        self.new_client_test_loss = float(np.mean(losses))
+        self.logger.info(f"New Client Test Loss: {self.new_client_test_loss:.4f}")
 
     def train_clients(self) -> None:
         current_iter = getattr(self, "current_iter", 0)
@@ -309,6 +343,8 @@ class tFL(SharedMethods):
     def post_process(self) -> None:
         self.logger.info("")
         self.logger.info("-" * 50)
+        self.adapt_new_clients()
+        self.evaluate_new_clients()
         self.save_models(save_type="last")
         self.save_results()
         for c in self.clients:
@@ -380,6 +416,7 @@ class tFL_Client(SharedMethods):
         self.initialize_scaler()
         self.name = f"CLIENT_{str(self.id).zfill(3)}"
         self.make_logger(name=self.name, path=self.log_path)
+        self.is_new = False
         self.metrics = {
             "train_time": [],
             "train_loss": [],
@@ -447,16 +484,26 @@ class tFL_Client(SharedMethods):
     def load_train_data(
         self, sample_ratio: float = None, shuffle: bool = True
     ) -> DataLoader:
-        if sample_ratio is None:
-            sample_ratio = getattr(self, "sample_ratio", 1.0)
-        trainloader = self.load_data(
-            file=self.train_file,
-            sample_ratio=sample_ratio,
-            shuffle=shuffle,
-            scaler=self.scaler,
-            batch_size=self.batch_size,
-            seed=self._loader_seed("train"),
-        )
+        adapt_T = getattr(self, "adapt_T", None)
+        if self.is_new and adapt_T is not None:
+            trainloader = self.load_data_head(
+                file=self.train_file,
+                T=adapt_T,
+                shuffle=shuffle,
+                scaler=self.scaler,
+                batch_size=self.batch_size,
+            )
+        else:
+            if sample_ratio is None:
+                sample_ratio = getattr(self, "sample_ratio", 1.0)
+            trainloader = self.load_data(
+                file=self.train_file,
+                sample_ratio=sample_ratio,
+                shuffle=shuffle,
+                scaler=self.scaler,
+                batch_size=self.batch_size,
+                seed=self._loader_seed("train"),
+            )
         self.train_samples = len(trainloader.dataset)
         return trainloader
 
@@ -532,6 +579,28 @@ class tFL_Client(SharedMethods):
         losses = np.mean(losses)
         self.metrics["test_loss"].append(losses)
         return losses
+
+    def adapt(self, global_model: Optional[torch.nn.Module]) -> None:
+        if global_model is not None:
+            self.update_model_params(old=self.model, new=global_model)
+        else:
+            self.logger.warning("adapt called with no global model — starting from random init")
+        adapt_epochs = getattr(self, "adapt_epochs", 1)
+        train_loader = self.load_train_data()
+        self.model.to(self.device)
+        self.model.train()
+        opt = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        for _ in range(adapt_epochs):
+            for batch_x, batch_y, x_mark, y_mark in train_loader:
+                batch_x = batch_x.to(self.device, dtype=torch.float32)
+                batch_y = batch_y.to(self.device, dtype=torch.float32)
+                x_mark = x_mark.to(self.device, dtype=torch.float32)
+                y_mark = y_mark.to(self.device, dtype=torch.float32)
+                opt.zero_grad()
+                out = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
+                self.loss(out, batch_y).backward()
+                opt.step()
+        self.model.to("cpu")
 
     def receive_from_server(self, data):
         if "current_iter" in data:

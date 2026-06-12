@@ -180,6 +180,24 @@ class Options:
             "--eval_gap", type=int, default=1, help="Rounds gap for evaluation"
         )
         parser.add_argument("--skip_eval_train", action="store_true", default=False)
+        parser.add_argument(
+            "--exclude_ratio",
+            type=float,
+            default=0.0,
+            help="Fraction of clients held out as new clients (never trained, adapted post-hoc)",
+        )
+        parser.add_argument(
+            "--adapt_epochs",
+            type=int,
+            default=1,
+            help="Local epochs for new-client adaptation after federation ends",
+        )
+        parser.add_argument(
+            "--adapt_T",
+            type=int,
+            default=None,
+            help="Cap training windows for new clients (head-slice); None = full train set",
+        )
 
         # client
         parser.add_argument(
