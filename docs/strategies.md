@@ -5,6 +5,7 @@
 | Name | Venue | Year | Paper | URL |
 |------|-------|------| ----- | ----|
 | LocalOnly | | | | |
+| LocalOLS | | | | |
 | Centralized | | | | |
 | SimTS | ICASSP | 2024 | SimTS: Rethinking Contrastive Representation Learning for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.18205) - [IEEE](https://ieeexplore.ieee.org/document/10446875) - [GitHub](https://github.com/xingyu617/SimTS_Representation_Learning) |
 | InfoTS | ICLR | 2023 | InfoTS: Information-Aware Time Series Meta-Contrastive Learning | [Arxiv](https://arxiv.org/abs/2303.01186) - [REF](https://github.com/Sec-Sci-Lab/InfoTS) |
