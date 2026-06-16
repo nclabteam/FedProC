@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
-from .pFL import pFL, pFL_Client
+from .tFL import tFL, tFL_Client
 
 
 class _LinearWeightsMixin:
@@ -24,7 +24,7 @@ class _LinearWeightsMixin:
                     target.bias.data.zero_()
 
 
-class FedRidge(_LinearWeightsMixin, pFL):
+class FedRidge(_LinearWeightsMixin, tFL):
     """
     FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF.
 
@@ -97,7 +97,7 @@ class FedRidge(_LinearWeightsMixin, pFL):
         self._load_linear_weights(self.model, W)
 
 
-class FedRidge_Client(_LinearWeightsMixin, pFL_Client):
+class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
     """
     Client for FedRidge.
 
