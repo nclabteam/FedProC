@@ -510,8 +510,12 @@ class tFL_Client(SharedMethods):
     def load_test_data(
         self, sample_ratio: float = None, shuffle: bool = False
     ) -> DataLoader:
-        if sample_ratio is None:
-            sample_ratio = getattr(self, "sample_ratio", 1.0)
+        # The test set is the fixed generalization ruler and must ALWAYS be full.
+        # --sample_ratio is a train-side starvation knob (e.g. the grokking probe);
+        # subsampling test would make test losses incomparable across a sample_ratio
+        # sweep. Force 1.0 regardless of the passed/instance value. Standard runs use
+        # 1.0 anyway, so this only changes sub-1.0 train-starved runs.
+        sample_ratio = 1.0
         testloader = self.load_data(
             file=self.test_file,
             sample_ratio=sample_ratio,
