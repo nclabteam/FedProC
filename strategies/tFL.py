@@ -133,16 +133,25 @@ class tFL(SharedMethods):
                     client.is_new = True
             self.logger.info(f"New clients ({num_new}): {sorted(new_ids)}")
 
+    @property
+    def new_clients(self):
+        return [c for c in self.clients if c.is_new]
+
     def save_results(self) -> None:
         super().save_results()
         for client in self.clients:
             if not client.is_new:
                 client.save_results()
-        if getattr(self, "new_client_test_loss", None) is not None:
+        gen  = getattr(self, "new_client_gen_test_loss",  None)
+        pers = getattr(self, "new_client_pers_test_loss", None)
+        if gen is not None or pers is not None:
             import json, os
             path = os.path.join(self.save_path, "new_client_results.json")
             with open(path, "w") as f:
-                json.dump({"new_client_avg_test_loss": self.new_client_test_loss}, f, indent=2)
+                json.dump({
+                    "new_client_avg_gen_test_loss":  gen,
+                    "new_client_avg_pers_test_loss": pers,
+                }, f, indent=2)
 
     def save_models(self, save_type: str) -> None:
         if save_type not in ["last", "best"]:
@@ -248,22 +257,37 @@ class tFL(SharedMethods):
         )
 
     def adapt_new_clients(self) -> None:
-        new_clients = [c for c in self.clients if c.is_new]
-        if not new_clients:
-            return
-        global_model = self.model if isinstance(self.model, torch.nn.Module) else None
-        for client in new_clients:
-            client.adapt(global_model)
+        pass
 
-    def evaluate_new_clients(self) -> None:
-        new_clients = [c for c in self.clients if c.is_new]
-        if not new_clients:
+    def evaluate_new_clients_gen(self) -> None:
+        if not self.new_clients:
             return
-        losses = [float(client.get_test_loss()) for client in new_clients]
-        self.new_client_test_loss = float(np.mean(losses))
-        self.logger.info(f"New Client Test Loss: {self.new_client_test_loss:.4f}")
+        if not isinstance(self.model, torch.nn.Module):
+            return
+        losses = [
+            float(np.mean(self.calculate_loss(
+                model=self.model,
+                dataloader=client.load_test_data(),
+                criterion=client.loss,
+                device=client.device,
+            )))
+            for client in self.new_clients
+        ]
+        self.new_client_gen_test_loss = float(np.mean(losses))
+        self.logger.info(f"New Client Gen  Test Loss: {self.new_client_gen_test_loss:.4f}")
 
-    def train_clients(self) -> None:
+    def evaluate_new_clients_pers(self) -> None:
+        if not self.new_clients:
+            return
+        losses = [float(client.get_test_loss()) for client in self.new_clients]
+        self.new_client_pers_test_loss = float(np.mean(losses))
+        self.logger.info(f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}")
+
+    def train_clients(self, new_only: bool = False) -> None:
+        clients = self.new_clients if new_only else self.selected_clients
+        if new_only and isinstance(self.model, torch.nn.Module):
+            for client in clients:
+                client.update_model_params(old=client.model, new=self.model)
         current_iter = getattr(self, "current_iter", 0)
         if self.parallel:
             i = 0
@@ -271,10 +295,10 @@ class tFL(SharedMethods):
             idle_workers = deque(range(self.num_workers))
             job_map = {}
             client_packages = {}
-            while i < len(self.selected_clients) or len(futures) > 0:
-                while i < len(self.selected_clients) and len(idle_workers) > 0:
+            while i < len(clients) or len(futures) > 0:
+                while i < len(clients) and len(idle_workers) > 0:
                     worker_id = idle_workers.popleft()
-                    client = self.selected_clients[i]
+                    client = clients[i]
                     client.current_iter = current_iter
                     future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
                         lambda cl: cl.train()
@@ -289,19 +313,20 @@ class tFL(SharedMethods):
                         client_package = ray.get(finished)
                         idle_workers.append(worker_id)
                         client_packages[client] = client_package
-                        client.update_model_params(
-                            old=client.model, new=client_package["model"]
-                        )
-                        client.update_optimizer_params(
-                            old=client.optimizer,
-                            new=client_package["optimizer_state"],
-                        )
-                        client.metrics["train_time"].append(
-                            client_package["train_time"]
-                        )
-                        client.train_samples = client_package["train_samples"]
+                        if client_package is not None:
+                            client.update_model_params(
+                                old=client.model, new=client_package["model"]
+                            )
+                            client.update_optimizer_params(
+                                old=client.optimizer,
+                                new=client_package["optimizer_state"],
+                            )
+                            client.metrics["train_time"].append(
+                                client_package["train_time"]
+                            )
+                            client.train_samples = client_package["train_samples"]
         else:
-            for client in self.selected_clients:
+            for client in clients:
                 client.current_iter = current_iter
                 client.train()
 
@@ -343,8 +368,10 @@ class tFL(SharedMethods):
     def post_process(self) -> None:
         self.logger.info("")
         self.logger.info("-" * 50)
+        self.evaluate_new_clients_gen()
+        self.train_clients(new_only=True)
         self.adapt_new_clients()
-        self.evaluate_new_clients()
+        self.evaluate_new_clients_pers()
         self.save_models(save_type="last")
         self.save_results()
         for c in self.clients:
