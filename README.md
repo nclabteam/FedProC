@@ -50,7 +50,7 @@ Get started with FedProC in just a few steps:
 - **[Usage](docs/usage.md)** - Basic usage and examples
 - **[Strategies](docs/strategies.md)** - Available federated learning strategies (55 strategies)
 - **[Datasets](docs/datasets.md)** - Supported datasets and data preparation (31 datasets)
-- **[Models](docs/models.md)** - Available models and architectures (77 models)
+- **[Models](docs/models.md)** - Available models and architectures (78 models)
 - **[Augmentations](docs/augs.md)** - Custom GPU-native PyTorch augmentations (8 augmentations)
 - **[Losses](docs/losses.md)** - Loss functions and metrics (19 losses)
 - **[Optimizers](docs/optimizers.md)** - Optimization methods (9 optimizers)
