@@ -34,6 +34,7 @@
 | FedLAW | ICML | 2023 | Revisiting Weighted Aggregation in Federated Learning with Neural Networks | [Arxiv](https://arxiv.org/abs/2302.10911) - [GitHub](https://github.com/ZexiLee/ICML-2023-FedLAW) |
 | FedPAQ | AISTATS | 2020 | FedPAQ: A Communication-Efficient Federated Learning Method with Periodic Averaging and Quantization | [Arxiv](https://arxiv.org/abs/1909.13014) |
 | FedRidge | arXiv | 2026 | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
+| FedDLSA | JCGS | 2021 | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
 
 ## pFL — Personalized Federated Learning
 
