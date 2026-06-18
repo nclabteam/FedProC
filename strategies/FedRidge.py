@@ -75,8 +75,9 @@ class FedRidge(_LinearWeightsMixin, tFL):
 
     # --------------------------------------------------- federated FL hooks
 
-    def train_clients(self) -> None:
-        for client in self.clients:
+    def train_clients(self, new_only: bool = False) -> None:
+        clients = self.new_clients if new_only else self.selected_clients
+        for client in clients:
             client.compute_statistics()
 
     def aggregate_models(self) -> None:

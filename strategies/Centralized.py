@@ -21,7 +21,7 @@ class Centralized(nFL):
         self.receive_from_clients()
         self.fix_results()
 
-    def train_clients(self):
+    def train_clients(self, new_only: bool = False):
         if self.parallel:  # Use parallel execution with Ray
             futures = []
             idle_workers = deque(range(self.num_workers))
