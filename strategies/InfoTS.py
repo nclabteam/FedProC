@@ -49,20 +49,12 @@ class InfoTS(nFL):
 
 class InfoTS_Client(nFL_Client):
     def train(self) -> Optional[Dict[str, Any]]:
-        seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
-        self._set_worker_seed(seed)
+        self._set_worker_seed(self._loader_seed("train"))
 
         train_loader = self.load_train_data()
         start_time = time.time()
 
         self.model.to(self.device)
-
-        self.pretrain_epochs = getattr(self, "pretrain_epochs", 0)
-        self.pretrain_lr = getattr(self, "pretrain_lr", 1e-3)
-        self.pretrain_meta_lr = getattr(self, "pretrain_meta_lr", 1e-2)
-        self.pretrain_meta_epoch = getattr(self, "pretrain_meta_epoch", 2)
-        self.pretrain_temp_t0 = getattr(self, "pretrain_temp_t0", 2.0)
-        self.pretrain_temp_t1 = getattr(self, "pretrain_temp_t1", 0.1)
 
         # Phase 1: self-supervised meta-pretraining
         if hasattr(self.model, "pretrain_loss") and self.pretrain_epochs > 0:

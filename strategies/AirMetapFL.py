@@ -95,7 +95,7 @@ class AirMetapFL_Client(pFL_Client):
 
     def __init__(self, configs: Namespace, id: int, times: int) -> None:
         super().__init__(configs=configs, id=id, times=times)
-        if getattr(self, "hf", False):
+        if self.hf:
             self._model_plus = copy.deepcopy(self.model)
             self._model_minus = copy.deepcopy(self.model)
 
@@ -121,7 +121,7 @@ class AirMetapFL_Client(pFL_Client):
         self.model.to(self.device)
         self.model.train()
 
-        if getattr(self, "hf", False):
+        if self.hf:
             self._train_hf(train_loader)
         else:
             self._train_fo(train_loader)
@@ -134,7 +134,6 @@ class AirMetapFL_Client(pFL_Client):
 
     def _train_fo(self, train_loader) -> None:
         """First-order MAML: 2 mini-batches per outer step."""
-        alpha = getattr(self, "alpha", 0.01)
         lr = self.learning_rate
 
         for _ in range(self.epochs):
@@ -158,7 +157,7 @@ class AirMetapFL_Client(pFL_Client):
                 with torch.no_grad():
                     for p in self.model.parameters():
                         if p.grad is not None:
-                            p.data.sub_(alpha * p.grad)
+                            p.data.sub_(self.alpha * p.grad)
 
                 # Meta-gradient at θ' on query set: ∇f(θ'; D^va)
                 self.optimizer.zero_grad()
@@ -178,8 +177,6 @@ class AirMetapFL_Client(pFL_Client):
 
     def _train_hf(self, train_loader) -> None:
         """Hessian-free MAML: 3 mini-batches per outer step."""
-        alpha = getattr(self, "alpha", 0.01)
-        delta = getattr(self, "delta", 1e-3)
         lr = self.learning_rate
 
         self._model_plus.to(self.device)
@@ -205,7 +202,7 @@ class AirMetapFL_Client(pFL_Client):
                 with torch.no_grad():
                     for p in self.model.parameters():
                         if p.grad is not None:
-                            p.data.sub_(alpha * p.grad)
+                            p.data.sub_(self.alpha * p.grad)
 
                 # Batch 1: query set → meta-gradient g = ∇f(θ'; D^va)
                 bx1, by1, bxm1, bym1 = self._next_batch(iterator, train_loader)
@@ -235,8 +232,8 @@ class AirMetapFL_Client(pFL_Client):
                         meta_grads,
                         frz_params,
                     ):
-                        pp.data.copy_(fp + delta * g)
-                        pm.data.copy_(fp - delta * g)
+                        pp.data.copy_(fp + self.delta * g)
+                        pm.data.copy_(fp - self.delta * g)
 
                 self._model_plus.zero_grad()
                 self._model_minus.zero_grad()
@@ -248,7 +245,7 @@ class AirMetapFL_Client(pFL_Client):
                 ).backward()
 
                 # g_hf = g - (α/2δ)·(∇f(θ+δg) - ∇f(θ-δg))
-                hf_coef = alpha / (2.0 * delta)
+                hf_coef = self.alpha / (2.0 * self.delta)
                 hf_grads = [
                     g
                     - hf_coef
@@ -276,8 +273,7 @@ class AirMetapFL_Client(pFL_Client):
     def variables_to_be_sent(self) -> Dict[str, Any]:
         data = super().variables_to_be_sent()
 
-        sparsity = getattr(self, "sparsity", 1.0)
-        if sparsity < 1.0:
+        if self.sparsity < 1.0:
             if self._memory is None:
                 self._memory = [
                     torch.zeros_like(p.data.cpu()) for p in data["model"].parameters()
@@ -287,7 +283,7 @@ class AirMetapFL_Client(pFL_Client):
                 new_mem = []
                 for mem, param in zip(self._memory, model.parameters()):
                     combined = mem.to(param.device) + param.data
-                    sparsified = self._top_k_sparsify(combined, sparsity)
+                    sparsified = self._top_k_sparsify(combined, self.sparsity)
                     new_mem.append((combined - sparsified).cpu())
                     param.data.copy_(sparsified)
                 self._memory = new_mem

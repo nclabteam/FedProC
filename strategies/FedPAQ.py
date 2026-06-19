@@ -29,13 +29,11 @@ class FedPAQ_Client(tFL_Client):
         # Retrieve base dictionary containing the model difference
         data = super().variables_to_be_sent()
 
-        s = getattr(self, "s", None)
-        if s is not None and s > 0:
+        if self.s > 0:
             model = data["model"]
             with torch.no_grad():
                 for param in model.parameters():
-                    # Quantize each parameter tensor in-place
-                    param.data.copy_(self.quantize_tensor(param.data, s))
+                    param.data.copy_(self.quantize_tensor(param.data, self.s))
 
         return data
 
