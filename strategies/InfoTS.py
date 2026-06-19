@@ -105,14 +105,17 @@ class InfoTS_Client(nFL_Client):
         )
 
         self.model.train()
-        meta_epoch = self.pretrain_meta_epoch
-        t0, t1 = self.pretrain_temp_t0, self.pretrain_temp_t1
-        n_epochs = self.pretrain_epochs
-        for epoch in range(n_epochs):
-            temperature = float(t0 * np.power(t1 / t0, (epoch + 1) / n_epochs))
+        for epoch in range(self.pretrain_epochs):
+            temperature = float(
+                self.pretrain_temp_t0
+                * np.power(
+                    self.pretrain_temp_t1 / self.pretrain_temp_t0,
+                    (epoch + 1) / self.pretrain_epochs,
+                )
+            )
 
             # Alternate meta update step
-            if (epoch + 1) % meta_epoch == 0:
+            if (epoch + 1) % self.pretrain_meta_epoch == 0:
                 for batch_x, *_ in train_loader:
                     batch_x = batch_x.to(
                         self.device, dtype=torch.float32, non_blocking=True

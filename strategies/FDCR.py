@@ -111,9 +111,8 @@ class FDCR(pFL):
 
     def aggregate_models(self):
         """FDCR aggregation: detect attackers via Fisher-weighted disparities, rescale benign params."""
-        online_clients = self.selected_clients
         freq = self.weights.clone()
-        lr = self.clients[0].learning_rate  # local learning rate
+        lr = self.clients[0].learning_rate
 
         # Snapshot previous global model
         if self.prev_global_params is None:
@@ -128,7 +127,7 @@ class FDCR(pFL):
         # Compute pseudo-gradients and Fisher-weighted gradients
         grad_list = []
         weight_grad_list = []
-        for client in online_clients:
+        for client in self.selected_clients:
             client_vec = torch.cat(
                 [p.view(-1) for p in client.model.parameters()]
             ).detach()
@@ -165,7 +164,7 @@ class FDCR(pFL):
             evils_center = max(partition["cluster_centers"])
             evils_center_idx = np.where(partition["cluster_centers"] == evils_center)[0]
             evils_idx = partition["cluster_core_indices"][int(evils_center_idx)]
-            benign_idx = [i for i in range(len(online_clients)) if i not in evils_idx]
+            benign_idx = [i for i in range(len(self.selected_clients)) if i not in evils_idx]
 
             self.logger.info(f"FDCR: benign={benign_idx}, evil={evils_idx}")
 
@@ -174,7 +173,7 @@ class FDCR(pFL):
 
             # Rescale benign client parameters using Fisher weights
             for i in benign_idx:
-                client = online_clients[i]
+                client = self.selected_clients[i]
                 fish = self.fisher_dict.get(client.id, torch.ones_like(grad_list[0]))
                 norm_fish = (fish - fish.min()) / (fish.max() - fish.min() + 1e-10)
                 idx = 0

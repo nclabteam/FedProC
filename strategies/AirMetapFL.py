@@ -134,8 +134,6 @@ class AirMetapFL_Client(pFL_Client):
 
     def _train_fo(self, train_loader) -> None:
         """First-order MAML: 2 mini-batches per outer step."""
-        lr = self.learning_rate
-
         for _ in range(self.epochs):
             for batch_x, batch_y, x_mark, y_mark in train_loader:
                 batch_x = batch_x.to(device=self.device, dtype=torch.float32)
@@ -173,12 +171,10 @@ class AirMetapFL_Client(pFL_Client):
                     for p, tp in zip(self.model.parameters(), temp_params):
                         p.data.copy_(tp)
                         if p.grad is not None:
-                            p.data.sub_(lr * p.grad)
+                            p.data.sub_(self.learning_rate * p.grad)
 
     def _train_hf(self, train_loader) -> None:
         """Hessian-free MAML: 3 mini-batches per outer step."""
-        lr = self.learning_rate
-
         self._model_plus.to(self.device)
         self._model_minus.to(self.device)
         self._model_plus.train()
@@ -265,7 +261,7 @@ class AirMetapFL_Client(pFL_Client):
                     for p, fp, g_hf in zip(
                         self.model.parameters(), frz_params, hf_grads
                     ):
-                        p.data.copy_(fp - lr * g_hf)
+                        p.data.copy_(fp - self.learning_rate * g_hf)
 
         self._model_plus.to("cpu")
         self._model_minus.to("cpu")

@@ -102,7 +102,6 @@ class DFedSAM_Client(dFL_Client):
         offload_after=True,
     ):
         """SAM training loop: two forward-backward passes per batch."""
-        rho = self.rho
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
         model.train()
@@ -119,7 +118,7 @@ class DFedSAM_Client(dFL_Client):
             grad_norm = self._grad_norm(model)
 
             # Step 2: perturb weights by delta = rho * g / ||g||
-            eps = self._add_perturbation(model, rho, grad_norm)
+            eps = self._add_perturbation(model, self.rho, grad_norm)
 
             # Step 3: second forward/backward at (y + delta) → compute g_tilde
             optimizer.zero_grad()

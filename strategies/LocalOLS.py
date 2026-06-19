@@ -52,19 +52,17 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
-        gamma = self.gamma
-
-        Sxx = torch.zeros(L, L)
-        Sxy = torch.zeros(L, H)
+        sxx = torch.zeros(L, L)
+        sxy = torch.zeros(L, H)
         for batch_x, batch_y, *_ in loader:
             B, _, C = batch_x.shape
             x = batch_x.permute(0, 2, 1).reshape(B * C, L)
             y = batch_y.permute(0, 2, 1).reshape(B * C, H)
-            Sxx.add_(x.T @ x)
-            Sxy.add_(x.T @ y)
+            sxx.add_(x.T @ x)
+            sxy.add_(x.T @ y)
 
         N = self.train_samples
-        W_i = torch.linalg.solve(Sxx / N + gamma * torch.eye(L), Sxy / N)
+        W_i = torch.linalg.solve(sxx / N + self.gamma * torch.eye(L), sxy / N)
         self._load_linear_weights(self.model, W_i)
 
         train_time = time.time() - start_time
