@@ -16,6 +16,7 @@ class DummyClient:
         self.id = client_id
         self.input_channels = 2
         self.output_channels = 2
+        self.is_new = False
         self.received = []
 
     def receive_from_server(self, package):

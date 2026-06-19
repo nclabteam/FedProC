@@ -5,7 +5,8 @@ import logging
 import time
 from argparse import Namespace
 from collections import deque
-from typing import Any, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import ray
@@ -282,6 +283,59 @@ class tFL(SharedMethods):
         losses = [float(client.get_test_loss()) for client in self.new_clients]
         self.new_client_pers_test_loss = float(np.mean(losses))
         self.logger.info(f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}")
+
+    def _run_clients(self, method: str, clients: List) -> None:
+        """Dispatch ``client.<method>()`` across *clients* in parallel or serial.
+
+        Use this in strategy overrides that call a client method other than
+        ``train()`` (e.g. ``compute_statistics``, ``adaptive_local_aggregation``).
+        Calling ``_run_clients`` instead of writing a bare ``for`` loop ensures
+        the correct execution mode is always used without duplicating the
+        parallel-dispatch boilerplate in every strategy.
+
+        ``train()`` is excluded from this dispatcher: it returns a package dict
+        that ``train_clients`` must apply back to the original client, so it
+        keeps its own Ray-based parallel path.
+
+        Parameters
+        ----------
+        method : str
+            Name of the client method to invoke.  The method must take no
+            positional arguments.  It may mutate client state in place; the
+            return value is discarded.
+        clients : list
+            Client objects on which to dispatch ``method``.
+
+        Notes
+        -----
+        Parallel mode uses :class:`concurrent.futures.ThreadPoolExecutor`.
+        CPU-bound methods (matrix math via NumPy/PyTorch) release the GIL, so
+        threads achieve genuine parallelism without Ray serialisation overhead.
+        Because threads share the process address space, in-place state
+        mutations (e.g. ``self._Sigma_xx``) are immediately visible on the
+        original client objects — no round-trip serialisation required.
+
+        Examples
+        --------
+        Replace a serial loop in a strategy override::
+
+            # Before (serial, loses Ray):
+            for client in clients:
+                client.compute_statistics()
+
+            # After (honours self.parallel):
+            self._run_clients("compute_statistics", clients)
+        """
+        if not self.parallel or len(clients) <= 1:
+            for client in clients:
+                getattr(client, method)()
+            return
+
+        n_workers = min(len(clients), self.num_workers)
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = [executor.submit(getattr(client, method)) for client in clients]
+            for future in futures:
+                future.result()  # propagate exceptions; discard return value
 
     def train_clients(self, new_only: bool = False) -> None:
         clients = self.new_clients if new_only else self.selected_clients

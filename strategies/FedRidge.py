@@ -77,8 +77,7 @@ class FedRidge(_LinearWeightsMixin, tFL):
 
     def train_clients(self, new_only: bool = False) -> None:
         clients = self.new_clients if new_only else self.selected_clients
-        for client in clients:
-            client.compute_statistics()
+        self._run_clients("compute_statistics", clients)
 
     def aggregate_models(self) -> None:
         L = self.input_len
