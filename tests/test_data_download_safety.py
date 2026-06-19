@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,7 +37,7 @@ class TestDataDownloadSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             save_path = os.path.join(tmpdir, "file.bin")
             with patch(
-                "data_factory.base.requests.get",
+                "data_factory.file_manager.requests.get",
                 return_value=FakeResponse(chunks=[b"abc", b"def"]),
             ):
                 FileManager.download_file("https://example.com/file.bin", save_path)
@@ -50,7 +50,7 @@ class TestDataDownloadSafety(unittest.TestCase):
             save_path = os.path.join(tmpdir, "file.bin")
             error = RuntimeError("network down")
             with patch(
-                "data_factory.base.requests.get",
+                "data_factory.file_manager.requests.get",
                 return_value=FakeResponse(raise_error=error),
             ):
                 with self.assertRaises(RuntimeError):
@@ -63,7 +63,7 @@ class TestDataDownloadSafety(unittest.TestCase):
     def test_download_from_google_drive_checks_result(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             save_path = os.path.join(tmpdir, "drive.bin")
-            with patch("data_factory.base.gdown.download", return_value=None):
+            with patch("data_factory.file_manager.gdown.download", return_value=None):
                 with self.assertRaises(RuntimeError):
                     FileManager.download_from_google_drive("file-id", save_path)
 
