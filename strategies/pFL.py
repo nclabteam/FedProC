@@ -63,9 +63,8 @@ class pFL(tFL):
             return True
         return False
 
-    def get_model_info(self) -> None:
-        super().get_model_info()
-
 
 class pFL_Client(tFL_Client):
-    """Passthrough — same as tFL_Client."""
+    """Passthrough — same as tFL_Client; named subclass kept as the
+    discovery anchor for ``<Strategy>_Client`` resolution and as the shared
+    base for personalized-FL client classes."""

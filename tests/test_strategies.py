@@ -40,6 +40,8 @@ class TestStrategies(unittest.TestCase):
             skip_eval_train=False,
             eval_gap=1,
             patience=0,
+            exclude_ratio=0.0,
+            seed=941,
         )
 
     def build_server(self, strategy_cls):

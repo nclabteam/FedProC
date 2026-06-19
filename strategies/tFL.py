@@ -30,6 +30,8 @@ class tFL(SharedMethods):
         self.mkdir()
 
         self.current_iter: int = 0
+        self.new_client_gen_test_loss: Optional[float] = None
+        self.new_client_pers_test_loss: Optional[float] = None
         self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
@@ -68,12 +70,16 @@ class tFL(SharedMethods):
         incumbent_clients = [c for c in self.clients if not c.is_new]
         if self.random_join_ratio:
             self.current_num_join_clients = np.random.choice(
-                range(self.num_join_clients, len(incumbent_clients) + 1), 1, replace=False
+                range(self.num_join_clients, len(incumbent_clients) + 1),
+                1,
+                replace=False,
             )[0]
         else:
             self.current_num_join_clients = self.num_join_clients
         self.selected_clients = list(
-            np.random.choice(incumbent_clients, self.current_num_join_clients, replace=False)
+            np.random.choice(
+                incumbent_clients, self.current_num_join_clients, replace=False
+            )
         )
 
     def variables_to_be_sent(self) -> Dict[str, Any]:
@@ -123,10 +129,9 @@ class tFL(SharedMethods):
             client_class(configs=self.configs, id=cid, times=self.times)
             for cid in range(self.num_clients)
         ]
-        exclude_ratio = getattr(self, "exclude_ratio", 0.0)
-        if exclude_ratio > 0.0:
-            num_new = max(1, int(self.num_clients * exclude_ratio))
-            rng = np.random.default_rng(getattr(self, "seed", 0))
+        if self.exclude_ratio > 0.0:
+            num_new = max(1, int(self.num_clients * self.exclude_ratio))
+            rng = np.random.default_rng(self.seed)
             new_ids = set(rng.choice(self.num_clients, num_new, replace=False).tolist())
             for client in self.clients:
                 if client.id in new_ids:
@@ -142,16 +147,23 @@ class tFL(SharedMethods):
         for client in self.clients:
             if not client.is_new:
                 client.save_results()
-        gen  = getattr(self, "new_client_gen_test_loss",  None)
-        pers = getattr(self, "new_client_pers_test_loss", None)
-        if gen is not None or pers is not None:
-            import json, os
+        if (
+            self.new_client_gen_test_loss is not None
+            or self.new_client_pers_test_loss is not None
+        ):
+            import json
+            import os
+
             path = os.path.join(self.save_path, "new_client_results.json")
             with open(path, "w") as f:
-                json.dump({
-                    "new_client_avg_gen_test_loss":  gen,
-                    "new_client_avg_pers_test_loss": pers,
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "new_client_avg_gen_test_loss": self.new_client_gen_test_loss,
+                        "new_client_avg_pers_test_loss": self.new_client_pers_test_loss,
+                    },
+                    f,
+                    indent=2,
+                )
 
     def save_models(self, save_type: str) -> None:
         if save_type not in ["last", "best"]:
@@ -191,37 +203,87 @@ class tFL(SharedMethods):
             return True
         return False
 
-    def evaluate_generalization_loss(self, dataset_type: str) -> None:
+    def _gather_losses(self, mode: str, dataset_type: str) -> List[float]:
+        """Compute one scalar loss per incumbent client, serial or parallel.
+
+        The map-reduce counterpart of :meth:`_dispatch`: it *gathers* a value
+        from each client rather than applying state back.  Parallel mode reuses
+        the same bounded Ray worker pool as :meth:`_dispatch` (one in-flight job
+        per worker) instead of fanning out an unbounded number of futures.
+
+        Parameters
+        ----------
+        mode : {"generalization", "personalization"}
+            ``"generalization"`` evaluates the shared global model on each
+            client's data; ``"personalization"`` evaluates each client's own
+            model via its ``get_<dataset_type>_loss``.
+        dataset_type : str
+            Split to evaluate, e.g. ``"train"`` or ``"test"``.
+
+        Returns
+        -------
+        list of float
+            One mean loss per incumbent (non-new) client, in client order.
+        """
         incumbent_clients = [c for c in self.clients if not c.is_new]
-        if self.parallel:
-            futures = []
-            for client in incumbent_clients:
-                device = "cuda" if self.num_gpus > 0 else "cpu"
-                num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
-                future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
-                    client=client,
-                    mode="generalization",
-                    dataset_type=dataset_type,
-                    model=self.model,
-                    criterion=client.loss,
-                    device=device,
-                )
-                futures.append(future)
-            losses = ray.get(futures)
-        else:
-            losses = [
-                float(
-                    np.mean(
-                        self.calculate_loss(
-                            model=self.model,
-                            dataloader=getattr(client, f"load_{dataset_type}_data")(),
-                            criterion=client.loss,
-                            device=client.device,
+        if not self.parallel:
+            if mode == "generalization":
+                return [
+                    float(
+                        np.mean(
+                            self.calculate_loss(
+                                model=self.model,
+                                dataloader=getattr(
+                                    client, f"load_{dataset_type}_data"
+                                )(),
+                                criterion=client.loss,
+                                device=client.device,
+                            )
                         )
                     )
-                )
+                    for client in incumbent_clients
+                ]
+            return [
+                float(getattr(client, f"get_{dataset_type}_loss")())
                 for client in incumbent_clients
             ]
+
+        device = "cuda" if self.num_gpus > 0 else "cpu"
+        num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
+        losses: List[Optional[float]] = [None] * len(incumbent_clients)
+        i = 0
+        futures = []
+        idle_workers = deque(range(self.num_workers))
+        job_map: Dict[Any, tuple] = {}
+        while i < len(incumbent_clients) or futures:
+            while i < len(incumbent_clients) and idle_workers:
+                worker_id = idle_workers.popleft()
+                client = incumbent_clients[i]
+                call_kwargs = dict(
+                    client=client,
+                    mode=mode,
+                    dataset_type=dataset_type,
+                    device=device,
+                )
+                if mode == "generalization":
+                    call_kwargs["model"] = self.model
+                    call_kwargs["criterion"] = client.loss
+                future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
+                    **call_kwargs
+                )
+                job_map[future] = (i, worker_id)
+                futures.append(future)
+                i += 1
+            if futures:
+                done, futures = ray.wait(futures)
+                for f in done:
+                    idx, worker_id = job_map.pop(f)
+                    losses[idx] = float(ray.get(f))
+                    idle_workers.append(worker_id)
+        return [loss for loss in losses]
+
+    def evaluate_generalization_loss(self, dataset_type: str) -> None:
+        losses = self._gather_losses("generalization", dataset_type)
         metric_name = f"global_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
@@ -230,25 +292,7 @@ class tFL(SharedMethods):
         )
 
     def evaluate_personalization_loss(self, dataset_type: str) -> None:
-        incumbent_clients = [c for c in self.clients if not c.is_new]
-        if self.parallel:
-            futures = []
-            for client in incumbent_clients:
-                device = "cuda" if self.num_gpus > 0 else "cpu"
-                num_gpus = 1 / self.num_workers if self.num_gpus > 0 else 0
-                future = ray_compute_client_loss.options(num_gpus=num_gpus).remote(
-                    client=client,
-                    mode="personalization",
-                    dataset_type=dataset_type,
-                    device=device,
-                )
-                futures.append(future)
-            losses = ray.get(futures)
-        else:
-            losses = [
-                float(getattr(client, f"get_{dataset_type}_loss")())
-                for client in incumbent_clients
-            ]
+        losses = self._gather_losses("personalization", dataset_type)
         metric_name = f"personal_avg_{dataset_type}_loss"
         self.metrics[metric_name].append(float(np.mean(losses)))
         self.logger.info(
@@ -265,27 +309,41 @@ class tFL(SharedMethods):
         if not isinstance(self.model, torch.nn.Module):
             return
         losses = [
-            float(np.mean(self.calculate_loss(
-                model=self.model,
-                dataloader=client.load_test_data(),
-                criterion=client.loss,
-                device=client.device,
-            )))
+            float(
+                np.mean(
+                    self.calculate_loss(
+                        model=self.model,
+                        dataloader=client.load_test_data(),
+                        criterion=client.loss,
+                        device=client.device,
+                    )
+                )
+            )
             for client in self.new_clients
         ]
         self.new_client_gen_test_loss = float(np.mean(losses))
-        self.logger.info(f"New Client Gen  Test Loss: {self.new_client_gen_test_loss:.4f}")
+        self.logger.info(
+            f"New Client Gen  Test Loss: {self.new_client_gen_test_loss:.4f}"
+        )
 
     def evaluate_new_clients_pers(self) -> None:
         if not self.new_clients:
             return
         losses = [float(client.get_test_loss()) for client in self.new_clients]
         self.new_client_pers_test_loss = float(np.mean(losses))
-        self.logger.info(f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}")
+        self.logger.info(
+            f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}"
+        )
 
-    _KNOWN_PACKAGE_KEYS: frozenset = frozenset({
-        "model", "optimizer_state", "train_time", "train_samples", "id",
-    })
+    _KNOWN_PACKAGE_KEYS: frozenset = frozenset(
+        {
+            "model",
+            "optimizer_state",
+            "train_time",
+            "train_samples",
+            "id",
+        }
+    )
 
     def _apply_client_result(self, client, package: Optional[Dict[str, Any]]) -> None:
         """Apply the dict returned by ``client.train()`` back to *client*.
@@ -396,7 +454,7 @@ class tFL(SharedMethods):
                 worker_id = idle_workers.popleft()
                 client = clients[i]
                 future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
-                    lambda cl, m: getattr(cl, m)()
+                    lambda cl, m: cl._offload_package(getattr(cl, m)())
                 ).remote(client, method)
                 job_map[future] = (client, worker_id)
                 futures.append(future)
@@ -587,13 +645,45 @@ class tFL_Client(SharedMethods):
         clone.train(model.training)
         return clone.to("cpu")
 
+    def _offload_package(
+        self, package: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Move the standard model/optimizer entries of a train package to CPU.
+
+        Called only on the Ray worker path (see :meth:`tFL._dispatch`) so that
+        GPU tensors are converted before crossing the process boundary back to
+        the driver.  Serial dispatch never calls this, so live GPU references
+        are preserved untouched.  Strategy-specific keys are left as-is —
+        strategies that add custom tensors handle their own device placement
+        (or override this method).
+
+        Parameters
+        ----------
+        package : dict or None
+            The dict returned by a dispatched client method.
+
+        Returns
+        -------
+        dict or None
+            The same package with ``model`` moved to CPU and
+            ``optimizer_state`` converted to a CPU state dict, when present.
+        """
+        if package is None:
+            return None
+        model = package.get("model")
+        if isinstance(model, torch.nn.Module):
+            package["model"] = model.to("cpu")
+        optimizer = package.get("optimizer_state")
+        if isinstance(optimizer, torch.optim.Optimizer):
+            package["optimizer_state"] = self._optimizer_state_to_cpu(optimizer)
+        return package
+
     def _loader_seed(self, dataset_type: str) -> Optional[int]:
-        base_seed = getattr(self, "seed", None)
-        if base_seed is None:
+        if self.seed is None:
             return None
         dataset_offset = {"train": 0, "test": 1, "valid": 2}.get(dataset_type, 3)
         return self._derive_seed(
-            int(base_seed) + int(getattr(self, "times", 0)),
+            int(self.seed) + int(self.times),
             self.id,
             self.current_iter,
             dataset_offset,
@@ -608,18 +698,17 @@ class tFL_Client(SharedMethods):
     def load_train_data(
         self, sample_ratio: float = None, shuffle: bool = True
     ) -> DataLoader:
-        adapt_T = getattr(self, "adapt_T", None)
-        if self.is_new and adapt_T is not None:
+        if self.is_new and self.adapt_T is not None:
             trainloader = self.load_data_head(
                 file=self.train_file,
-                T=adapt_T,
+                T=self.adapt_T,
                 shuffle=shuffle,
                 scaler=self.scaler,
                 batch_size=self.batch_size,
             )
         else:
             if sample_ratio is None:
-                sample_ratio = getattr(self, "sample_ratio", 1.0)
+                sample_ratio = self.sample_ratio
             trainloader = self.load_data(
                 file=self.train_file,
                 sample_ratio=sample_ratio,
@@ -654,11 +743,18 @@ class tFL_Client(SharedMethods):
     def train(self) -> Dict[str, Any]:
         """Run local training for one federation round.
 
-        Always returns a state package regardless of serial / parallel mode.
-        :meth:`tFL._dispatch` calls :meth:`tFL._apply_client_result` with this
-        package in both paths: in serial the identity checks in
-        ``_apply_client_result`` make the copies cheap no-ops; in parallel the
-        Ray-deserialised objects are different instances so real copies occur.
+        Returns live references to the trained model and optimizer in all
+        modes — it never checks ``efficiency`` or ``parallel``.
+        :meth:`tFL._dispatch` applies the package via
+        :meth:`tFL._apply_client_result` in both serial and parallel mode: in
+        serial the references are identical to the client's own attributes so
+        the apply is a true no-op; in parallel the Ray worker CPU-ifies the
+        package (see :meth:`_offload_package`) and the driver copies the values
+        back onto the original client.
+
+        ``efficiency`` still governs device residency *during* training (the
+        per-epoch offload for ``"low"`` and the post-training offload for
+        ``"med"``); it no longer affects what ``train`` returns.
 
         Returns
         -------
@@ -667,10 +763,10 @@ class tFL_Client(SharedMethods):
 
         Notes
         -----
-        Strategies whose ``train()`` needs to return *additional* keys (e.g.
-        closed-form statistics) must also override the server's
-        :meth:`tFL._apply_client_result` to handle those keys — the base
-        implementation raises :exc:`NotImplementedError` on unknown keys.
+        Strategies whose ``train()`` returns *additional* keys (e.g. closed-form
+        statistics) must extend the server's :attr:`tFL._KNOWN_PACKAGE_KEYS` and
+        override :meth:`tFL._apply_client_result` — the base implementation
+        raises :exc:`NotImplementedError` on unknown keys.
         """
         SharedMethods._set_worker_seed(self._loader_seed("train"))
         train_loader = self.load_train_data()
@@ -688,12 +784,10 @@ class tFL_Client(SharedMethods):
             )
         if self.efficiency == "med":
             self.model.to("cpu")
-        train_time = time.time() - start_time
-        model = self._clone_model_to_cpu(self.model) if self.efficiency == "high" else self.model
         return {
-            "model": model,
+            "model": self.model,
             "optimizer_state": self.optimizer,
-            "train_time": train_time,
+            "train_time": time.time() - start_time,
             "train_samples": self.train_samples,
         }
 
@@ -725,13 +819,14 @@ class tFL_Client(SharedMethods):
         if global_model is not None:
             self.update_model_params(old=self.model, new=global_model)
         else:
-            self.logger.warning("adapt called with no global model — starting from random init")
-        adapt_epochs = getattr(self, "adapt_epochs", 1)
+            self.logger.warning(
+                "adapt called with no global model — starting from random init"
+            )
         train_loader = self.load_train_data()
         self.model.to(self.device)
         self.model.train()
         opt = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        for _ in range(adapt_epochs):
+        for _ in range(self.adapt_epochs):
             for batch_x, batch_y, x_mark, y_mark in train_loader:
                 batch_x = batch_x.to(self.device, dtype=torch.float32)
                 batch_y = batch_y.to(self.device, dtype=torch.float32)

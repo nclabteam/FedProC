@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from strategies.tFL import tFL_Client as Client
 from strategies.base import SharedMethods
+from strategies.tFL import tFL_Client as Client
 
 
 class TrackableModel(torch.nn.Module):
@@ -121,6 +121,10 @@ class TestDevicePolicy(unittest.TestCase):
         client.device = "cpu"
         client.metrics = {"train_time": [], "lr": []}
         client.load_train_data = lambda: "loader"
+        client._loader_seed = lambda split: None
+        client._clone_model_to_cpu = lambda m: m
+        client._optimizer_state_to_cpu = lambda o: o
+        client.train_samples = 0
         client.calls = []
 
         def train_one_epoch(**kwargs):
