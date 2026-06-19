@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from .pFL import pFL, pFL_Client
+from .tFL import tFL
 
 
 class FedALA(pFL):
@@ -28,6 +29,7 @@ class FedALA(pFL):
         "threshold": 0.1,
         "local_patience": 10,
     }
+    _KNOWN_PACKAGE_KEYS = tFL._KNOWN_PACKAGE_KEYS | frozenset({"ala_weights", "ala_start_phase"})
 
     @classmethod
     def args_update(cls, parser):

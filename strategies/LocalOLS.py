@@ -66,19 +66,13 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
         self._load_linear_weights(self.model, W_i)
 
         train_time = time.time() - start_time
-        if self.parallel:
-            model = self.model
-            if self.efficiency == "high":
-                model = self._clone_model_to_cpu(self.model)
-            return {
-                "id": self.id,
-                "model": model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        model = self._clone_model_to_cpu(self.model) if self.efficiency == "high" else self.model
+        return {
+            "model": model,
+            "optimizer_state": self.optimizer,
+            "train_time": train_time,
+            "train_samples": self.train_samples,
+        }
 
     def adapt(self, global_model=None) -> None:
         self.train()

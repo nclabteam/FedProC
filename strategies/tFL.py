@@ -283,26 +283,36 @@ class tFL(SharedMethods):
         self.new_client_pers_test_loss = float(np.mean(losses))
         self.logger.info(f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}")
 
+    _KNOWN_PACKAGE_KEYS: frozenset = frozenset({
+        "model", "optimizer_state", "train_time", "train_samples", "id",
+    })
+
     def _apply_client_result(self, client, package: Optional[Dict[str, Any]]) -> None:
         """Apply the dict returned by ``client.train()`` back to *client*.
 
-        In Ray-parallel mode ``client.train()`` executes on a serialised copy;
-        the return value carries state that must be written back to the original
-        object.  Override this in strategies where ``train()`` produces
-        different keys than the gradient-training default.
+        Called in both serial and parallel mode so there is a single write-back
+        path.  In serial mode the client object is the same in-memory instance
+        as during training, so identity checks make the copy operations cheap
+        no-ops.  In parallel mode Ray deserialises a fresh copy, the checks
+        fail, and the real copies happen.
+
+        Strategies whose ``train()`` returns keys other than the gradient
+        default **must** override this method — the base implementation raises
+        :exc:`NotImplementedError` on unrecognised keys to surface the contract
+        violation at runtime rather than silently dropping state.
 
         Parameters
         ----------
         client : tFL_Client
-            The original client object to update.
+            The original (non-Ray) client object to update.
         package : dict or None
             Return value of ``client.train()``.  ``None`` is a no-op.
 
-        Notes
-        -----
-        In serial mode ``client.train()`` operates directly on the original
-        object, so in-place mutations are already visible — this method is
-        called only in the parallel path.
+        Raises
+        ------
+        NotImplementedError
+            If *package* contains keys not in
+            ``{"model", "optimizer_state", "train_time", "train_samples", "id"}``.
 
         Examples
         --------
@@ -317,12 +327,24 @@ class tFL(SharedMethods):
         """
         if package is None:
             return
-        client.update_model_params(old=client.model, new=package["model"])
-        client.update_optimizer_params(
-            old=client.optimizer, new=package["optimizer_state"]
-        )
-        client.metrics["train_time"].append(package["train_time"])
-        client.train_samples = package["train_samples"]
+        unknown = set(package) - self._KNOWN_PACKAGE_KEYS  # type: ignore[operator]
+        if unknown:
+            raise NotImplementedError(
+                f"{type(self).__name__} received unknown package keys "
+                f"{sorted(unknown)} from {type(client).__name__}.train() — "
+                f"add them to {type(self).__name__}._KNOWN_PACKAGE_KEYS and "
+                f"override _apply_client_result() to handle them."
+            )
+        model = package.get("model")
+        if model is not None and model is not client.model:
+            client.update_model_params(old=client.model, new=model)
+        opt = package.get("optimizer_state")
+        if opt is not None and opt is not client.optimizer:
+            client.update_optimizer_params(old=client.optimizer, new=opt)
+        if "train_time" in package:
+            client.metrics["train_time"].append(package["train_time"])
+        if "train_samples" in package:
+            client.train_samples = package["train_samples"]
 
     def _dispatch(self, method: str, clients: List) -> None:
         """Dispatch ``client.<method>()`` across *clients*, serial or parallel.
@@ -361,7 +383,7 @@ class tFL(SharedMethods):
         """
         if not self.parallel:
             for client in clients:
-                getattr(client, method)()
+                self._apply_client_result(client, getattr(client, method)())
             return
 
         i = 0
@@ -629,9 +651,28 @@ class tFL_Client(SharedMethods):
         self.test_samples = len(testloader.dataset)
         return testloader
 
-    def train(self) -> Optional[Dict[str, Any]]:
-        seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
-        SharedMethods._set_worker_seed(seed)
+    def train(self) -> Dict[str, Any]:
+        """Run local training for one federation round.
+
+        Always returns a state package regardless of serial / parallel mode.
+        :meth:`tFL._dispatch` calls :meth:`tFL._apply_client_result` with this
+        package in both paths: in serial the identity checks in
+        ``_apply_client_result`` make the copies cheap no-ops; in parallel the
+        Ray-deserialised objects are different instances so real copies occur.
+
+        Returns
+        -------
+        dict
+            ``{"model", "optimizer_state", "train_time", "train_samples"}``
+
+        Notes
+        -----
+        Strategies whose ``train()`` needs to return *additional* keys (e.g.
+        closed-form statistics) must also override the server's
+        :meth:`tFL._apply_client_result` to handle those keys — the base
+        implementation raises :exc:`NotImplementedError` on unknown keys.
+        """
+        SharedMethods._set_worker_seed(self._loader_seed("train"))
         train_loader = self.load_train_data()
         start_time = time.time()
         offload_after_epoch = self.efficiency == "low"
@@ -648,19 +689,13 @@ class tFL_Client(SharedMethods):
         if self.efficiency == "med":
             self.model.to("cpu")
         train_time = time.time() - start_time
-        if self.parallel:
-            model = self.model
-            if self.efficiency == "high":
-                model = self._clone_model_to_cpu(self.model)
-            return {
-                "id": self.id,
-                "model": model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        model = self._clone_model_to_cpu(self.model) if self.efficiency == "high" else self.model
+        return {
+            "model": model,
+            "optimizer_state": self.optimizer,
+            "train_time": train_time,
+            "train_samples": self.train_samples,
+        }
 
     def get_train_loss(self) -> float:
         losses = self.calculate_loss(
