@@ -96,7 +96,6 @@ class FedMD(hFL):
 class FedMD_Client(hFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.device = getattr(self, "device", "cpu")
 
     def receive_from_server(self, data):
         """FedMD doesn't aggregate models — no-op."""

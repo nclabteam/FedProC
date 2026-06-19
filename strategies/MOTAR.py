@@ -155,7 +155,6 @@ class MOTAR(pFL):
 
     def train_clients(self) -> None:
         """Override base to also propagate delta/fitness from parallel workers."""
-        current_iter = getattr(self, "current_iter", 0)
         if self.parallel:
             i = 0
             futures = []
@@ -166,7 +165,7 @@ class MOTAR(pFL):
                 while i < len(self.selected_clients) and idle_workers:
                     worker_id = idle_workers.popleft()
                     client = self.selected_clients[i]
-                    client.current_iter = current_iter
+                    client.current_iter = self.current_iter
                     future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
                         lambda cl: cl.train()
                     ).remote(client)
@@ -193,7 +192,7 @@ class MOTAR(pFL):
                         client._B_factors = pkg["B_factors"]
         else:
             for client in self.selected_clients:
-                client.current_iter = current_iter
+                client.current_iter = self.current_iter
                 client.train()
 
     def aggregate_models(self) -> None:

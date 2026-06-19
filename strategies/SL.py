@@ -167,10 +167,9 @@ class SL_Client(nFL_Client):
         train_loader = self.load_train_data()
         start_time = time.time()
 
-        # Read SL hyper-parameters (set via CLI → set_configs)
-        r_u: Optional[float] = getattr(self, "r_u", None)
-        r_a: Optional[float] = getattr(self, "r_a", None)
-        estimator_epochs: int = getattr(self, "estimator_epochs", 5)
+        r_u: Optional[float] = self.r_u
+        r_a: Optional[float] = self.r_a
+        estimator_epochs: int = self.estimator_epochs
 
         # Move model to device
         self.model.to(self.device)

@@ -105,8 +105,7 @@ class FlexLoRA(FedIT):
                     if rank_int > 0:
                         return rank_int
 
-        fallback_rank = getattr(self, "lora_r", FlexLoRA.optional["lora_r"])
-        return max(1, int(fallback_rank))
+        return max(1, int(self.lora_r))
 
     def aggregate_models(self):
         """
@@ -188,11 +187,10 @@ class FlexLoRA(FedIT):
                 # Choose A_i = U_i and B_i = diag(Sigma_i) @ Vh_i scaled by (r_i/alpha)
                 # so A_i @ B_i * (alpha/r_i) = U_i @ diag(Sigma_i) @ Vh_i.
 
-                alpha = getattr(self, "lora_alpha", FlexLoRA.optional["lora_alpha"])
-                if alpha is None or float(alpha) == 0.0:
+                if self.lora_alpha is None or float(self.lora_alpha) == 0.0:
                     scale = 1.0
                 else:
-                    scale = float(r_i) / float(alpha)
+                    scale = float(r_i) / float(self.lora_alpha)
 
                 A_i = U_i
                 B_i = (torch.diag(Sigma_i) @ Vh_i) * scale
@@ -275,7 +273,7 @@ class FlexLoRA_Client(FedIT_Client):
         return {
             "lora_params": lora_params,
             "score": self.train_samples,
-            "client_rank": getattr(self, "client_rank", None),
+            "client_rank": self.client_rank,
         }
 
     def receive_from_server(self, data):

@@ -38,7 +38,7 @@ class LoRA_FAIR(FedIT):
     def _similarity_loss(
         self, pred: torch.Tensor, target: torch.Tensor
     ) -> torch.Tensor:
-        metric = getattr(self, "sim_metric", LoRA_FAIR.optional["sim_metric"])
+        metric = self.sim_metric
         if metric == "cosine":
             p = pred.flatten().unsqueeze(0)
             t = target.flatten().unsqueeze(0)
