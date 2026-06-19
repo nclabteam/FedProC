@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -19,7 +19,7 @@ class InfoTS(nFL):
              and classifier heads via meta-steps.
         2. Supervised fine-tuning:
            - Tunes the forecasting model end-to-end on target MSE forecasting loss.
-     """
+    """
 
     compulsory = {**nFL.compulsory, "model": "InfoTS"}
     optional = {
@@ -48,7 +48,7 @@ class InfoTS(nFL):
 
 
 class InfoTS_Client(nFL_Client):
-    def train(self) -> Optional[Dict[str, Any]]:
+    def train(self) -> Dict[str, Any]:
         self._set_worker_seed(self._loader_seed("train"))
 
         train_loader = self.load_train_data()
@@ -77,20 +77,12 @@ class InfoTS_Client(nFL_Client):
         if self.efficiency == "med":
             self.model.to("cpu")
 
-        train_time = time.time() - start_time
-        if self.parallel:
-            model = self.model
-            if self.efficiency == "high":
-                model = self._clone_model_to_cpu(self.model)
-            return {
-                "id": self.id,
-                "model": model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        return {
+            "model": self.model,
+            "optimizer_state": self.optimizer,
+            "train_time": time.time() - start_time,
+            "train_samples": self.train_samples,
+        }
 
     def _pretrain(self, train_loader):
         """Self-supervised pre-training: alternates updates of encoder and AutoAUG."""
@@ -121,7 +113,9 @@ class InfoTS_Client(nFL_Client):
                         self.device, dtype=torch.float32, non_blocking=True
                     )
                     if batch_x.size(0) == self.batch_size:
-                        self.model.meta_step(batch_x, meta_opt, meta_head_opt, temperature=temperature)
+                        self.model.meta_step(
+                            batch_x, meta_opt, meta_head_opt, temperature=temperature
+                        )
 
             # Normal encoder contrastive update step
             for batch_x, *_ in train_loader:

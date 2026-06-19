@@ -20,7 +20,6 @@ activate.  SL is **model-agnostic** and works with any registered forecaster.
 """
 
 import time
-from argparse import Namespace
 from typing import Any, Dict, Optional
 
 import torch
@@ -81,9 +80,7 @@ class _SimpleMovingAvgDecomp(nn.Module):
         super().__init__()
         self.kernel_size = kernel_size
         padding = (kernel_size - 1) // 2
-        self.avg = nn.AvgPool1d(
-            kernel_size=kernel_size, stride=1, padding=padding
-        )
+        self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=1, padding=padding)
 
     def forward(self, x: torch.Tensor):
         # x: [B, L, D]
@@ -135,15 +132,21 @@ class SL(nFL):
     @classmethod
     def args_update(cls, parser):
         parser.add_argument(
-            "--r_u", type=float, default=None,
+            "--r_u",
+            type=float,
+            default=None,
             help="Uncertainty masking ratio in (0, 1). None = disabled.",
         )
         parser.add_argument(
-            "--r_a", type=float, default=None,
+            "--r_a",
+            type=float,
+            default=None,
             help="Anomaly masking ratio in (0, 1). None = disabled.",
         )
         parser.add_argument(
-            "--estimator_epochs", type=int, default=None,
+            "--estimator_epochs",
+            type=int,
+            default=None,
             help="Epochs to pre-train the DLinear anomaly estimator.",
         )
 
@@ -160,7 +163,7 @@ class SL(nFL):
 class SL_Client(nFL_Client):
     """Client-side Selective Learning logic."""
 
-    def train(self) -> Optional[Dict[str, Any]]:
+    def train(self) -> Dict[str, Any]:
         seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
         self._set_worker_seed(seed)
 
@@ -241,9 +244,7 @@ class SL_Client(nFL_Client):
                         est_out = estimator(batch_x)
                     residual_lb = torch.abs(est_out - batch_y)
                     dist = residual - residual_lb
-                    thresholds = torch.quantile(
-                        dist, r_a, dim=1, keepdim=True
-                    )
+                    thresholds = torch.quantile(dist, r_a, dim=1, keepdim=True)
                     ano_mask = dist > thresholds
                     mask = mask & ano_mask
 
@@ -252,18 +253,14 @@ class SL_Client(nFL_Client):
                 masked_targets = batch_y * mask
                 # Scale by kept fraction so gradient magnitude is stable
                 kept = mask.sum().clamp(min=1)
-                loss = (
-                    self.loss(masked_outputs, masked_targets) * mask.numel() / kept
-                )
+                loss = self.loss(masked_outputs, masked_targets) * mask.numel() / kept
                 loss.backward()
                 self.optimizer.step()
 
             # End-of-epoch: recompute uncertainty mask for next epoch
             if r_u is not None and history_residual is not None:
                 res_entropy = self._compute_entropy(history_residual)
-                thresholds = torch.quantile(
-                    res_entropy, 1 - r_u, dim=0, keepdim=True
-                )
+                thresholds = torch.quantile(res_entropy, 1 - r_u, dim=0, keepdim=True)
                 uncertainty_mask = res_entropy < thresholds  # [N+H-1, C]
 
             self.scheduler.step()
@@ -272,21 +269,12 @@ class SL_Client(nFL_Client):
         if self.efficiency != "high":
             self.model.to("cpu")
 
-        train_time = time.time() - start_time
-
-        if self.parallel:
-            model = self.model
-            if self.efficiency == "high":
-                model = self._clone_model_to_cpu(self.model)
-            return {
-                "id": self.id,
-                "model": model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        return {
+            "model": self.model,
+            "optimizer_state": self.optimizer,
+            "train_time": time.time() - start_time,
+            "train_samples": self.train_samples,
+        }
 
     # ------------------------------------------------------------------
     # helpers
@@ -348,9 +336,7 @@ class SL_Client(nFL_Client):
         sum_sq_per_id = torch.zeros_like(sum_per_id)
 
         sum_per_id.scatter_add_(0, ids_flat, x_flat)
-        sum_sq_per_id.scatter_add_(
-            0, ids_flat, (residual ** 2).view(-1, num_features)
-        )
+        sum_sq_per_id.scatter_add_(0, ids_flat, (residual**2).view(-1, num_features))
 
         counts = torch.bincount(
             ids.view(-1), minlength=num_samples + output_len - 1

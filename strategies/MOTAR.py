@@ -15,14 +15,13 @@ Reference: ideas/proposed/MOTAR/math.md
 
 import math
 import time
-from collections import deque
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-import ray
 import torch
 
 from .pFL import pFL, pFL_Client
+from .tFL import tFL
 
 # ─── hyperparameters ─────────────────────────────────────────────────────────
 
@@ -153,47 +152,31 @@ class MOTAR(pFL):
         parser.add_argument("--motar_alpha_l", type=float, default=None)
         return parser
 
-    def train_clients(self) -> None:
-        """Override base to also propagate delta/fitness from parallel workers."""
-        if self.parallel:
-            i = 0
-            futures = []
-            idle_workers = deque(range(self.num_workers))
-            job_map = {}
+    _KNOWN_PACKAGE_KEYS = tFL._KNOWN_PACKAGE_KEYS | frozenset(
+        {"fitness", "A_factors", "B_factors", "delta"}
+    )
 
-            while i < len(self.selected_clients) or futures:
-                while i < len(self.selected_clients) and idle_workers:
-                    worker_id = idle_workers.popleft()
-                    client = self.selected_clients[i]
-                    client.current_iter = self.current_iter
-                    future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
-                        lambda cl: cl.train()
-                    ).remote(client)
-                    job_map[future] = (client, worker_id)
-                    futures.append(future)
-                    i += 1
+    def _apply_client_result(self, client, package: Optional[Dict[str, Any]]) -> None:
+        """Apply MOTAR's training package back to *client*.
 
-                if futures:
-                    done, futures = ray.wait(futures)
-                    for f in done:
-                        client, worker_id = job_map[f]
-                        pkg = ray.get(f)
-                        idle_workers.append(worker_id)
-                        client.update_model_params(old=client.model, new=pkg["model"])
-                        client.update_optimizer_params(
-                            old=client.optimizer, new=pkg["optimizer_state"]
-                        )
-                        client.metrics["train_time"].append(pkg["train_time"])
-                        client.train_samples = pkg["train_samples"]
-                        # MOTAR: restore per-client adapter + fitness
-                        client.delta = pkg["delta"]
-                        client._fitness = pkg["fitness"]
-                        client._A_factors = pkg["A_factors"]
-                        client._B_factors = pkg["B_factors"]
-        else:
-            for client in self.selected_clients:
-                client.current_iter = self.current_iter
-                client.train()
+        Extends the base write-back with the per-client evolution-strategy state
+        (advantage fitness, low-rank factors, and personalised adapter ``delta``)
+        produced during local training so it survives Ray-parallel execution.
+
+        Parameters
+        ----------
+        client : MOTAR_Client
+            The original (non-Ray) client object to update.
+        package : dict or None
+            Return value of ``client.train()``.  ``None`` is a no-op.
+        """
+        if package is None:
+            return
+        super()._apply_client_result(client, package)
+        client.delta = package["delta"]
+        client._fitness = package["fitness"]
+        client._A_factors = package["A_factors"]
+        client._B_factors = package["B_factors"]
 
     def aggregate_models(self) -> None:
         """EGGROLL update: M ← M + α_g · Σ k_i · f_i^adv · (1/√r) A_i B_i^T"""
@@ -235,6 +218,30 @@ class MOTAR_Client(pFL_Client):
         self._A_factors: Dict[str, np.ndarray] = {}
         self._B_factors: Dict[str, Optional[np.ndarray]] = {}
 
+    def _offload_package(
+        self, package: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """CPU-ify the standard entries plus MOTAR's ``delta`` tensors for return.
+
+        Called only on the Ray worker path so that GPU tensors cross the process
+        boundary safely.  The base implementation handles ``model`` and
+        ``optimizer_state``; this override adds ``delta``.
+
+        Parameters
+        ----------
+        package : dict or None
+            The dict returned by :meth:`train`.
+
+        Returns
+        -------
+        dict or None
+            The same mapping with GPU tensors moved to CPU.
+        """
+        package = super()._offload_package(package)
+        if package is not None and "delta" in package:
+            package["delta"] = {k: v.cpu().clone() for k, v in package["delta"].items()}
+        return package
+
     def variables_to_be_sent(self) -> Dict[str, Any]:
         """Send advantage fitness + low-rank factors. No seed. No model."""
         return {
@@ -266,7 +273,7 @@ class MOTAR_Client(pFL_Client):
         self._apply_delta(add=False)
         return result
 
-    def train(self) -> Optional[Dict[str, Any]]:
+    def train(self) -> Dict[str, Any]:
         seed = self._loader_seed("train")
         self._set_worker_seed(seed)
         start_time = time.time()
@@ -349,19 +356,13 @@ class MOTAR_Client(pFL_Client):
         if self.efficiency in ("low", "med"):
             self.model.to("cpu")
 
-        train_time = time.time() - start_time
-
-        if self.parallel:
-            return {
-                "id": self.id,
-                "model": self.model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-                "fitness": self._fitness,
-                "A_factors": self._A_factors,
-                "B_factors": self._B_factors,
-                "delta": {k: v.cpu().clone() for k, v in self.delta.items()},
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        return {
+            "model": self.model,
+            "optimizer_state": self.optimizer,
+            "train_time": time.time() - start_time,
+            "train_samples": self.train_samples,
+            "fitness": self._fitness,
+            "A_factors": self._A_factors,
+            "B_factors": self._B_factors,
+            "delta": self.delta,
+        }

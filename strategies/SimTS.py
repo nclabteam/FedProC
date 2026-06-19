@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
@@ -46,7 +46,7 @@ class SimTS(nFL):
 
 class SimTS_Client(nFL_Client):
 
-    def train(self) -> Optional[Dict[str, Any]]:
+    def train(self) -> Dict[str, Any]:
         seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
         self._set_worker_seed(seed)
         train_loader = self.load_train_data()
@@ -74,20 +74,12 @@ class SimTS_Client(nFL_Client):
         if self.efficiency == "med":
             self.model.to("cpu")
 
-        train_time = time.time() - start_time
-        if self.parallel:
-            model = self.model
-            if self.efficiency == "high":
-                model = self._clone_model_to_cpu(self.model)
-            return {
-                "id": self.id,
-                "model": model,
-                "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
-                "train_time": train_time,
-                "train_samples": self.train_samples,
-            }
-        self.metrics["train_time"].append(train_time)
-        return None
+        return {
+            "model": self.model,
+            "optimizer_state": self.optimizer,
+            "train_time": time.time() - start_time,
+            "train_samples": self.train_samples,
+        }
 
     def _pretrain(self, train_loader):
         """Self-supervised phase: train encoder + predictor with cosine loss."""

@@ -1,4 +1,5 @@
 import time
+from typing import Any, Dict
 
 import torch
 
@@ -47,7 +48,7 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
     Data never changes, so recomputing is idempotent.
     """
 
-    def train(self):
+    def train(self) -> Dict[str, Any]:
         start_time = time.time()
         loader = self.load_train_data()
         L = self.input_len
@@ -65,12 +66,10 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
         W_i = torch.linalg.solve(sxx / N + self.gamma * torch.eye(L), sxy / N)
         self._load_linear_weights(self.model, W_i)
 
-        train_time = time.time() - start_time
-        model = self._clone_model_to_cpu(self.model) if self.efficiency == "high" else self.model
         return {
-            "model": model,
+            "model": self.model,
             "optimizer_state": self.optimizer,
-            "train_time": train_time,
+            "train_time": time.time() - start_time,
             "train_samples": self.train_samples,
         }
 
