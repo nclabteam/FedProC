@@ -1,10 +1,7 @@
-import gzip
 import os
-import shutil
 from datetime import datetime, timedelta
 
 import polars as pl
-import requests
 
 from .base import BaseDataset
 
@@ -12,12 +9,9 @@ from .base import BaseDataset
 class SolarEnergy(BaseDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Set the paths for the dataset
         self.save_path = os.path.join("datasets", "SolarEnergy")
         self.path_raw = os.path.join("datasets", "SolarEnergy", "raw")
         self.path_temp = os.path.join("datasets", "SolarEnergy", "temp")
-
-        # Set the dataset parameters
         self.column_date = "Date"
         self.column_target = ["Value"]
         self.column_train = ["Value"]
@@ -27,41 +21,17 @@ class SolarEnergy(BaseDataset):
         self.split_files = True
 
     def download(self):
-        # Create the directory if it doesn't exist
         os.makedirs(self.path_raw, exist_ok=True)
-        os.makedirs(self.path_temp, exist_ok=True)
-
-        # Define the output file name
-        output_file = os.path.basename(self.url)
-        temp_path = os.path.join(self.path_temp, output_file)
-        extracted_path = os.path.join(self.path_temp, output_file.replace(".gz", ""))
-
-        # Download the file
-        response = requests.get(self.url, stream=True)
-        if response.status_code == 200:
-            with open(temp_path, "wb") as file:
-                for chunk in response.iter_content(chunk_size=1024):
-                    file.write(chunk)
-        else:
-            raise Exception(f"Failed to download file from {self.url}")
-
-        # Extract the file
-        with gzip.open(temp_path, "rb") as f_in:
-            with open(extracted_path, "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-
-        # Load the dataset
+        extracted_path = self.download_and_extract_gz(url=self.url, save_dir=self.path_temp)
         df = pl.read_csv(extracted_path, separator=",", has_header=False)
-
-        # Generate datetime column from 2015-01-01, with 1-hour increments
-        start_date = datetime(2015, 1, 1, 0, 0)  # Start from 2015
-        num_rows = df.shape[0]  # Number of rows in the dataset
-
-        datetime_series = [start_date + timedelta(hours=i) for i in range(num_rows)]
-        df = df.with_columns(pl.Series(self.column_date, datetime_series))
-
+        start_date = datetime(2015, 1, 1, 0, 0)
+        df = df.with_columns(
+            pl.Series(
+                self.column_date,
+                [start_date + timedelta(hours=i) for i in range(df.shape[0])],
+            )
+        )
         if self.split_files:
-            # Save the dataset as multiple files
             self.split_columns_into_files(
                 df=df,
                 path=self.path_raw,
@@ -69,19 +39,15 @@ class SolarEnergy(BaseDataset):
                 new_column_name="Value",
             )
         else:
-            # Save the dataset as a single file
             df.write_csv(os.path.join(self.path_raw, "solar_energy.csv"))
 
 
 class SolarEnergyOG(SolarEnergy):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Set the paths for the dataset
         self.save_path = os.path.join("datasets", "SolarEnergyOG")
         self.path_raw = os.path.join("datasets", "SolarEnergyOG", "raw")
         self.path_temp = os.path.join("datasets", "SolarEnergyOG", "temp")
-
-        # Set the dataset parameters
         self.column_target = [f"column_{i}" for i in range(1, 138)]
         self.column_train = [f"column_{i}" for i in range(1, 138)]
         self.split_files = False

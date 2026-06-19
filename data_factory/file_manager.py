@@ -1,5 +1,7 @@
+import gzip
 import os
 import re
+import shutil
 import tempfile
 import time
 import zipfile
@@ -121,6 +123,45 @@ class FileManager:
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+
+    @staticmethod
+    def download_and_extract_gz(url: str, save_dir: str) -> str:
+        """Download a gzip-compressed file and extract its content.
+
+        Downloads the `.gz` file to a temporary path inside ``save_dir``,
+        extracts the content via :mod:`gzip`, removes the compressed file, and
+        returns the path to the extracted file.
+
+        Args:
+            url (str): URL of the ``.gz`` file to download.
+            save_dir (str): Directory where the extracted file is written.
+                            Created automatically if it does not exist.
+
+        Returns:
+            str: Absolute path to the extracted file.
+
+        Raises:
+            requests.exceptions.RequestException: If the HTTP download fails.
+            OSError: If ``save_dir`` cannot be created or written to.
+
+        Examples:
+            >>> path = FileManager.download_and_extract_gz(
+            ...     "https://example.com/data.txt.gz", "./tmp"
+            ... )
+            >>> path
+            './tmp/data.txt'
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        filename = os.path.basename(url)
+        compressed_path = os.path.join(save_dir, filename)
+        extracted_path = os.path.join(
+            save_dir, filename[:-3] if filename.endswith(".gz") else filename
+        )
+        FileManager.download_file(url, compressed_path)
+        with gzip.open(compressed_path, "rb") as f_in, open(extracted_path, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        os.remove(compressed_path)
+        return extracted_path
 
     @staticmethod
     def download_file(url: str, save_path: str) -> None:
