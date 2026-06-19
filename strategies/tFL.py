@@ -5,7 +5,6 @@ import logging
 import time
 from argparse import Namespace
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -284,105 +283,126 @@ class tFL(SharedMethods):
         self.new_client_pers_test_loss = float(np.mean(losses))
         self.logger.info(f"New Client Pers Test Loss: {self.new_client_pers_test_loss:.4f}")
 
-    def _run_clients(self, method: str, clients: List) -> None:
-        """Dispatch ``client.<method>()`` across *clients* in parallel or serial.
+    def _apply_client_result(self, client, package: Optional[Dict[str, Any]]) -> None:
+        """Apply the dict returned by ``client.train()`` back to *client*.
 
-        Use this in strategy overrides that call a client method other than
-        ``train()`` (e.g. ``compute_statistics``, ``adaptive_local_aggregation``).
-        Calling ``_run_clients`` instead of writing a bare ``for`` loop ensures
-        the correct execution mode is always used without duplicating the
-        parallel-dispatch boilerplate in every strategy.
+        In Ray-parallel mode ``client.train()`` executes on a serialised copy;
+        the return value carries state that must be written back to the original
+        object.  Override this in strategies where ``train()`` produces
+        different keys than the gradient-training default.
 
-        ``train()`` is excluded from this dispatcher: it returns a package dict
-        that ``train_clients`` must apply back to the original client, so it
-        keeps its own Ray-based parallel path.
+        Parameters
+        ----------
+        client : tFL_Client
+            The original client object to update.
+        package : dict or None
+            Return value of ``client.train()``.  ``None`` is a no-op.
+
+        Notes
+        -----
+        In serial mode ``client.train()`` operates directly on the original
+        object, so in-place mutations are already visible — this method is
+        called only in the parallel path.
+
+        Examples
+        --------
+        Override in a one-shot statistics strategy::
+
+            def _apply_client_result(self, client, package):
+                if package is None:
+                    return
+                client._sigma_xx = package["sigma_xx"]
+                client._sigma_xy = package["sigma_xy"]
+                client.train_samples = package["train_samples"]
+        """
+        if package is None:
+            return
+        client.update_model_params(old=client.model, new=package["model"])
+        client.update_optimizer_params(
+            old=client.optimizer, new=package["optimizer_state"]
+        )
+        client.metrics["train_time"].append(package["train_time"])
+        client.train_samples = package["train_samples"]
+
+    def _dispatch(self, method: str, clients: List) -> None:
+        """Dispatch ``client.<method>()`` across *clients*, serial or parallel.
+
+        This is the single, unified execution path for all per-client method
+        calls.  Strategies never write their own serial loops or parallel
+        boilerplate — they call ``_dispatch`` and the framework decides the
+        execution mode based on ``self.parallel``.
+
+        Parallel mode uses the same Ray worker-pool pattern for every method,
+        regardless of which strategy or client class is involved.  The return
+        value of ``method`` is forwarded to
+        :meth:`_apply_client_result` so that state produced on the remote copy
+        is written back to the original client.
 
         Parameters
         ----------
         method : str
-            Name of the client method to invoke.  The method must take no
-            positional arguments.  It may mutate client state in place; the
-            return value is discarded.
+            Name of the no-argument client method to invoke.
         clients : list
             Client objects on which to dispatch ``method``.
 
         Notes
         -----
-        Parallel mode uses :class:`concurrent.futures.ThreadPoolExecutor`.
-        CPU-bound methods (matrix math via NumPy/PyTorch) release the GIL, so
-        threads achieve genuine parallelism without Ray serialisation overhead.
-        Because threads share the process address space, in-place state
-        mutations (e.g. ``self._Sigma_xx``) are immediately visible on the
-        original client objects — no round-trip serialisation required.
+        ``train_clients`` is the primary caller; strategies that need to
+        dispatch a *different* method (e.g. ``adaptive_local_aggregation``)
+        call ``_dispatch`` directly with the appropriate method name instead of
+        writing a loop.
 
         Examples
         --------
-        Replace a serial loop in a strategy override::
+        Dispatch a strategy-specific client method in parallel::
 
-            # Before (serial, loses Ray):
-            for client in clients:
-                client.compute_statistics()
-
-            # After (honours self.parallel):
-            self._run_clients("compute_statistics", clients)
+            def some_server_step(self):
+                self._dispatch("adaptive_local_aggregation", self.selected_clients)
         """
-        if not self.parallel or len(clients) <= 1:
+        if not self.parallel:
             for client in clients:
                 getattr(client, method)()
             return
 
-        n_workers = min(len(clients), self.num_workers)
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            futures = [executor.submit(getattr(client, method)) for client in clients]
-            for future in futures:
-                future.result()  # propagate exceptions; discard return value
+        i = 0
+        futures = []
+        idle_workers = deque(range(self.num_workers))
+        job_map: Dict[Any, tuple] = {}
+
+        while i < len(clients) or futures:
+            while i < len(clients) and idle_workers:
+                worker_id = idle_workers.popleft()
+                client = clients[i]
+                future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
+                    lambda cl, m: getattr(cl, m)()
+                ).remote(client, method)
+                job_map[future] = (client, worker_id)
+                futures.append(future)
+                i += 1
+            if futures:
+                done, futures = ray.wait(futures)
+                for f in done:
+                    client, worker_id = job_map.pop(f)
+                    self._apply_client_result(client, ray.get(f))
+                    idle_workers.append(worker_id)
 
     def train_clients(self, new_only: bool = False) -> None:
+        """Train all selected clients, in serial or parallel.
+
+        Parameters
+        ----------
+        new_only : bool, optional
+            When ``True`` operate on :attr:`new_clients` instead of
+            :attr:`selected_clients` and seed each new client with the current
+            global model before training.
+        """
         clients = self.new_clients if new_only else self.selected_clients
         if new_only and isinstance(self.model, torch.nn.Module):
             for client in clients:
                 client.update_model_params(old=client.model, new=self.model)
-        current_iter = getattr(self, "current_iter", 0)
-        if self.parallel:
-            i = 0
-            futures = []
-            idle_workers = deque(range(self.num_workers))
-            job_map = {}
-            client_packages = {}
-            while i < len(clients) or len(futures) > 0:
-                while i < len(clients) and len(idle_workers) > 0:
-                    worker_id = idle_workers.popleft()
-                    client = clients[i]
-                    client.current_iter = current_iter
-                    future = ray.remote(num_gpus=self.num_gpus / self.num_workers)(
-                        lambda cl: cl.train()
-                    ).remote(client)
-                    job_map[future] = (client, worker_id)
-                    futures.append(future)
-                    i += 1
-                if len(futures) > 0:
-                    all_finished, futures = ray.wait(futures)
-                    for finished in all_finished:
-                        client, worker_id = job_map[finished]
-                        client_package = ray.get(finished)
-                        idle_workers.append(worker_id)
-                        client_packages[client] = client_package
-                        if client_package is not None:
-                            client.update_model_params(
-                                old=client.model, new=client_package["model"]
-                            )
-                            client.update_optimizer_params(
-                                old=client.optimizer,
-                                new=client_package["optimizer_state"],
-                            )
-                            client.metrics["train_time"].append(
-                                client_package["train_time"]
-                            )
-                            client.train_samples = client_package["train_samples"]
-        else:
-            for client in clients:
-                client.current_iter = current_iter
-                client.train()
+        for client in clients:
+            client.current_iter = self.current_iter
+        self._dispatch("train", clients)
 
     def fix_results(self) -> None:
         super().fix_results(default=self.default_value)
