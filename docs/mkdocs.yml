@@ -14,6 +14,7 @@ nav:
   - Installation: installation.md
   - Usage: usage.md
   - Strategies: strategies.md
+  - Execution Model: execution-model.md
   - Datasets: datasets.md
   - Models: models.md
   - Augmentations: augs.md

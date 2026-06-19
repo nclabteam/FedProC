@@ -33,6 +33,15 @@ class NewDataset(BaseDataset):
         # do magic here
 ```
 
+`BaseDataset` inherits download/extract helpers from `FileManager` (in
+`data_factory/file_manager.py`), so `download` can reuse the common patterns
+instead of re-implementing them:
+
+- `self.download_file(url, save_path)` — stream a single file to disk (atomic).
+- `self.download_and_extract(url, save_dir)` — download and unzip a `.zip`.
+- `self.download_and_extract_gz(url, save_dir)` — download and decompress a
+  `.gz`, returning the path to the extracted file.
+
 If you want 2 datasets and want to change configurations one of them:
 ```
 from .base import CustomDataset
@@ -121,6 +130,20 @@ The customized `strategy` must have the server class name the same as the file n
 class FedNew(Server):
     pass
 ```
+
+### Per-client execution
+
+Per-client work (training, statistics, fine-tuning) runs through a single
+dispatch contract that handles serial and Ray-parallel execution uniformly, so a
+plain inheriting strategy needs no parallel code. If your strategy returns extra
+state from `train()` (e.g. closed-form statistics or auxiliary tensors), you must
+also tell the server how to apply it back. The three cases — standard gradient,
+custom-return, and extra-keys-on-gradient — are documented with examples in
+[Execution Model](execution-model.md).
+
+Key rule: any dispatched method that mutates client state you need on the server
+**must return that state in its package** — returning `None` silently discards
+the work in parallel mode.
 
 ## Specific Hyper-parameters
 In each method (`loss`, `optimizer`, `strategy`, etc.), there will be 2 dictionaries `optional` and `compulsory`. 

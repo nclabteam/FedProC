@@ -28,6 +28,7 @@ Get started with FedProC in just a few steps:
 - **[Installation](installation.md)** - Installation guide and requirements
 - **[Usage](usage.md)** - Basic usage and examples
 - **[Strategies](strategies.md)** - Available federated learning strategies
+- **[Execution Model](execution-model.md)** - Dispatch contract, parallelism, and efficiency
 - **[Datasets](datasets.md)** - Supported datasets and data preparation
 - **[Models](models.md)** - Available models and architectures
 - **[Losses](losses.md)** - Loss functions and metrics
