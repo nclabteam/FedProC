@@ -54,11 +54,10 @@ class FedCross(Server):
 
     def send_to_clients(self):
         self._resize_w_locals(len(self.selected_clients))
-        current_iter = getattr(self, "current_iter", 0)
         total_bytes_sent = 0.0
 
         for client, model in zip(self.selected_clients, self.w_locals):
-            client.current_iter = current_iter
+            client.current_iter = self.current_iter
             total_bytes_sent += self.get_size(model)
             client.receive_from_server({"model": model})
 

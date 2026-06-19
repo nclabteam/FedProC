@@ -108,6 +108,7 @@ class TestStrategies(unittest.TestCase):
         server.num_clients = 3
         server.clients = [DummyClient(0), DummyClient(1), DummyClient(2)]
         server.model = "model"
+        server.current_iter = 0
         server.metrics = {"send_mb": []}
         server.logger = None
         server.selected_clients = []

@@ -52,7 +52,7 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
-        gamma = getattr(self, "gamma", 0.0)
+        gamma = self.gamma
 
         Sxx = torch.zeros(L, L)
         Sxy = torch.zeros(L, H)

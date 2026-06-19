@@ -29,6 +29,7 @@ class tFL(SharedMethods):
         self.set_configs(configs=configs, times=times)
         self.mkdir()
 
+        self.current_iter: int = 0
         self.num_join_clients = max(1, int(self.num_clients * self.join_ratio))
         self.current_num_join_clients = self.num_join_clients
 
@@ -86,9 +87,8 @@ class tFL(SharedMethods):
             for key, value in to_be_sent.items()
             if not (isinstance(value, list) and len(value) == len(self.clients))
         }
-        current_iter = getattr(self, "current_iter", 0)
         for idx, client in enumerate(self.clients):
-            client.current_iter = current_iter
+            client.current_iter = self.current_iter
             data_to_send = {}
             for key, value in to_be_sent.items():
                 if isinstance(value, list) and len(value) == len(self.clients):
@@ -515,6 +515,7 @@ class tFL_Client(SharedMethods):
         self.initialize_optimizer()
         self.initialize_scheduler()
         self.initialize_scaler()
+        self.current_iter: int = 0
         self.name = f"CLIENT_{str(self.id).zfill(3)}"
         self.make_logger(name=self.name, path=self.log_path)
         self.is_new = False
@@ -571,8 +572,8 @@ class tFL_Client(SharedMethods):
         dataset_offset = {"train": 0, "test": 1, "valid": 2}.get(dataset_type, 3)
         return self._derive_seed(
             int(base_seed) + int(getattr(self, "times", 0)),
-            getattr(self, "id", 0),
-            getattr(self, "current_iter", 0),
+            self.id,
+            self.current_iter,
             dataset_offset,
         )
 

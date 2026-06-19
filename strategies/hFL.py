@@ -91,9 +91,8 @@ class hFL(pFL):
 
     def send_to_clients(self) -> None:
         """No model broadcast — clients have heterogeneous architectures."""
-        current_iter = getattr(self, "current_iter", 0)
         for client in self.clients:
-            client.current_iter = current_iter
+            client.current_iter = self.current_iter
 
     def receive_from_clients(self) -> None:
         """No model collection — clients keep their own models."""
