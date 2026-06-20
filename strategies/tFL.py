@@ -107,6 +107,8 @@ class tFL_Client(SharedMethods):
             seed=self._loader_seed("test"),
         )
 
+    return_diff: bool = False
+
     def set_parameters(self, package: Dict[str, Any]) -> None:
         self.id = package["client_id"]
         self.current_iter = package["current_iter"]
@@ -122,6 +124,11 @@ class tFL_Client(SharedMethods):
             self.scheduler.load_state_dict(package["scheduler_state"])
         else:
             self.scheduler.load_state_dict(self.init_scheduler_state)
+        if self.return_diff:
+            state = self.model.state_dict()
+            self._initial_regular_params = OrderedDict(
+                (k, state[k].detach().cpu().clone()) for k in self.regular_params_name
+            )
 
     def fit(self) -> None:
         SharedMethods._set_worker_seed(self._loader_seed("train"))
@@ -154,7 +161,7 @@ class tFL_Client(SharedMethods):
         personal = {
             k: state[k].detach().cpu().clone() for k in self.personal_params_name
         }
-        return {
+        pkg = {
             "client_id": self.id,
             "regular_model_params": regular,
             "personal_model_params": personal,
@@ -163,6 +170,12 @@ class tFL_Client(SharedMethods):
             "score": self.train_samples,
             "train_time": train_time,
         }
+        if self.return_diff:
+            pkg["model_params_diff"] = OrderedDict(
+                (k, self._initial_regular_params[k] - regular[k])
+                for k in self.regular_params_name
+            )
+        return pkg
 
     def evaluate_global(
         self,
@@ -431,6 +444,10 @@ class tFL(SharedMethods):
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
+    def train_one_round(self) -> None:
+        packages = self.trainer.train(self.selected_clients)
+        self.aggregate_client_updates(packages)
+
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
         scores = [p["score"] for p in packages.values()]
         total = float(sum(scores))
@@ -482,8 +499,7 @@ class tFL(SharedMethods):
                     if dataset_type == "train" and self.skip_eval_train:
                         continue
                     self._pre_eval_hook(dataset_type)
-            packages = self.trainer.train(self.selected_clients)
-            self.aggregate_client_updates(packages)
+            self.train_one_round()
             if i % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:

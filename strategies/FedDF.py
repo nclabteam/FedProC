@@ -74,25 +74,27 @@ class FedDF(hFL):
         )
 
     def aggregate_client_updates(self, packages) -> None:
-        """FedAvg aggregation (hFL no-op) followed by server-side ensemble distillation."""
-        super().aggregate_client_updates(packages)
-        self._distill()
+        """Store client params (nFL-style), then distill into server model."""
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
+        self._distill(packages)
 
-    def _distill(self):
+    def _distill(self, packages: dict):
         """Server-side ensemble distillation on public data.
 
-        The server model is refined to match the averaged predictions
-        of all client models on the public dataset.
-        NOTE: self.clients / self.selected_clients not available in stateless arch;
-              this method will fail at runtime until a stateless refactor is done.
+        Teacher = mean of client predictions, computed by loading each client's
+        trained params (from packages) into a temporary model copy.
         """
-        device = self.clients[0].device
+        device = self.device
+        temp_model = copy.deepcopy(self.model).to(device)
+
         self.model.to(device)
         self.model.train()
-
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.distill_lr)
 
-        for epoch in range(self.distill_epochs):
+        client_params = [pkg["regular_model_params"] for pkg in packages.values()]
+
+        for _ in range(self.distill_epochs):
             for batch_x, batch_y, x_mark, y_mark in self.public_loader:
                 batch_x = batch_x.to(device=device, non_blocking=True)
                 x_mark = x_mark.to(device=device, non_blocking=True)
@@ -100,18 +102,18 @@ class FedDF(hFL):
 
                 with torch.no_grad():
                     client_preds = []
-                    for client in self.selected_clients:
-                        client.model.to(device)
-                        client.model.eval()
-                        pred = client.model(batch_x, x_mark=x_mark, y_mark=y_mark)
+                    for params in client_params:
+                        temp_model.load_state_dict(params, strict=False)
+                        temp_model.eval()
+                        pred = temp_model(batch_x, x_mark=x_mark, y_mark=y_mark)
                         client_preds.append(pred)
                     teacher = torch.stack(client_preds).mean(dim=0)
 
                 student = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
-
                 loss = F.mse_loss(student, teacher)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
         self.model.to("cpu")
+        del temp_model
