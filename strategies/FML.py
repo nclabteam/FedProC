@@ -10,6 +10,17 @@ from .pFL import pFL, pFL_Client
 
 
 class FML(pFL):
+    """FML: Federated Mutual Learning (Shen et al., 2020).
+
+    Each client maintains a personal model (model_i) and a global model (model_g).
+    Per round, model_g is synchronized via FedAvg; model_i is trained locally with
+    mutual knowledge distillation between the two models:
+      L_i = α * task_loss(model_i) + (1-α) * KL(log_σ(model_i) ‖ σ(model_g))
+      L_g = β * task_loss(model_g) + (1-β) * KL(log_σ(model_g) ‖ σ(model_i))
+
+    Default hyperparameters: α=0.9 (personal task weight), β=0.1 (global task weight).
+    Reference: arXiv:2006.16765.
+    """
 
     optional = {
         "alpha": 0.9,
@@ -20,6 +31,14 @@ class FML(pFL):
     def args_update(cls, parser):
         parser.add_argument("--alpha", type=float, default=None)
         parser.add_argument("--beta", type=float, default=None)
+
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid].update(
+                {k: v.clone() for k, v in init_state.items()}
+            )
 
 
 class FML_Client(pFL_Client):
@@ -38,14 +57,13 @@ class FML_Client(pFL_Client):
         # regular_model_params carries the FedAvg'd model_g
         self.model_g.load_state_dict(package["regular_model_params"])
 
-        # personal_model_params carries model_i state + optimizer_g state
+        # personal_model_params carries model_i state + optimizer_g state;
+        # strict=False silently ignores "optimizer_g_state" key in model load.
         personal = package["personal_model_params"]
-        if personal:
-            # strict=False silently ignores "optimizer_g_state" key
-            self.model.load_state_dict(personal, strict=False)
-            if "optimizer_g_state" in personal:
-                self.optimizer_g.load_state_dict(personal["optimizer_g_state"])
-                self._move_optimizer_state_to_param_devices(self.optimizer_g)
+        self.model.load_state_dict(personal, strict=False)
+        if "optimizer_g_state" in personal:
+            self.optimizer_g.load_state_dict(personal["optimizer_g_state"])
+            self._move_optimizer_state_to_param_devices(self.optimizer_g)
 
         if package["optimizer_state"]:
             self.optimizer.load_state_dict(package["optimizer_state"])

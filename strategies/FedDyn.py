@@ -7,14 +7,14 @@ from .pFL import pFL, pFL_Client
 
 
 class FedDyn(pFL):
-    """FedDyn: Dynamic Regularization for Federated Learning.
+    """FedDyn: Federated Learning Based on Dynamic Regularization (Acar et al., ICLR 2021).
 
-    Server maintains a dual variable (server_state) that accumulates the
-    drift between mean client updates and the global model.  Clients add
-    a proximal + dual-variable correction to the local loss each round.
+    Client objective: L_k(x) - <∇L_k(x_k^{t-1}), x> + (α/2)||x - x^{t-1}||²
+    Gradient correction: grad += -old_grad + α*(w - global_w)
+    Dual update: old_grad -= α*(w_new - global_w)
+    Server update: h += mean_clients - old_global; x_new = mean_clients - (1/N)*h
 
-    Reference: Acar et al., "Federated Learning Based on Dynamic Regularization,"
-    ICLR 2021.
+    Default α=0.1. Reference: arXiv:2111.04263. ICLR 2021.
     """
 
     optional = {
@@ -33,9 +33,13 @@ class FedDyn(pFL):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.server_state: List[torch.Tensor] = [
-            torch.zeros_like(p)
-            for p in self.public_model_params.values()
+            torch.zeros_like(p).cpu() for p in self.public_model_params.values()
         ]
+        zero_grads = [torch.zeros_like(p).cpu() for p in self.model.parameters()]
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["old_grad"] = [
+                t.clone() for t in zero_grads
+            ]
 
     def package(self, client_id: int) -> Dict[str, Any]:
         pkg = super().package(client_id)
@@ -87,14 +91,10 @@ class FedDyn_Client(pFL_Client):
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        old_grad = package["personal_model_params"].get("old_grad", None)
-        if old_grad is None:
-            self._old_grad: List[torch.Tensor] = [
-                torch.zeros_like(p.detach().cpu())
-                for p in self.model.parameters()
-            ]
-        else:
-            self._old_grad = [t.detach().cpu().clone() for t in old_grad]
+        self._old_grad: List[torch.Tensor] = [
+            t.detach().cpu().clone()
+            for t in package["personal_model_params"]["old_grad"]
+        ]
         self._global_params_list: List[torch.Tensor] = [
             p.detach().cpu().clone() for p in package["global_params_list"]
         ]

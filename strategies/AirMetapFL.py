@@ -8,13 +8,15 @@ from .pFL import pFL, pFL_Client
 
 
 class AirMetapFL(pFL):
-    """
-    Air-meta-pFL: MAML-style meta-learning with top-k sparsification.
+    """Air-meta-pFL: Over-the-Air Federated Meta-Learning with sparsification (Zhu et al., 2024).
 
-    Each client performs first-order (FO) or Hessian-free (HF) MAML outer
-    gradient steps on its local data. The model update is compressed via
-    top-k sparsification with error-feedback memory before being sent to the
-    server for FedAvg aggregation.
+    Each client runs MAML outer gradient steps (first-order or Hessian-free)
+    and compresses the model difference Δ_i via top-k sparsification with
+    error-feedback memory (accumulated sparsification error carried across rounds).
+
+    Default hyperparameters: α=0.01 (inner LR), δ=0.1 (HF finite-diff step),
+    sparsity=1.0 (no sparsification), hf=False (FO-MAML).
+    Reference: arXiv:2406.11569.
     """
 
     optional = {
@@ -34,8 +36,7 @@ class AirMetapFL(pFL):
 
 
 class AirMetapFL_Client(pFL_Client):
-    """
-    Client for Air-meta-pFL.
+    """Client for Air-meta-pFL.
 
     Runs MAML outer gradient steps (FO or HF) and applies top-k sparsification
     with error-feedback memory before transmitting the model difference Δ_i.
@@ -69,13 +70,12 @@ class AirMetapFL_Client(pFL_Client):
     def set_parameters(self, package: dict) -> None:
         super().set_parameters(package)
         personal = package["personal_model_params"]
-        if personal:
-            mem_keys = sorted(
-                (k for k in personal if k.startswith("__mem_")),
-                key=lambda k: int(k[len("__mem_"):]),
-            )
-            if mem_keys:
-                self._memory = [personal[k] for k in mem_keys]
+        mem_keys = sorted(
+            (k for k in personal if k.startswith("__mem_")),
+            key=lambda k: int(k[len("__mem_"):]),
+        )
+        if mem_keys:
+            self._memory = [personal[k] for k in mem_keys]
 
     def fit(self) -> None:
         train_loader = self.load_train_data()
