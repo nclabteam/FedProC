@@ -1,11 +1,11 @@
-import copy
+from collections import OrderedDict
 
 import torch
 
-from .tFL import tFL as Server
+from ._core import StatelessServer
 
 
-class FedYogi(Server):
+class FedYogi(StatelessServer):
 
     optional = {
         "beta1_server": 0.9,
@@ -16,58 +16,28 @@ class FedYogi(Server):
 
     @classmethod
     def args_update(cls, parser):
-        parser.add_argument(
-            "--beta1_server",
-            type=float,
-            default=None,
-            help="Beta1 parameter for Adam optimizer on the server",
-        )
-        parser.add_argument(
-            "--beta2_server",
-            type=float,
-            default=None,
-            help="Beta2 parameter for Adam optimizer on the server",
-        )
-        parser.add_argument(
-            "--eta_server",
-            type=float,
-            default=None,
-            help="Learning rate for Adam optimizer on the server",
-        )
-        parser.add_argument(
-            "--tau_server",
-            type=float,
-            default=None,
-            help="Controls the algorithm's degree of adaptability",
-        )
+        parser.add_argument("--beta1_server", type=float, default=None)
+        parser.add_argument("--beta2_server", type=float, default=None)
+        parser.add_argument("--eta_server", type=float, default=None)
+        parser.add_argument("--tau_server", type=float, default=None)
 
-    def aggregate_models(self):
-        prev_model = copy.deepcopy(self.model)
+    def aggregate_client_updates(self, packages):
+        prev = OrderedDict((k, v.clone()) for k, v in self.public_model_params.items())
+        super().aggregate_client_updates(packages)  # FedAvg step
 
-        # Call the base class method (FedAvg)
-        super().aggregate_models()
-
-        delta_t = copy.deepcopy(self.model)
-        for curr_param, prev_param, diff in zip(
-            self.model.parameters(), prev_model.parameters(), delta_t.parameters()
-        ):
-            diff.data = prev_param.data - curr_param.data
-
+        delta = {k: prev[k] - self.public_model_params[k] for k in prev}
         if not hasattr(self, "m_t"):
-            self.m_t = self.reset_model(self.model)
+            self.m_t = {k: torch.zeros_like(v) for k, v in prev.items()}
+            self.v_t = {k: torch.zeros_like(v) for k, v in prev.items()}
 
-        if not hasattr(self, "v_t"):
-            self.v_t = self.reset_model(self.model)
-
-        for m_t, v_t, grad in zip(
-            self.m_t.parameters(), self.v_t.parameters(), delta_t.parameters()
-        ):
-            m_t.data = (
-                self.beta1_server * m_t.data + (1 - self.beta1_server) * grad.data
+        for k in prev:
+            self.m_t[k] = (
+                self.beta1_server * self.m_t[k]
+                + (1 - self.beta1_server) * delta[k]
             )
-            v_t.data = v_t.data - (1 - self.beta2_server) * (
-                grad.data**2 - v_t.data
-            ) * torch.sign(v_t.data - grad.data**2)
+            self.v_t[k] = self.v_t[k] - (1 - self.beta2_server) * (
+                delta[k] ** 2 - self.v_t[k]
+            ) * torch.sign(self.v_t[k] - delta[k] ** 2)
 
         eta_norm = (
             self.eta_server
@@ -76,10 +46,12 @@ class FedYogi(Server):
             )
             / (1 - self.beta1_server ** (self.current_iter + 1.0))
         )
-
-        for param, m_t, v_t in zip(
-            self.model.parameters(), self.m_t.parameters(), self.v_t.parameters()
-        ):
-            param.data = param.data + eta_norm * m_t.data / (
-                torch.sqrt(v_t.data) + self.tau_server
+        new_params = OrderedDict(
+            (
+                k,
+                self.public_model_params[k]
+                + eta_norm * self.m_t[k] / (torch.sqrt(self.v_t[k]) + self.tau_server),
             )
+            for k in prev
+        )
+        self._commit_global(new_params)
