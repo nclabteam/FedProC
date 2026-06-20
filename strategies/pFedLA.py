@@ -77,14 +77,6 @@ class pFedLA(pFL):
     Reference: arXiv:2205.03993. CVPR 2022.
     """
 
-    Per-client hypernetwork weights generate per-layer aggregation coefficients
-    over all clients' stored model params. Clients train K inner steps and return
-    Δθ; the server backpropagates through the HN using Δθ as grad_outputs.
-
-    HeurpFedLA (pfedla_K > 0): top-K layers by self-weight get one-hot weights
-    (pure local, no mixing for those layers).
-    """
-
     optional = {
         "pfedla_emb_dim": 8,
         "pfedla_hyper_hid": 64,
