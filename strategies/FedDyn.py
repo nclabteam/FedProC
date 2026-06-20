@@ -1,4 +1,5 @@
-import copy
+from collections import OrderedDict
+from typing import Any, Dict, List
 
 import torch
 
@@ -6,6 +7,15 @@ from .pFL import pFL, pFL_Client
 
 
 class FedDyn(pFL):
+    """FedDyn: Dynamic Regularization for Federated Learning.
+
+    Server maintains a dual variable (server_state) that accumulates the
+    drift between mean client updates and the global model.  Clients add
+    a proximal + dual-variable correction to the local loss each round.
+
+    Reference: Acar et al., "Federated Learning Based on Dynamic Regularization,"
+    ICLR 2021.
+    """
 
     optional = {
         "alpha": 0.1,
@@ -22,51 +32,72 @@ class FedDyn(pFL):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.server_state = self.reset_model(self.model)
+        self.server_state: List[torch.Tensor] = [
+            torch.zeros_like(p)
+            for p in self.public_model_params.values()
+        ]
 
-    def calculate_aggregation_weights(self):
-        pass
+    def package(self, client_id: int) -> Dict[str, Any]:
+        pkg = super().package(client_id)
+        pkg["global_params_list"] = [
+            p.detach().cpu().clone() for p in self.public_model_params.values()
+        ]
+        return pkg
 
-    def aggregate_models(self):
-        # Calculate the average model delta
-        model_delta = self.reset_model(self.model)
-        for client in self.client_data:
-            client_model = client["model"]
-            for server_param, client_param, delta_param in zip(
-                self.model.parameters(),
-                client_model.parameters(),
-                model_delta.parameters(),
-            ):
-                delta_param.data += (client_param - server_param) / self.num_clients
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        # Snapshot current global params before updating
+        old_global: List[torch.Tensor] = [
+            p.detach().cpu().clone() for p in self.public_model_params.values()
+        ]
 
-        # Update the server state
-        for state_param, delta_param in zip(
-            self.server_state.parameters(), model_delta.parameters()
-        ):
-            state_param.data -= self.alpha * delta_param
+        # Sample-weighted mean of client regular params
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        weights = [s / total for s in scores]
 
-        # Update the server model
-        self.model = self.reset_model(self.model)
-        for client in self.client_data:
-            for server_param, client_param in zip(
-                self.model.parameters(), client["model"].parameters()
-            ):
-                server_param.data += client_param.data.clone() / self.num_join_clients
+        param_names = list(self.public_model_params.keys())
+        mean_params: List[torch.Tensor] = []
+        for name in param_names:
+            stacked = torch.stack(
+                [p["regular_model_params"][name].cpu() for p in packages.values()],
+                dim=-1,
+            )
+            w = torch.tensor(weights, dtype=stacked.dtype)
+            mean_params.append(torch.sum(stacked * w, dim=-1))
 
-        # Apply the server state to the model
-        for server_param, state_param in zip(
-            self.model.parameters(), self.server_state.parameters()
-        ):
-            server_param.data -= (1 / self.alpha) * state_param
+        # server_state[i] += mean_params[i] - old_global[i]
+        for i in range(len(self.server_state)):
+            self.server_state[i] = self.server_state[i] + mean_params[i] - old_global[i]
+
+        # new_global[i] = mean_params[i] - (1/N) * server_state[i]
+        N = self.num_clients
+        new_params = OrderedDict()
+        for i, name in enumerate(param_names):
+            new_params[name] = mean_params[i] - (1.0 / N) * self.server_state[i]
+
+        self._commit_global(new_params)
 
 
 class FedDyn_Client(pFL_Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.global_model_vector = None
-        self.old_grad = torch.zeros_like(
-            self.model_parameter_vector(copy.deepcopy(self.model))
-        )
+    """Client for FedDyn.
+
+    Per-client persistent state in personal_model_params:
+        "old_grad" — list of CPU tensors (dual variable, one per model param).
+    """
+
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        old_grad = package["personal_model_params"].get("old_grad", None)
+        if old_grad is None:
+            self._old_grad: List[torch.Tensor] = [
+                torch.zeros_like(p.detach().cpu())
+                for p in self.model.parameters()
+            ]
+        else:
+            self._old_grad = [t.detach().cpu().clone() for t in old_grad]
+        self._global_params_list: List[torch.Tensor] = [
+            p.detach().cpu().clone() for p in package["global_params_list"]
+        ]
 
     def train_one_epoch(
         self,
@@ -80,40 +111,38 @@ class FedDyn_Client(pFL_Client):
     ):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
+        global_params = [p.to(device) for p in self._global_params_list]
+        old_grad = [g.to(device) for g in self._old_grad]
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
+            optimizer.zero_grad()
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
             x_mark = x_mark.to(device)
             y_mark = y_mark.to(device)
             outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = criterion(outputs, batch_y)
-            if self.global_model_vector is not None:
-                self.global_model_vector = self.global_model_vector.to(device)
-                self.old_grad = self.old_grad.to(device)
-                v1 = self.model_parameter_vector(model)
-                loss += self.alpha / 2 * torch.norm(v1 - self.global_model_vector, 2)
-                loss -= torch.dot(v1, self.old_grad)
-            optimizer.zero_grad()
             loss.backward()
+            # FedDyn gradient correction: -old_grad + alpha*(w - global_w)
+            for w, gp, og in zip(model.parameters(), global_params, old_grad):
+                if w.requires_grad and w.grad is not None:
+                    w.grad.data += -og + self.alpha * (w.data - gp.data)
             optimizer.step()
-        if self.global_model_vector is not None:
-            v1 = self.model_parameter_vector(model).detach()
-            self.old_grad = self.old_grad - self.alpha * (v1 - self.global_model_vector)
         scheduler.step()
-
         if offload_after:
             model.to("cpu")
-            self.global_model_vector = None
-            self.old_grad = self.old_grad.to("cpu")
+        del global_params, old_grad
 
-    def receive_from_server(self, data):
-        super().receive_from_server(data)
-        self.global_model_vector = (
-            self.model_parameter_vector(data["model"]).detach().clone()
-        )
-        self.old_grad = self.old_grad.to("cpu")
-
-    @staticmethod
-    def model_parameter_vector(model):
-        return torch.cat([p.view(-1) for p in model.parameters()], dim=0)
+    def package(self, train_time: float) -> Dict[str, Any]:
+        out = super().package(train_time)
+        # Dual-variable update: old_grad_i -= alpha * (w_i_new - global_w_i)
+        updated_old_grad = [
+            og - self.alpha * (w.detach().cpu() - gp)
+            for og, w, gp in zip(
+                self._old_grad,
+                self.model.parameters(),
+                self._global_params_list,
+            )
+        ]
+        out["personal_model_params"]["old_grad"] = updated_old_grad
+        return out

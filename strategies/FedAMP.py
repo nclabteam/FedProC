@@ -1,11 +1,12 @@
 import copy
 import math
-import time
 from argparse import Namespace
-from typing import Any, Dict, List
+from collections import OrderedDict
+from typing import Dict, List
 
 import torch
 
+from .base import SharedMethods
 from .pFL import pFL, pFL_Client
 
 
@@ -14,7 +15,7 @@ class FedAMP(pFL):
     FedAMP: Federated Learning with Attentive Message Passing.
 
     Server computes per-client attention-weighted mixtures of all uploaded
-    models using pairwise cosine/L2 similarity: coef_ij ∝ exp(-||w_i-w_j||²/σ).
+    models using pairwise L2 similarity: coef_ij ∝ exp(-||w_i-w_j||²/σ).
     Each client receives its personalized mixture and trains locally with a
     proximal regularization term anchored to that mixture.
 
@@ -37,100 +38,110 @@ class FedAMP(pFL):
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
         self.parallel = False
-        self._uploaded_models: List[torch.nn.Module] = []
-        self._uploaded_ids: List[int] = []
+        # cid → OrderedDict[str, Tensor]: each client's latest uploaded model params
+        self._uploaded: Dict[int, OrderedDict] = {}
+
+    def _vec(self, params: OrderedDict) -> torch.Tensor:
+        return torch.cat([v.float().flatten() for v in params.values()])
 
     def _attention(self, sq_dist: float) -> float:
         return math.exp(-sq_dist / self.sigma) / self.sigma
 
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        if not self._uploaded_models:
-            # First round: send global model to everyone
-            return {"model": self.model}
+    def _compute_mixture(self, client_id: int) -> OrderedDict:
+        """Compute attention-weighted mixture for client_id from all uploaded models.
 
-        # Compute attention-weighted personalized model for each client
-        personalized: List[torch.nn.Module] = []
-        for i, ci in enumerate(self.clients):
-            wi = torch.cat([p.data.view(-1) for p in ci.model.parameters()])
-            coefs = []
-            for j, cj_model in zip(self._uploaded_ids, self._uploaded_models):
-                if ci.id == j:
-                    coefs.append(0.0)
-                else:
-                    wj = torch.cat([p.data.view(-1) for p in cj_model.parameters()])
-                    sq_dist = float(torch.dot(wi - wj, wi - wj))
-                    coefs.append(self.alphaK * self._attention(sq_dist))
+        Falls back to public_model_params on round 0 (no uploads yet).
+        """
+        if not self._uploaded:
+            return copy.deepcopy(self.public_model_params)
 
-            coef_self = 1.0 - sum(coefs)
-            mu = copy.deepcopy(ci.model)
-            for p in mu.parameters():
-                p.data.zero_()
-            for coef, model_j in zip(coefs, self._uploaded_models):
-                for p_mu, p_j in zip(mu.parameters(), model_j.parameters()):
-                    p_mu.data.add_(p_j.data, alpha=coef)
-            for p_mu, p_ci in zip(mu.parameters(), ci.model.parameters()):
-                p_mu.data.add_(p_ci.data, alpha=coef_self)
-            personalized.append(mu)
+        wi_params = self._uploaded.get(client_id, self.public_model_params)
+        wi = self._vec(wi_params)
 
-        return {"model": personalized}
+        coefs: Dict[int, float] = {}
+        for cid, params in self._uploaded.items():
+            if cid == client_id:
+                coefs[cid] = 0.0
+            else:
+                wj = self._vec(params)
+                sq_dist = float(torch.dot(wi - wj, wi - wj))
+                coefs[cid] = self.alphaK * self._attention(sq_dist)
 
-    def receive_from_clients(self) -> None:
-        self.client_data = []
-        self._uploaded_models = []
-        self._uploaded_ids = []
-        for client in self.selected_clients:
-            try:
-                data = client.send_to_server()
-                self.client_data.append(data)
-                self._uploaded_models.append(copy.deepcopy(client.model))
-                self._uploaded_ids.append(client.id)
-            except Exception as e:
-                self.logger.error(f"Failed to receive from client {client.id}: {e}")
+        coef_self = 1.0 - sum(coefs.values())
+        mixture = OrderedDict()
+        for name in wi_params:
+            acc = coef_self * wi_params[name].float()
+            for cid, coef in coefs.items():
+                if coef != 0.0:
+                    acc = acc + coef * self._uploaded[cid][name].float()
+            mixture[name] = acc.to(wi_params[name].dtype)
+        return mixture
 
-    def aggregate_models(self) -> None:
-        # FedAMP has no global model aggregation — personalization is server-side
-        pass
+    def package(self, client_id: int) -> dict:
+        pkg = super().package(client_id)
+        # Replace global model with per-client attention mixture
+        pkg["regular_model_params"] = self._compute_mixture(client_id)
+        # Client must start from the mixture only — no personal overlay
+        pkg["personal_model_params"] = {}
+        return pkg
+
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        for cid, pkg in packages.items():
+            params = pkg["regular_model_params"]
+            self._uploaded[cid] = copy.deepcopy(params)
+            # Store trained model as personal params so pFL eval uses it
+            self.clients_personal_model_params[cid] = dict(params)
+
+        # Maintain a dummy global model (mean of all uploaded) for server bookkeeping
+        all_params = list(self._uploaded.values())
+        if all_params:
+            new_global = OrderedDict()
+            for name in all_params[0]:
+                new_global[name] = torch.stack(
+                    [p[name].float() for p in all_params]
+                ).mean(dim=0).to(all_params[0][name].dtype)
+            self._commit_global(new_global)
 
 
 class FedAMP_Client(pFL_Client):
     """
-    Client for FedAMP. Receives a personalized mixture model u_i from server
-    and trains with proximal regularization: loss += (λ / 2αK) * ||w - u_i||².
+    Client for FedAMP. Receives a personalized mixture u_i from the server and
+    trains with proximal regularization: loss += (λ / 2αK) * ||w - u_i||².
     """
 
-    def receive_from_server(self, data: dict) -> None:
-        self._u_model = copy.deepcopy(data["model"]).to("cpu")
-        self.update_model_params(old=self.model, new=data["model"])
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        # Anchor for proximal term: received mixture params in parameter order (CPU)
+        self._u_params: List[torch.Tensor] = [
+            v.clone().cpu() for v in package["regular_model_params"].values()
+        ]
 
-    def train(self):
-        train_loader = self.load_train_data()
-        start_time = time.time()
-
+    def fit(self) -> None:
+        SharedMethods._set_worker_seed(self._loader_seed("train"))
+        loader = self.load_train_data()
         prox_coef = 0.5 * self.lamda / self.alphaK
-        u_params = [p.data.clone() for p in self._u_model.parameters()]
+        offload_after_epoch = self.efficiency == "low"
 
-        self.model.to(self.device)
-        self.model.train()
-        offload_after = self.efficiency == "low"
         for _ in range(self.epochs):
-            for batch_x, batch_y, x_mark, y_mark in train_loader:
-                self.optimizer.zero_grad()
-                batch_x = batch_x.to(device=self.device, dtype=torch.float32)
-                batch_y = batch_y.to(device=self.device, dtype=torch.float32)
-                x_mark = x_mark.to(device=self.device, dtype=torch.float32)
-                y_mark = y_mark.to(device=self.device, dtype=torch.float32)
+            # Mirror train_one_epoch: move to device + sync optimizer state each epoch
+            self.model.to(self.device)
+            SharedMethods._move_optimizer_state_to_param_devices(self.optimizer)
+            self.model.train()
+            for batch_x, batch_y, x_mark, y_mark in loader:
+                self.optimizer.zero_grad(set_to_none=True)
+                batch_x = batch_x.to(device=self.device, dtype=torch.float32, non_blocking=True)
+                batch_y = batch_y.to(device=self.device, dtype=torch.float32, non_blocking=True)
+                x_mark = x_mark.to(device=self.device, dtype=torch.float32, non_blocking=True)
+                y_mark = y_mark.to(device=self.device, dtype=torch.float32, non_blocking=True)
                 outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = self.loss(outputs, batch_y)
-                # Proximal term: (λ/2αK) * ||w - u_i||²
-                for p, u in zip(self.model.parameters(), u_params):
-                    loss = (
-                        loss + prox_coef * torch.norm(p - u.to(self.device), p=2) ** 2
-                    )
+                # Proximal term: (λ / 2αK) * ||w - u_i||²
+                for p, u in zip(self.model.parameters(), self._u_params):
+                    loss = loss + prox_coef * torch.norm(p - u.to(self.device), p=2) ** 2
                 loss.backward()
                 self.optimizer.step()
-            self.scheduler.step()
-            if offload_after:
+            if offload_after_epoch:
                 self.model.to("cpu")
+            self.scheduler.step()
         if self.efficiency == "med":
             self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)

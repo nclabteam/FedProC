@@ -1,7 +1,7 @@
 import copy
-import time
 from argparse import Namespace
-from typing import Any, Dict, List, Optional
+from collections import OrderedDict
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -55,51 +55,47 @@ class CFL(pFL):
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
         self.parallel = False
-        self._client_models: Dict[int, Any] = {}
-        self._client_diffs: Dict[int, Optional[List[torch.Tensor]]] = {}
-        self._clusters: List[List[int]] = []
-        self._cfl_round = 0
+        all_cids = list(range(self.num_clients))
+        # Per-client cluster-assigned model params (starts as copy of global)
+        self._client_model: Dict[int, OrderedDict] = {
+            cid: copy.deepcopy(self.public_model_params) for cid in all_cids
+        }
+        # Per-client latest gradient diff (None until first participation)
+        self._client_diff: Dict[int, Optional[List[torch.Tensor]]] = {
+            cid: None for cid in all_cids
+        }
+        self._clusters: List[List[int]] = [all_cids]
+        self._cfl_round: int = 0
 
-    def _ensure_init(self) -> None:
-        if self._client_models:
-            return
-        for client in self.clients:
-            self._client_models[client.id] = copy.deepcopy(self.model)
-            self._client_diffs[client.id] = None
-        self._clusters = [[client.id for client in self.clients]]
+    def package(self, client_id: int) -> dict:
+        pkg = super().package(client_id)
+        # Send the cluster-assigned model instead of the global model
+        pkg["regular_model_params"] = copy.deepcopy(self._client_model[client_id])
+        # No personal overlay — cluster model is the full starting point
+        pkg["personal_model_params"] = {}
+        return pkg
 
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        self._ensure_init()
-        # Save the snapshot each client will subtract from after training
-        models = [
-            copy.deepcopy(self._client_models[c.id]) for c in self.selected_clients
-        ]
-        return {"model": models}
-
-    def receive_from_clients(self) -> None:
-        self.client_data = []
-        for client in self.selected_clients:
-            data = client.send_to_server()
-            self.client_data.append(data)
-            self._client_diffs[client.id] = data["model_diff"]
-
-    def aggregate_models(self) -> None:
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
         self._cfl_round += 1
-        all_ids = [c.id for c in self.clients]
-        id_to_idx = {cid: i for i, cid in enumerate(all_ids)}
-        n = len(all_ids)
+        all_cids = list(range(self.num_clients))
+        n = len(all_cids)
+        id_to_idx = {cid: i for i, cid in enumerate(all_cids)}
+
+        # Update diffs from participating clients
+        for cid, pkg in packages.items():
+            self._client_diff[cid] = pkg["model_diff"]
 
         # Pairwise cosine similarity of gradient diffs
         sim = np.eye(n)
-        for i, cid_a in enumerate(all_ids):
-            da = self._client_diffs.get(cid_a)
+        for i, cid_a in enumerate(all_cids):
+            da = self._client_diff[cid_a]
             if da is None:
                 continue
             va = _vectorize(da)
-            for j, cid_b in enumerate(all_ids):
+            for j, cid_b in enumerate(all_cids):
                 if j <= i:
                     continue
-                db = self._client_diffs.get(cid_b)
+                db = self._client_diff[cid_b]
                 if db is None:
                     continue
                 vb = _vectorize(db)
@@ -113,11 +109,10 @@ class CFL(pFL):
         new_clusters: List[List[int]] = []
         for cluster_ids in self._clusters:
             available_diffs = [
-                self._client_diffs[cid]
+                self._client_diff[cid]
                 for cid in cluster_ids
-                if self._client_diffs.get(cid) is not None
+                if self._client_diff[cid] is not None
             ]
-
             if (
                 len(available_diffs) >= 2
                 and len(cluster_ids) > self.min_cluster_size
@@ -135,79 +130,35 @@ class CFL(pFL):
         self._clusters = new_clusters
 
         # FedAvg within each cluster: model_i += mean(Δ_j for j in cluster)
+        param_names = list(next(iter(self._client_model.values())).keys())
         for cluster_ids in self._clusters:
             cluster_diffs = [
-                self._client_diffs[cid]
+                self._client_diff[cid]
                 for cid in cluster_ids
-                if self._client_diffs.get(cid) is not None
+                if self._client_diff[cid] is not None
             ]
             if not cluster_diffs:
                 continue
-
             mean_diff = [
                 torch.stack([d[k] for d in cluster_diffs]).mean(dim=0)
                 for k in range(len(cluster_diffs[0]))
             ]
             for cid in cluster_ids:
-                for param, diff in zip(
-                    self._client_models[cid].parameters(), mean_diff
-                ):
-                    param.data.add_(diff.to(param.device))
+                for name, diff in zip(param_names, mean_diff):
+                    orig = self._client_model[cid][name]
+                    self._client_model[cid][name] = (orig + diff).to(orig.dtype)
 
-        # Push updated cluster models back to client.model for evaluation
-        client_by_id = {c.id: c for c in self.clients}
-        for cid, model in self._client_models.items():
-            if cid in client_by_id:
-                client_by_id[cid].model.load_state_dict(model.state_dict())
+        # Expose cluster models as personal params for pFL evaluation
+        for cid in all_cids:
+            self.clients_personal_model_params[cid] = dict(self._client_model[cid])
 
-        # Keep self.model as avg of all cluster models for server-side bookkeeping
-        self.model = self.reset_model(self.model)
-        for param in self.model.parameters():
-            param.data.zero_()
-        n_clients = len(all_ids)
-        for cid in all_ids:
-            for gp, cp in zip(
-                self.model.parameters(),
-                self._client_models[cid].parameters(),
-            ):
-                gp.data.add_(cp.data.to(gp.device), alpha=1.0 / n_clients)
-
-    def save_models(self, save_type: str) -> None:
-        if save_type not in ["last", "best"]:
-            raise ValueError("save_type must be 'last' or 'best'")
-
-        should_save = True
-        if save_type == "best":
-            metric_key = "personal_avg_test_loss"
-            vals = self.metrics.get(metric_key, [])
-            if not vals or vals[-1] != min(vals):
-                should_save = False
-
-        if not should_save:
-            return
-
-        if not self.exclude_server_model_processes:
-            self.save_model(
-                model=self.model,
-                path=self.model_path,
-                name=self.name,
-                postfix=save_type,
-                configs=self.configs,
-                metadata={"save_type": save_type, "owner": "server"},
-                verbose=self.logger,
-            )
-
-        for client in self.clients:
-            # Save the cluster-aggregated model stored on client.model
-            client.save_model(
-                model=client.model,
-                path=client.model_path,
-                name=client.name,
-                postfix=save_type,
-                configs=client.configs,
-                metadata={"save_type": save_type, "owner": client.name},
-                verbose=client.logger,
-            )
+        # Dummy global: mean of all cluster models for server-side bookkeeping
+        new_global = OrderedDict()
+        for name in param_names:
+            new_global[name] = torch.stack(
+                [self._client_model[cid][name].float() for cid in all_cids]
+            ).mean(dim=0)
+        self._commit_global(new_global)
 
     @staticmethod
     def _split(sim_matrix: np.ndarray):
@@ -227,40 +178,19 @@ class CFL_Client(pFL_Client):
     locally, and sends back the gradient diff Δ = w_local - w_received.
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
-        self._snapshot: List[torch.Tensor] = []
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        # Snapshot of the received cluster model before training (CPU, by param name)
+        self._init_params: Dict[str, torch.Tensor] = {
+            name: v.clone().cpu()
+            for name, v in package["regular_model_params"].items()
+        }
 
-    def receive_from_server(self, data: dict) -> None:
-        self._snapshot = [p.data.clone().cpu() for p in data["model"].parameters()]
-        self.update_model_params(old=self.model, new=data["model"])
-
-    def train(self):
-        train_loader = self.load_train_data()
-        start_time = time.time()
-
-        self.model.to(self.device)
-        self.model.train()
-        for _ in range(self.epochs):
-            for batch_x, batch_y, x_mark, y_mark in train_loader:
-                self.optimizer.zero_grad()
-                batch_x = batch_x.to(device=self.device, dtype=torch.float32)
-                batch_y = batch_y.to(device=self.device, dtype=torch.float32)
-                x_mark = x_mark.to(device=self.device, dtype=torch.float32)
-                y_mark = y_mark.to(device=self.device, dtype=torch.float32)
-                outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
-                loss = self.loss(outputs, batch_y)
-                loss.backward()
-                self.optimizer.step()
-            self.scheduler.step()
-
-        if self.efficiency != "high":
-            self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        model_diff = [
-            lp.data.cpu() - snap
-            for lp, snap in zip(self.model.parameters(), self._snapshot)
+    def package(self, train_time: float) -> dict:
+        out = super().package(train_time)
+        current_state = self.model.state_dict()
+        out["model_diff"] = [
+            current_state[name].cpu() - self._init_params[name]
+            for name in self.regular_params_name
         ]
-        return {"model_diff": model_diff, "score": self.train_samples}
+        return out

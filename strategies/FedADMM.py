@@ -1,5 +1,6 @@
-import time
+import copy
 from argparse import Namespace
+from collections import OrderedDict
 from typing import Any, Dict
 
 import torch
@@ -11,126 +12,135 @@ class FedADMM(tFL):
     """
     FedADMM: Federated Learning via Alternating Direction Method of Multipliers.
 
-    Each client maintains a Lagrangian multiplier α per parameter. During local
-    training the gradient is augmented with the ADMM correction term
-    α + ρ·(w - θ), where θ is the server's consensus variable. After training,
-    α is updated by α += ρ·(w_new - θ). The client sends
-    local_sum = (w_new - w_prev) + (1/ρ)·(α_new - α_prev) to the server.
-    The server updates θ += η · weighted_avg(local_sum) and broadcasts θ.
+    Server maintains theta (consensus variable, one tensor per model parameter).
+    Each round:
+      1. Server sends global model + theta to each client.
+      2. Client trains with ADMM proximal loss:
+           L(w) + (rho/2) * ||w - theta - alpha||^2
+      3. Client updates dual variable: alpha += w - theta.
+      4. Server aggregates:
+           theta_new[p] = weighted_mean(w_i[p] - alpha_i[p])
+           global[p]    = weighted_mean(w_i[p])
 
     Reference: fl-bench FedADMM implementation.
     """
 
     optional = {
         "rho": 0.01,
-        "eta": 1.0,
     }
 
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--rho", type=float, default=None)
-        parser.add_argument("--eta", type=float, default=None)
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
         self.parallel = False
         self.theta: Dict[str, torch.Tensor] = {
-            name: p.data.clone().cpu() for name, p in self.model.named_parameters()
+            name: p.data.clone().cpu()
+            for name, p in self.model.named_parameters()
         }
 
-    def aggregate_models(self) -> None:
-        total_score = sum(cd["score"] for cd in self.client_data)
+    def package(self, client_id: int) -> Dict[str, Any]:
+        out = super().package(client_id)
+        out["theta"] = copy.deepcopy(self.theta)
+        return out
 
-        # Update theta: θ += η · weighted_avg(local_sum)
-        with torch.no_grad():
-            for name in self.theta:
-                update = sum(
-                    cd["local_sum"][name].cpu() * (cd["score"] / total_score)
-                    for cd in self.client_data
-                    if name in cd["local_sum"]
-                )
-                self.theta[name] = self.theta[name] + self.eta * update
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        weights = [s / total for s in scores]
 
-            # Sync model weights from theta
-            for name, param in self.model.named_parameters():
-                param.data.copy_(self.theta[name])
+        # New global params: weighted mean of client model weights
+        new_global = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()], dim=-1
+            )
+            w_t = torch.tensor(weights, dtype=stacked.dtype)
+            new_global[name] = (stacked * w_t).sum(dim=-1)
+
+        # Update theta: theta[p] = weighted_mean(w_i[p] - alpha_i[p])
+        new_theta: Dict[str, torch.Tensor] = {}
+        for name in self.theta:
+            diffs = []
+            for pkg in packages.values():
+                w_i = pkg["regular_model_params"][name]
+                alpha_i = pkg["personal_model_params"]["alpha"][name]
+                diffs.append(w_i - alpha_i)
+            stacked = torch.stack(diffs, dim=-1)
+            w_t = torch.tensor(weights, dtype=stacked.dtype)
+            new_theta[name] = (stacked * w_t).sum(dim=-1)
+        self.theta = new_theta
+
+        self._commit_global(new_global)
 
 
 class FedADMM_Client(tFL_Client):
     """
-    Client for FedADMM. Maintains per-parameter Lagrangian multipliers α.
-    Applies ADMM gradient correction during training and returns local_sum.
+    Client for FedADMM.
+
+    Maintains per-parameter dual variable alpha (stored in
+    clients_personal_model_params under key "alpha").  Each round, trains with
+    the ADMM proximal loss and returns the updated alpha.
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
-        self.alpha: Dict[str, torch.Tensor] = {
-            name: torch.zeros_like(p, device="cpu")
-            for name, p in self.model.named_parameters()
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        alpha_data = package["personal_model_params"].get("alpha", None)
+        if alpha_data is None:
+            self._alpha: Dict[str, torch.Tensor] = {
+                name: torch.zeros_like(p.data).cpu()
+                for name, p in self.model.named_parameters()
+            }
+        else:
+            self._alpha = {name: t.clone() for name, t in alpha_data.items()}
+        self._theta: Dict[str, torch.Tensor] = {
+            name: t.clone() for name, t in package["theta"].items()
         }
-        self._theta: Dict[str, torch.Tensor] = {}
-        self._model_prev: Dict[str, torch.Tensor] = {}
-        self._alpha_prev: Dict[str, torch.Tensor] = {}
 
-    def receive_from_server(self, data: dict) -> None:
-        self.update_model_params(old=self.model, new=data["model"])
-        self._theta = {
-            name: p.data.clone().cpu() for name, p in data["model"].named_parameters()
-        }
-        self._model_prev = {
-            name: p.data.clone().cpu() for name, p in self.model.named_parameters()
-        }
-        self._alpha_prev = {name: a.clone() for name, a in self.alpha.items()}
-
-    def train(self):
-        train_loader = self.load_train_data()
-        start_time = time.time()
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
+        loader = self.load_train_data()
 
         self.model.to(self.device)
         self.model.train()
 
         for _ in range(self.epochs):
-            for batch_x, batch_y, x_mark, y_mark in train_loader:
+            for batch_x, batch_y, x_mark, y_mark in loader:
                 self.optimizer.zero_grad()
                 batch_x = batch_x.to(device=self.device, dtype=torch.float32)
                 batch_y = batch_y.to(device=self.device, dtype=torch.float32)
                 x_mark = x_mark.to(device=self.device, dtype=torch.float32)
                 y_mark = y_mark.to(device=self.device, dtype=torch.float32)
+
                 outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = self.loss(outputs, batch_y)
+
+                # ADMM proximal term: (rho/2) * ||w - theta - alpha||^2
+                for name, param in self.model.named_parameters():
+                    theta_i = self._theta[name].to(self.device)
+                    alpha_i = self._alpha[name].to(self.device)
+                    proximal = param - theta_i - alpha_i
+                    loss = loss + (self.rho / 2.0) * proximal.pow(2).sum()
+
                 loss.backward()
-
-                # ADMM gradient correction: grad += α + ρ·(w - θ)
-                with torch.no_grad():
-                    for name, param in self.model.named_parameters():
-                        if param.grad is None:
-                            continue
-                        alpha_i = self.alpha[name].to(self.device)
-                        theta_i = self._theta[name].to(self.device)
-                        param.grad.add_(alpha_i + self.rho * (param.data - theta_i))
-
                 self.optimizer.step()
+
             self.scheduler.step()
 
-        # Update α: α += ρ·(w_new - θ)
+        if self.efficiency != "high":
+            self.model.to("cpu")
+
+    def package(self, train_time: float) -> Dict[str, Any]:
+        out = super().package(train_time)
+
+        # Update alpha: alpha_i += w_i - theta_i
+        updated_alpha: Dict[str, torch.Tensor] = {}
         with torch.no_grad():
             for name, param in self.model.named_parameters():
-                theta_i = self._theta[name].to(self.device)
-                self.alpha[name] = (
-                    self.alpha[name].to(self.device) + self.rho * (param.data - theta_i)
-                ).cpu()
+                w_i = param.data.cpu()
+                updated_alpha[name] = self._alpha[name] + w_i - self._theta[name]
 
-        self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        local_sum: Dict[str, torch.Tensor] = {}
-        for name, param in self.model.named_parameters():
-            w_new = param.data.cpu()
-            w_prev = self._model_prev[name]
-            alpha_new = self.alpha[name]
-            alpha_prev = self._alpha_prev[name]
-            local_sum[name] = (w_new - w_prev) + (1.0 / self.rho) * (
-                alpha_new - alpha_prev
-            )
-        return {"local_sum": local_sum, "score": self.train_samples}
+        out["personal_model_params"]["alpha"] = updated_alpha
+        return out

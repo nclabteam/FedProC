@@ -1,20 +1,21 @@
 import copy
+import logging
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
-import torch.nn as nn
 
 from .pFL import pFL, pFL_Client
-from .tFL import tFL
+
+_logger = logging.getLogger(__name__)
 
 
 class FedALA(pFL):
     """Federated Adaptive Local Aggregation.
 
     Each client learns per-layer blending weights that mix the received global
-    model with its own trained model before the next local training round.
-    Server aggregation is standard FedAvg.
+    model with its own previously trained model before each round's local
+    training.  Server aggregation is standard FedAvg (inherited from pFL/tFL).
 
     References
     ----------
@@ -29,7 +30,6 @@ class FedALA(pFL):
         "threshold": 0.1,
         "local_patience": 10,
     }
-    _KNOWN_PACKAGE_KEYS = tFL._KNOWN_PACKAGE_KEYS | frozenset({"ala_weights", "ala_start_phase"})
 
     @classmethod
     def args_update(cls, parser):
@@ -39,149 +39,89 @@ class FedALA(pFL):
         parser.add_argument("--threshold", type=float, default=None)
         parser.add_argument("--local_patience", type=int, default=None)
 
-    def _apply_client_result(
-        self, client, package: Optional[Dict[str, Any]]
-    ) -> None:
-        """Apply training package from :meth:`FedALA_Client.train` back to *client*.
-
-        Extends the base implementation to restore the ALA-specific learnable
-        blend weights and convergence state that are produced on the remote
-        copy during Ray-parallel execution.
-
-        Parameters
-        ----------
-        client : FedALA_Client
-            Original client object to update.
-        package : dict or None
-            Return value of ``FedALA_Client.train()``.  Must contain all keys
-            produced by ``tFL_Client.train()`` plus ``ala_weights`` and
-            ``ala_start_phase``.
-        """
-        if package is None:
-            return
-        super()._apply_client_result(client, package)
-        client.ala_weights = package["ala_weights"]
-        client.ala_start_phase = package["ala_start_phase"]
-
 
 class FedALA_Client(pFL_Client):
     """Client for FedALA.
 
-    On each round:
-
-    1. ``receive_from_server`` stores the incoming global model without loading
-       it — the local model is preserved intact for the ALA blending step.
-    2. ``train`` runs ALA (learns per-layer blend weights from a small random
-       subset of local data), then performs standard gradient training on the
-       blended model.
-
-    The ALA state (``ala_weights``, ``ala_start_phase``) is included in the
-    ``train`` return package so Ray-parallel execution can propagate it back to
-    the original client.
-
-    Attributes
-    ----------
-    _pending_global_model : nn.Module or None
-        Global model received from the server, held for the ALA step inside
-        ``train()``.
-    ala_weights : list of Tensor or None
-        Learnable per-parameter blend weights for the higher layers.
-    ala_start_phase : bool
-        ``True`` until ALA weight-learning converges for the first time.
+    Per-client persistent state in personal_model_params:
+        "ala_weights"       — list of CPU tensors (per-param blend weights for
+                              the last ``layer_idx`` parameter groups), or None.
+        "ala_start_phase"   — bool; True until ALA weights converge for the
+                              first time, then False (one-pass mode).
+        "prev_local_params" — list of CPU tensors (all model params after the
+                              previous round's training), or None on first round.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._pending_global_model: Optional[nn.Module] = None
-        self.ala_weights: Optional[List[torch.Tensor]] = None
-        self.ala_start_phase: bool = True
-
-    def receive_from_server(self, data: Dict[str, Any]) -> None:
-        """Store the global model for the ALA step; do not overwrite local model.
-
-        Parameters
-        ----------
-        data : dict
-            Server package containing ``"model"`` (the global nn.Module).
-        """
-        self._pending_global_model = data["model"]
-
-    def train(self) -> Dict[str, Any]:
-        """Run ALA blending followed by standard gradient training.
-
-        Performs :meth:`_adaptive_local_aggregation` on the pending global
-        model and the current local model, then delegates gradient training to
-        :meth:`~tFL.tFL_Client.train` (the parent).
-
-        Returns
-        -------
-        dict
-            Package produced by ``tFL_Client.train()`` extended with
-            ``ala_weights`` and ``ala_start_phase`` for parallel apply-back.
-        """
-        if self._pending_global_model is not None:
-            self._adaptive_local_aggregation(
-                global_model=self._pending_global_model,
-                local_model=self.model,
-            )
-        package = super().train()
-        package["ala_weights"] = self.ala_weights
-        package["ala_start_phase"] = self.ala_start_phase
-        return package
-
-    def _adaptive_local_aggregation(
-        self,
-        global_model: nn.Module,
-        local_model: nn.Module,
-    ) -> None:
-        """Learn per-layer blend weights and apply them to *local_model* in place.
-
-        Updates ``self.ala_weights``, ``self.ala_start_phase``, and the
-        higher-layer parameters of *local_model* in place.  Lower-layer
-        parameters are overwritten with those of *global_model*.
-
-        Parameters
-        ----------
-        global_model : nn.Module
-            Global model received from the server.
-        local_model : nn.Module
-            Client's current local model (modified in place).
-        """
-        rand_loader = self.load_train_data(
-            sample_ratio=self.sample_ratio, shuffle=False
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)  # loads global model into self.model
+        pm = package["personal_model_params"]
+        self._ala_weights: Optional[List[torch.Tensor]] = pm.get("ala_weights", None)
+        self._ala_start_phase: bool = pm.get("ala_start_phase", True)
+        self._prev_local_params: Optional[List[torch.Tensor]] = pm.get(
+            "prev_local_params", None
         )
 
-        params_g = list(global_model.parameters())
-        params = list(local_model.parameters())
+    def fit(self) -> None:
+        # Run ALA interpolation before local training if we have a previous
+        # local model to blend with.
+        if self._prev_local_params is not None:
+            self._run_ala()
+        super().fit()
 
-        if torch.sum(params_g[0] - params[0]) == 0:
+    def _run_ala(self) -> None:
+        """Adaptive Local Aggregation: interpolate self.model in-place.
+
+        After super().set_parameters() the model holds global params.
+        This method:
+          1. Copies global params into the lower layers (already done by
+             set_parameters; no-op here).
+          2. Learns per-param blend weights for the higher layers via a
+             small-batch gradient descent on the local objective.
+          3. Applies the learned weights to set the higher layers of
+             self.model to the interpolated values.
+        """
+        # Global params: what set_parameters already loaded into self.model
+        global_params = [p.detach().cpu().clone() for p in self.model.parameters()]
+        prev_local = [t.clone() for t in self._prev_local_params]
+
+        # Skip if global and previous local are identical (e.g. first real round)
+        if torch.sum(global_params[0] - prev_local[0]) == 0:
             return
 
-        for param, param_g in zip(
-            params[: -self.layer_idx], params_g[: -self.layer_idx]
-        ):
-            param.data = param_g.data.clone()
+        # Higher-layer slices used for weight learning / interpolation
+        params_p = prev_local[-self.layer_idx:]     # prev local, higher layers
+        params_gp = global_params[-self.layer_idx:] # global,     higher layers
 
-        model_t = copy.deepcopy(local_model)
+        if self._ala_weights is None:
+            self._ala_weights = [torch.ones_like(p) for p in params_p]
+
+        # model_t: deep copy of self.model (global params everywhere).
+        # Lower layers stay as global; higher layers are set to interpolated init.
+        model_t = copy.deepcopy(self.model)
         params_t = list(model_t.parameters())
-        params_p = params[-self.layer_idx :]
-        params_gp = params_g[-self.layer_idx :]
-        params_tp = params_t[-self.layer_idx :]
+        params_tp = params_t[-self.layer_idx:]
 
-        for param in params_t[: -self.layer_idx]:
+        for param in params_t[:-self.layer_idx]:
             param.requires_grad = False
 
+        with torch.no_grad():
+            for pt, pp, pg, w in zip(params_tp, params_p, params_gp, self._ala_weights):
+                pt.data = pp + (pg - pp) * w
+
+        # SGD optimizer with lr=0: we update weights manually, not via step()
         optimizer = torch.optim.SGD(params_tp, lr=0)
 
-        if self.ala_weights is None:
-            self.ala_weights = [torch.ones_like(param.data) for param in params_p]
+        rand_loader = self.load_data(
+            file=self.train_file,
+            sample_ratio=self.sample_ratio,
+            batch_size=self.batch_size,
+            shuffle=False,
+            scaler=self.scaler,
+            seed=self._loader_seed("train"),
+        )
 
-        for param_t, param, param_g, weight in zip(
-            params_tp, params_p, params_gp, self.ala_weights
-        ):
-            param_t.data = param + (param_g - param) * weight
-
-        losses = []
+        losses: List[float] = []
+        loss_value = torch.tensor(0.0)
         while True:
             for batch_x, batch_y, x_mark, y_mark in rand_loader:
                 batch_x = batch_x.float()
@@ -190,32 +130,46 @@ class FedALA_Client(pFL_Client):
                 output = model_t(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss_value = self.loss(output, batch_y)
                 loss_value.backward()
-
-                for param_t, param, param_g, weight in zip(
-                    params_tp, params_p, params_gp, self.ala_weights
-                ):
-                    weight.data = torch.clamp(
-                        weight - self.eta * (param_t.grad * (param_g - param)), 0, 1
-                    )
-                    param_t.data = param + (param_g - param) * weight
+                with torch.no_grad():
+                    for pt, pp, pg, w in zip(
+                        params_tp, params_p, params_gp, self._ala_weights
+                    ):
+                        w.data = torch.clamp(
+                            w - self.eta * (pt.grad * (pg - pp)), 0, 1
+                        )
+                        pt.data = pp + (pg - pp) * w
 
             losses.append(loss_value.item())
 
-            if not self.ala_start_phase:
+            if not self._ala_start_phase:
                 break
-            self.logger.info(
+            _logger.info(
                 "ALA epochs: %03d | std: %.6f",
                 len(losses),
-                np.std(losses[-self.local_patience :]),
+                np.std(losses[-self.local_patience:]),
             )
-
             if (
                 len(losses) > self.local_patience
-                and np.std(losses[-self.local_patience :]) < self.threshold
+                and np.std(losses[-self.local_patience:]) < self.threshold
             ):
                 break
 
-        self.ala_start_phase = False
+        self._ala_start_phase = False
 
-        for param, param_t in zip(params_p, params_tp):
-            param.data = param_t.data.clone()
+        # Write learned higher-layer params back to self.model
+        with torch.no_grad():
+            model_params = list(self.model.parameters())
+            for mp, pt in zip(model_params[-self.layer_idx:], params_tp):
+                mp.data.copy_(pt.data)
+
+        del model_t
+
+    def package(self, train_time: float) -> Dict[str, Any]:
+        out = super().package(train_time)
+        # Persist ALA state and current trained params for the next round
+        out["personal_model_params"]["prev_local_params"] = [
+            p.detach().cpu().clone() for p in self.model.parameters()
+        ]
+        out["personal_model_params"]["ala_weights"] = self._ala_weights
+        out["personal_model_params"]["ala_start_phase"] = self._ala_start_phase
+        return out
