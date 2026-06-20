@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 
@@ -142,49 +144,38 @@ class FedIT(pFL, FedITShared):
             help="List of target module class names (e.g., Linear Conv1d)",
         )
 
-    def variables_to_be_sent(self):
-        """Send only LoRA parameters to reduce communication cost"""
-        lora_params = {}
-        for name, param in self.model.named_parameters():
-            if "lora_" in name:
-                lora_params[name] = param.data.clone()
-        return {"lora_params": lora_params}
+    def aggregate_client_updates(self, packages) -> None:
+        """FedIT: average A and B separately (biased aggregation ΔW' = B̄·Ā)."""
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        cids = list(packages.keys())
 
-    def aggregate_models(self):
-        """
-        Server-side aggregation with bias (original FedIT)
-        ΔW' = B̄ * Ā = (Σpk*Bk) * (Σpk*Ak)
-        """
-        # Initialize aggregated LoRA parameters
-        aggregated_lora = {}
-        first_client_lora = self.client_data[0]["lora_params"]
+        lora_names = [
+            name
+            for name in packages[cids[0]]["regular_model_params"]
+            if "lora_" in name
+        ]
 
-        # Initialize with zeros
-        for name, param in first_client_lora.items():
-            aggregated_lora[name] = torch.zeros_like(param)
+        aggregated = {}
+        for name in lora_names:
+            stacked = torch.stack(
+                [packages[cid]["regular_model_params"][name].float() for cid in cids],
+                dim=-1,
+            )
+            w = torch.tensor([packages[cid]["score"] / total for cid in cids])
+            aggregated[name] = torch.sum(stacked * w.to(stacked.dtype), dim=-1).to(
+                packages[cids[0]]["regular_model_params"][name].dtype
+            )
 
-        # Aggregate A and B matrices separately (creates bias)
-        for client_data, weight in zip(self.client_data, self.weights):
-            client_lora = client_data["lora_params"]
-            for name, param in client_lora.items():
-                if "lora_" in name:
-                    aggregated_lora[name].add_(param.data, alpha=weight)
-
-        # Update global model: This creates ΔW' = B̄ * Ā
-        self.update_lora_params(self.model, aggregated_lora)
+        self.update_lora_params(self.model, aggregated)
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FedIT_Client(pFL_Client, FedITShared):
-    def variables_to_be_sent(self):
-        """Send current LoRA parameters only"""
-        lora_params = {}
-        for name, param in self.model.named_parameters():
-            if "lora_" in name:
-                lora_params[name] = param.data.clone().to("cpu")
-        return {"lora_params": lora_params, "score": self.train_samples}
-
-    def receive_from_server(self, data):
-        """Update local model with aggregated LoRA parameters from server"""
-        if "lora_params" in data:
-            self.update_lora_params(self.model, data["lora_params"])
-            self.setup_lora_training(self.model)
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        self.setup_lora_training(self.model)

@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 
 from .FedIT import FedIT, FedIT_Client
@@ -60,63 +62,43 @@ class FFA_LoRA(FedIT, FFA_LoRAShared):
         # Override training setup to freeze A
         self.setup_lora_training(self.model)
 
-    def variables_to_be_sent(self):
-        """
-        Send aggregated B matrices AND the server's frozen A₀ to all clients.
+    def aggregate_client_updates(self, packages) -> None:
+        """Aggregate only B matrices (A stays frozen)."""
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        cids = list(packages.keys())
 
-        Bug fix (shared A₀): Without broadcasting A₀, each client independently
-        initializes its own random A_k, so ΣB_k trained against different A_k
-        bases can't be coherently combined. Sending the server's A₀ every round
-        ensures all clients freeze the same basis before training.
-        """
-        lora_params = {}
-        for name, param in self.model.named_parameters():
-            if "lora_B" in name or "lora_A" in name:
-                lora_params[name] = param.data.clone()
-        return {"lora_params": lora_params}
+        # Only aggregate lora_B params
+        lora_B_names = [
+            name
+            for name in packages[cids[0]]["regular_model_params"]
+            if "lora_B" in name
+        ]
 
-    def aggregate_models(self):
-        """
-        Aggregate only B matrices (A stays frozen).
-
-        B̄ = Σ p_k B_k  (weighted average of trainable B matrices)
-        A remains at its initial random values (never aggregated or updated)
-        """
-        device = next(self.model.parameters()).device
-
-        # Build lora layer map for B matrices only
-        first_client = self.client_data[0]["lora_params"]
-        lora_B_names = [key for key in first_client.keys() if "lora_B" in key]
-
-        # Initialize aggregated B parameters
-        aggregated_lora = {}
-        for B_name in lora_B_names:
-            aggregated_lora[B_name] = torch.zeros_like(
-                first_client[B_name], device=device
+        aggregated = {}
+        for name in lora_B_names:
+            stacked = torch.stack(
+                [packages[cid]["regular_model_params"][name].float() for cid in cids],
+                dim=-1,
+            )
+            w = torch.tensor([packages[cid]["score"] / total for cid in cids])
+            aggregated[name] = torch.sum(stacked * w.to(stacked.dtype), dim=-1).to(
+                packages[cids[0]]["regular_model_params"][name].dtype
             )
 
-        # Weighted aggregation for B matrices only
-        for client_data, weight in zip(self.client_data, self.weights):
-            client_lora = client_data["lora_params"]
-            for B_name in lora_B_names:
-                if B_name in client_lora:
-                    aggregated_lora[B_name].add_(
-                        client_lora[B_name].to(device), alpha=weight
-                    )
-
-        # Move to CPU for storage
-        for B_name in lora_B_names:
-            aggregated_lora[B_name] = aggregated_lora[B_name].detach().cpu().clone()
-
-        # Update global model (only B matrices, A unchanged)
-        self.update_lora_params(self.model, aggregated_lora)
+        self.update_lora_params(self.model, aggregated)
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FFA_LoRA_Client(FedIT_Client, FFA_LoRAShared):
     """
     FFA-LoRA Client: Trains only B, sends only B.
 
-    A matrices are frozen at the server's A₀ (received each round) and never
+    A matrices are frozen to the server's A₀ (received each round) and never
     updated locally. Only B matrices are trained and communicated.
     """
 
@@ -129,28 +111,3 @@ class FFA_LoRA_Client(FedIT_Client, FFA_LoRAShared):
         super().initialize_model()
         # Override to freeze A
         self.setup_lora_training(self.model)
-
-    def variables_to_be_sent(self):
-        """
-        Send only B matrices to server.
-
-        A is frozen to the server's A₀ (received and applied in receive_from_server),
-        so it is identical across all clients and does not need to be transmitted.
-        """
-        lora_B_params = {}
-        for name, param in self.model.named_parameters():
-            if "lora_B" in name:
-                lora_B_params[name] = param.data.clone().to("cpu")
-        return {"lora_params": lora_B_params, "score": self.train_samples}
-
-    def receive_from_server(self, data):
-        """
-        Receive aggregated B from server, update local B.
-
-        A matrices remain frozen at their initial values (never updated).
-        """
-        if "lora_params" in data:
-            # Update only B parameters
-            self.update_lora_params(self.model, data["lora_params"])
-            # Ensure A stays frozen, B trainable
-            self.setup_lora_training(self.model)

@@ -1,4 +1,5 @@
 import copy
+from collections import OrderedDict
 
 import higher
 import numpy as np
@@ -38,18 +39,17 @@ class FedTrend(tFL):
         self.D_ct = None
         self.D_gt = None
 
-        # T_ct: {client_id: {'start': model, 'end': model, 'mask': {name: BoolTensor}|None}}
-        # Populated at each L_ct boundary; cleared after D_ct is built.
+        # T_ct: {client_id: {'start': params_dict, 'end': params_dict, 'mask': dict|None}}
         self.T_ct = {}
 
-        # Start of the current L_ct interval per client — initialized to W^0.
+        # Start of current L_ct interval per client — initialized to W^0.
         self.T_ct_start = {
-            client.id: copy.deepcopy(self.model) for client in self.clients
+            i: copy.deepcopy(self.public_model_params)
+            for i in range(self.num_clients)
         }
-        # Delta of the previous L_ct interval per client (for consistency masking).
         self.T_ct_prev_delta = {}
 
-        # T_gt: list of aggregated global models [W^0, W^1, ...].
+        # T_gt: list of aggregated global model state dicts [W^0, W^1, ...].
         self.T_gt = []
 
         self.initialize_loss()
@@ -60,47 +60,31 @@ class FedTrend(tFL):
     # Server → clients                                                     #
     # ------------------------------------------------------------------ #
 
-    def variables_to_be_sent(self):
-        base_vars = super().variables_to_be_sent()
-        base_vars["D_ct"] = self.D_ct
-        return base_vars
+    def package(self, client_id: int) -> dict:
+        result = super().package(client_id)
+        result["D_ct"] = self.D_ct
+        return result
 
     # ------------------------------------------------------------------ #
     # Trajectory management                                                #
     # ------------------------------------------------------------------ #
 
-    def _update_T_ct(self):
-        """Record one L_ct-length trajectory per client with consistency mask.
+    def _update_T_ct(self, packages) -> None:
+        """Record one L_ct-length trajectory per client with consistency mask."""
+        for cid, pkg in packages.items():
+            end_params = pkg["regular_model_params"]
+            start_params = self.T_ct_start[cid]
 
-        Called at round t when t % L_ct == 0 (after receiving client models).
-        Per paper §3.2:
-          - start  = W_ci^{k*L_ct}  (stored from previous boundary)
-          - end    = W_ci^{(k+1)*L_ct}  (current client model)
-          - mask   = {name: sign(prev_delta)==sign(curr_delta)} (zero out
-                     params whose sign flipped vs the prior interval)
-        """
-        for client_data in self.client_data:
-            client_id = client_data["id"]
-            end_model = client_data["model"]
-            start_model = self.T_ct_start[client_id]
-
-            # Current interval delta: W_end - W_start
             curr_delta = {}
             with torch.no_grad():
-                end_params = dict(end_model.named_parameters())
-                start_params = dict(start_model.named_parameters())
                 for name in end_params:
                     if name in start_params:
                         curr_delta[name] = (
-                            (end_params[name].data - start_params[name].data)
-                            .cpu()
-                            .clone()
-                        )
+                            end_params[name] - start_params[name]
+                        ).cpu().clone()
 
-            # Consistency mask: keep only params whose sign matches the previous interval.
-            # First interval has no prior delta → no masking (full distance used).
             mask = None
-            prev_delta = self.T_ct_prev_delta.get(client_id)
+            prev_delta = self.T_ct_prev_delta.get(cid)
             if prev_delta is not None:
                 mask = {
                     name: (torch.sign(prev_delta[name]) == torch.sign(cd))
@@ -108,15 +92,14 @@ class FedTrend(tFL):
                     if name in prev_delta
                 }
 
-            self.T_ct[client_id] = {
-                "start": start_model,
-                "end": end_model,
+            self.T_ct[cid] = {
+                "start": start_params,
+                "end": end_params,
                 "mask": mask,
             }
 
-            # Advance interval boundary.
-            self.T_ct_start[client_id] = copy.deepcopy(end_model)
-            self.T_ct_prev_delta[client_id] = curr_delta
+            self.T_ct_start[cid] = copy.deepcopy(end_params)
+            self.T_ct_prev_delta[cid] = curr_delta
 
     # ------------------------------------------------------------------ #
     # Synthetic data construction (Algorithm 1, lines 29-36)              #
@@ -145,22 +128,20 @@ class FedTrend(tFL):
         optimizer_data = torch.optim.Adam([synthetic_x, synthetic_y], lr=synthetic_lr)
 
         for s_epoch in range(synthetic_epochs):
-            # Sample a trajectory segment.
             if is_client_trajectory:
                 client_id = np.random.choice(list(trajectories.keys()))
                 traj = trajectories[client_id]
-                model_start_state = traj["start"].state_dict()
-                model_end_state = traj["end"].state_dict()
+                model_start_state = traj["start"]
+                model_end_state = traj["end"]
                 mask_dict = traj.get("mask") or {}
             else:
                 start_idx = np.random.randint(0, len(trajectories) - 1)
-                model_start_state = trajectories[start_idx].state_dict()
-                model_end_state = trajectories[start_idx + 1].state_dict()
+                model_start_state = trajectories[start_idx]
+                model_end_state = trajectories[start_idx + 1]
                 mask_dict = {}
 
-            # Inner loop: train a temporary model on D_syn from W_start.
             temp_model = copy.deepcopy(self.model).to("cpu")
-            temp_model.load_state_dict(model_start_state)
+            temp_model.load_state_dict(model_start_state, strict=False)
             optimizer_model = torch.optim.SGD(
                 temp_model.parameters(), lr=self.learning_rate
             )
@@ -179,8 +160,6 @@ class FedTrend(tFL):
                         loss = self.loss(outputs, sy)
                         diffopt.step(loss)
 
-                # Outer-loop: distance loss between fmodel and W_end.
-                # For D_ct: zero out params that updated inconsistently (mask_dict).
                 optimizer_data.zero_grad()
                 distance_loss = 0
                 named_end = dict(model_end_state)
@@ -191,7 +170,6 @@ class FedTrend(tFL):
                         continue
                     diff = (param_end.to("cpu") - param_tilde) ** 2
                     if name in mask_dict:
-                        # mask: True (1) = consistent, False (0) = masked out
                         diff = diff * mask_dict[name].float().to("cpu")
                     distance_loss += torch.sum(diff)
 
@@ -214,10 +192,10 @@ class FedTrend(tFL):
         return TensorDataset(sx, sy)
 
     def _get_mark_shapes(self):
-        sample = next(iter(self.clients[0].load_train_data()))
+        sample = next(iter(self.trainer.worker.load_train_data()))
         return tuple(sample[2].shape[1:]), tuple(sample[3].shape[1:])
 
-    def _update_D_ct(self):
+    def _update_D_ct(self, packages) -> None:
         input_shape = (self.input_len, self.input_channels)
         output_shape = (self.output_len, self.output_channels)
         x_mark_shape, y_mark_shape = self._get_mark_shapes()
@@ -238,10 +216,9 @@ class FedTrend(tFL):
             y_mark_shape=y_mark_shape,
             is_client_trajectory=True,
         )
-        # T_ct_start already updated in _update_T_ct; clear the used trajectories.
         self.T_ct = {}
 
-    def _update_D_gt(self):
+    def _update_D_gt(self) -> None:
         self.logger.info(f"Updating D_gt at round {self.current_iter}.")
         if len(self.T_gt) < 2:
             self.logger.warning("Not enough global models in T_gt to update D_gt.")
@@ -265,7 +242,7 @@ class FedTrend(tFL):
         )
         self.T_gt = [self.T_gt[-1]]
 
-    def _refine_global_model(self):
+    def _refine_global_model(self) -> None:
         if self.D_gt is None:
             return
         self.logger.info("Refining global model on D_gt...")
@@ -281,21 +258,27 @@ class FedTrend(tFL):
             )
 
     # ------------------------------------------------------------------ #
-    # FL hooks                                                             #
+    # FL aggregation hook                                                  #
     # ------------------------------------------------------------------ #
 
-    def aggregate_models(self):
-        super().aggregate_models()
+    def aggregate_client_updates(self, packages) -> None:
+        # Standard FedAvg aggregation
+        super().aggregate_client_updates(packages)
 
-        # Store aggregated global model in T_gt, then refine on D_gt.
-        self.T_gt.append(copy.deepcopy(self.model.to(self.device)))
+        # Store aggregated global model state in T_gt, then refine on D_gt.
+        self.T_gt.append(copy.deepcopy(self.public_model_params))
         self._refine_global_model()
-        self.model.to("cpu")
+        # Commit refined model after refinement
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
         # Update T_ct and D_ct at L_ct boundaries (t > 0).
         if self.current_iter > 0 and self.current_iter % self.L_ct == 0:
-            self._update_T_ct()
-            self._update_D_ct()
+            self._update_T_ct(packages)
+            self._update_D_ct(packages)
 
         # Update D_gt at L_gt boundaries (t > 0).
         if self.current_iter > 0 and self.current_iter % self.L_gt == 0:
@@ -305,14 +288,9 @@ class FedTrend(tFL):
 class FedTrend_Client(tFL_Client):
     D_ct = None
 
-    def receive_from_server(self, data):
-        self.D_ct = data.pop("D_ct", None)
-        super().receive_from_server(data)
-
-    def variables_to_be_sent(self):
-        to_be_sent = super().variables_to_be_sent()
-        to_be_sent["id"] = self.id
-        return to_be_sent
+    def set_parameters(self, package: dict) -> None:
+        self.D_ct = package.pop("D_ct", None)
+        super().set_parameters(package)
 
     def load_train_data(self, *args, **kwargs):
         local_dataloader = super().load_train_data(*args, **kwargs)

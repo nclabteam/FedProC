@@ -1,13 +1,10 @@
-import time
-from typing import Any, Dict
-
 import numpy as np
 import torch
 
-from .nFL import nFL, nFL_Client
+from .pFL import pFL, pFL_Client
 
 
-class InfoTS(nFL):
+class InfoTS(pFL):
     """
     InfoTS: Information-Aware Time Series Meta-Contrastive Learning.
 
@@ -21,7 +18,7 @@ class InfoTS(nFL):
            - Tunes the forecasting model end-to-end on target MSE forecasting loss.
     """
 
-    compulsory = {**nFL.compulsory, "model": "InfoTS"}
+    compulsory = {"model": "InfoTS"}
     optional = {
         "pretrain_epochs": 10,
         "pretrain_lr": 1e-3,
@@ -40,28 +37,26 @@ class InfoTS(nFL):
         parser.add_argument("--pretrain_temp_t0", type=float, default=None)
         parser.add_argument("--pretrain_temp_t1", type=float, default=None)
 
-    def evaluate_generalization_loss(self, *args, **kwargs):
+    def aggregate_client_updates(self, packages) -> None:
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
+
+    def evaluate_generalization(self, *args, **kwargs):
         pass
 
-    def _pre_eval_hook(self, dataset_type: str) -> None:
-        self.evaluate_personalization_loss(dataset_type)
 
-
-class InfoTS_Client(nFL_Client):
-    def train(self) -> Dict[str, Any]:
+class InfoTS_Client(pFL_Client):
+    def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
 
         train_loader = self.load_train_data()
-        start_time = time.time()
 
         self.model.to(self.device)
 
-        # Phase 1: self-supervised meta-pretraining
         if hasattr(self.model, "pretrain_loss") and self.pretrain_epochs > 0:
             pretrain_loader = self.load_train_data()
             self._pretrain(pretrain_loader)
 
-        # Phase 2: supervised fine-tuning
         offload_after_epoch = self.efficiency == "low"
         for _ in range(self.epochs):
             self.train_one_epoch(
@@ -76,13 +71,6 @@ class InfoTS_Client(nFL_Client):
 
         if self.efficiency == "med":
             self.model.to("cpu")
-
-        return {
-            "model": self.model,
-            "optimizer_state": self.optimizer,
-            "train_time": time.time() - start_time,
-            "train_samples": self.train_samples,
-        }
 
     def _pretrain(self, train_loader):
         """Self-supervised pre-training: alternates updates of encoder and AutoAUG."""
@@ -106,7 +94,6 @@ class InfoTS_Client(nFL_Client):
                 )
             )
 
-            # Alternate meta update step
             if (epoch + 1) % self.pretrain_meta_epoch == 0:
                 for batch_x, *_ in train_loader:
                     batch_x = batch_x.to(
@@ -117,7 +104,6 @@ class InfoTS_Client(nFL_Client):
                             batch_x, meta_opt, meta_head_opt, temperature=temperature
                         )
 
-            # Normal encoder contrastive update step
             for batch_x, *_ in train_loader:
                 batch_x = batch_x.to(
                     self.device, dtype=torch.float32, non_blocking=True

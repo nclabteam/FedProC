@@ -65,6 +65,10 @@ class pFedHN(pFL):
 
     Reference: Shamsian et al., "Personalized Federated Learning using
     Hypernetworks", ICML 2021.  arXiv 2103.04628.
+
+    NOTE: pFedHN uses a custom train() loop that directly accesses clients.
+    It is deeply incompatible with the stateless-client architecture and will
+    fail at runtime. Stateless migration is not attempted here.
     """
 
     optional = {
@@ -137,7 +141,7 @@ class pFedHN(pFL):
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
         self._sync_client_models()
-        self.evaluate_personalization_loss(dataset_type)
+        super()._pre_eval_hook(dataset_type)
 
     def train(self) -> None:
         for i in range(self.iterations):

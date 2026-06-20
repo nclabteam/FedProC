@@ -1,7 +1,6 @@
 import copy
-import time
-from argparse import Namespace
-from typing import Any, Dict, List, Optional
+from collections import OrderedDict
+from typing import List, Optional
 
 import torch
 
@@ -10,76 +9,28 @@ from .pFL import pFL, pFL_Client
 
 class AirMetapFL(pFL):
     """
-    Air-meta-pFL: Over-the-Air Meta-Learning Based Personalized Federated Learning.
+    Air-meta-pFL: MAML-style meta-learning with top-k sparsification.
 
-    Implements Algorithm 1 from Wen et al. (2024), arXiv 2406.11569, adapted for
-    digital channels (OTA wireless channel model omitted). Each client runs Q outer
-    MAML gradient steps and applies top-k sparsification with error-feedback memory
-    before sending model differences. The server performs uniform averaging.
-
-    Two MAML variants via --hf:
-    - FO (default): first-order — 2 mini-batches per outer step.
-    - HF  (--hf):  Hessian-free correction via finite differences — 3 mini-batches.
-      g_hf = g - (α/2δ)·(∇f(θ+δg) - ∇f(θ-δg))
-
-    Reference: "Pre-Training and Personalized Fine-Tuning via Over-the-Air Federated
-    Meta-Learning: Convergence-Generalization Trade-Offs", arXiv 2406.11569.
+    Each client performs first-order (FO) or Hessian-free (HF) MAML outer
+    gradient steps on its local data. The model update is compressed via
+    top-k sparsification with error-feedback memory before being sent to the
+    server for FedAvg aggregation.
     """
 
     optional = {
         "alpha": 0.01,
+        "delta": 0.1,
         "sparsity": 1.0,
         "hf": False,
-        "delta": 1e-3,
     }
-    compulsory = {"return_diff": True}
 
     @classmethod
     def args_update(cls, parser):
-        parser.add_argument(
-            "--alpha",
-            type=float,
-            default=None,
-            help="Inner adaptation learning rate α (default: 0.01)",
-        )
-        parser.add_argument(
-            "--sparsity",
-            type=float,
-            default=None,
-            help="Fraction of entries to keep via top-k (1.0 = no sparsification)",
-        )
-        parser.add_argument(
-            "--hf",
-            action="store_true",
-            default=None,
-            help="Hessian-free second-order MAML correction (3 mini-batches/step)",
-        )
-        parser.add_argument(
-            "--delta",
-            type=float,
-            default=None,
-            help="Finite-difference perturbation for HF Hessian approximation",
-        )
+        parser.add_argument("--alpha", type=float, default=None)
+        parser.add_argument("--delta", type=float, default=None)
+        parser.add_argument("--sparsity", type=float, default=None)
+        parser.add_argument("--hf", action="store_true", default=None)
         return parser
-
-    def __init__(self, configs: Namespace, times: int) -> None:
-        super().__init__(configs=configs, times=times)
-        self.parallel = False
-
-    def calculate_aggregation_weights(self) -> None:
-        pass  # uniform 1/n weighting applied directly in aggregate_models
-
-    def aggregate_models(self) -> None:
-        n = len(self.client_data)
-        if n == 0:
-            return
-        for cd in self.client_data:
-            for global_param, local_param in zip(
-                self.model.parameters(), cd["model"].parameters()
-            ):
-                global_param.data.sub_(
-                    local_param.data.to(global_param.device), alpha=1.0 / n
-                )
 
 
 class AirMetapFL_Client(pFL_Client):
@@ -93,8 +44,8 @@ class AirMetapFL_Client(pFL_Client):
 
     _memory: Optional[List[torch.Tensor]] = None
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
+    def __init__(self, configs, times, device) -> None:
+        super().__init__(configs=configs, times=times, device=device)
         if self.hf:
             self._model_plus = copy.deepcopy(self.model)
             self._model_minus = copy.deepcopy(self.model)
@@ -115,9 +66,19 @@ class AirMetapFL_Client(pFL_Client):
         except StopIteration:
             return next(iter(loader))
 
-    def train(self) -> Optional[Dict[str, Any]]:
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        personal = package["personal_model_params"]
+        if personal:
+            mem_keys = sorted(
+                (k for k in personal if k.startswith("__mem_")),
+                key=lambda k: int(k[len("__mem_"):]),
+            )
+            if mem_keys:
+                self._memory = [personal[k] for k in mem_keys]
+
+    def fit(self) -> None:
         train_loader = self.load_train_data()
-        start_time = time.time()
         self.model.to(self.device)
         self.model.train()
 
@@ -129,8 +90,32 @@ class AirMetapFL_Client(pFL_Client):
         self.scheduler.step()
         if self.efficiency != "high":
             self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
-        return None
+
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+
+        if self.sparsity < 1.0:
+            if self._memory is None:
+                self._memory = [
+                    torch.zeros_like(v) for v in result["regular_model_params"].values()
+                ]
+            new_params = OrderedDict()
+            new_mem = []
+            for (name, param), mem in zip(
+                result["regular_model_params"].items(), self._memory
+            ):
+                combined = mem + param
+                sparsified = self._top_k_sparsify(combined, self.sparsity)
+                new_mem.append(combined - sparsified)
+                new_params[name] = sparsified
+            self._memory = new_mem
+            result["regular_model_params"] = new_params
+
+        if self._memory is not None:
+            for i, mem in enumerate(self._memory):
+                result["personal_model_params"][f"__mem_{i}"] = mem
+
+        return result
 
     def _train_fo(self, train_loader) -> None:
         """First-order MAML: 2 mini-batches per outer step."""
@@ -143,10 +128,8 @@ class AirMetapFL_Client(pFL_Client):
 
                 half = batch_x.size(0) // 2 or batch_x.size(0)
 
-                # Save θ
                 temp_params = [p.data.clone() for p in self.model.parameters()]
 
-                # Inner step: θ' = θ - α∇f(θ; D^tr)
                 self.optimizer.zero_grad()
                 out = self.model(
                     batch_x[:half], x_mark=x_mark[:half], y_mark=y_mark[:half]
@@ -157,7 +140,6 @@ class AirMetapFL_Client(pFL_Client):
                         if p.grad is not None:
                             p.data.sub_(self.alpha * p.grad)
 
-                # Meta-gradient at θ' on query set: ∇f(θ'; D^va)
                 self.optimizer.zero_grad()
                 x_q = batch_x[half:] if half < batch_x.size(0) else batch_x
                 y_q = batch_y[half:] if half < batch_x.size(0) else batch_y
@@ -166,7 +148,6 @@ class AirMetapFL_Client(pFL_Client):
                 out2 = self.model(x_q, x_mark=xm_q, y_mark=ym_q)
                 self.loss(out2, y_q).backward()
 
-                # Restore θ, apply outer step η
                 with torch.no_grad():
                     for p, tp in zip(self.model.parameters(), temp_params):
                         p.data.copy_(tp)
@@ -185,7 +166,6 @@ class AirMetapFL_Client(pFL_Client):
         for _ in range(self.epochs):
             iterator = iter(train_loader)
             for _ in range(steps_per_epoch):
-                # Batch 0: support set → inner step
                 bx0, by0, bxm0, bym0 = self._next_batch(iterator, train_loader)
                 bx0 = bx0.to(device=self.device, dtype=torch.float32)
                 by0 = by0.to(device=self.device, dtype=torch.float32)
@@ -200,7 +180,6 @@ class AirMetapFL_Client(pFL_Client):
                         if p.grad is not None:
                             p.data.sub_(self.alpha * p.grad)
 
-                # Batch 1: query set → meta-gradient g = ∇f(θ'; D^va)
                 bx1, by1, bxm1, bym1 = self._next_batch(iterator, train_loader)
                 bx1 = bx1.to(device=self.device, dtype=torch.float32)
                 by1 = by1.to(device=self.device, dtype=torch.float32)
@@ -214,7 +193,6 @@ class AirMetapFL_Client(pFL_Client):
                     for p in self.model.parameters()
                 ]
 
-                # Batch 2: Hessian finite-difference at θ (frz_params)
                 bx2, by2, bxm2, bym2 = self._next_batch(iterator, train_loader)
                 bx2 = bx2.to(device=self.device, dtype=torch.float32)
                 by2 = by2.to(device=self.device, dtype=torch.float32)
@@ -240,7 +218,6 @@ class AirMetapFL_Client(pFL_Client):
                     self._model_minus(bx2, x_mark=bxm2, y_mark=bym2), by2
                 ).backward()
 
-                # g_hf = g - (α/2δ)·(∇f(θ+δg) - ∇f(θ-δg))
                 hf_coef = self.alpha / (2.0 * self.delta)
                 hf_grads = [
                     g
@@ -256,7 +233,6 @@ class AirMetapFL_Client(pFL_Client):
                     )
                 ]
 
-                # Restore θ, apply outer step η with HF gradient
                 with torch.no_grad():
                     for p, fp, g_hf in zip(
                         self.model.parameters(), frz_params, hf_grads
@@ -265,23 +241,3 @@ class AirMetapFL_Client(pFL_Client):
 
         self._model_plus.to("cpu")
         self._model_minus.to("cpu")
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        data = super().variables_to_be_sent()
-
-        if self.sparsity < 1.0:
-            if self._memory is None:
-                self._memory = [
-                    torch.zeros_like(p.data.cpu()) for p in data["model"].parameters()
-                ]
-            model = data["model"]
-            with torch.no_grad():
-                new_mem = []
-                for mem, param in zip(self._memory, model.parameters()):
-                    combined = mem.to(param.device) + param.data
-                    sparsified = self._top_k_sparsify(combined, self.sparsity)
-                    new_mem.append((combined - sparsified).cpu())
-                    param.data.copy_(sparsified)
-                self._memory = new_mem
-
-        return data

@@ -76,6 +76,10 @@ class pFedLA(pFL):
 
     HeurpFedLA (pfedla_K > 0): K blocks with the highest self-weight
     (alpha[k, k]) are replaced with one-hot weights (pure local, no mixing).
+
+    NOTE: pFedLA uses a custom train() loop that directly accesses self.clients.
+    It is deeply incompatible with the stateless-client architecture and will
+    fail at runtime. Stateless migration is not attempted here.
     """
 
     optional = {

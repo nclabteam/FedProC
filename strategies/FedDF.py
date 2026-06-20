@@ -73,9 +73,9 @@ class FedDF(hFL):
             shuffle=True,
         )
 
-    def aggregate_models(self):
-        """FedAvg aggregation followed by server-side ensemble distillation."""
-        super().aggregate_models()
+    def aggregate_client_updates(self, packages) -> None:
+        """FedAvg aggregation (hFL no-op) followed by server-side ensemble distillation."""
+        super().aggregate_client_updates(packages)
         self._distill()
 
     def _distill(self):
@@ -83,6 +83,8 @@ class FedDF(hFL):
 
         The server model is refined to match the averaged predictions
         of all client models on the public dataset.
+        NOTE: self.clients / self.selected_clients not available in stateless arch;
+              this method will fail at runtime until a stateless refactor is done.
         """
         device = self.clients[0].device
         self.model.to(device)
@@ -96,7 +98,6 @@ class FedDF(hFL):
                 x_mark = x_mark.to(device=device, non_blocking=True)
                 y_mark = y_mark.to(device=device, non_blocking=True)
 
-                # Ensemble: average client predictions (teacher)
                 with torch.no_grad():
                     client_preds = []
                     for client in self.selected_clients:
@@ -106,10 +107,8 @@ class FedDF(hFL):
                         client_preds.append(pred)
                     teacher = torch.stack(client_preds).mean(dim=0)
 
-                # Student: server model prediction
                 student = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
 
-                # MSE distillation (regression)
                 loss = F.mse_loss(student, teacher)
                 optimizer.zero_grad()
                 loss.backward()

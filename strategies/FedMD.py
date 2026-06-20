@@ -76,12 +76,6 @@ class FedMD(hFL):
     def initialize_loss(self):
         pass
 
-    def aggregate_models(self):
-        pass
-
-    def variables_to_be_sent(self):
-        return {"consensus": self.consensus}
-
     def train_one_round(self, current_round):
         # Communicate: each client predicts on public data
         client_preds = [c.predict_public(self.public_loader) for c in self.clients]
@@ -96,9 +90,6 @@ class FedMD(hFL):
 class FedMD_Client(hFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    def receive_from_server(self, data):
-        """FedMD doesn't aggregate models — no-op."""
 
     def predict_public(self, public_loader):
         """Compute predictions on public data."""

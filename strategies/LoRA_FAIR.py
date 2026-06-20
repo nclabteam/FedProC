@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn.functional as F
 
@@ -49,20 +51,25 @@ class LoRA_FAIR(FedIT):
         else:
             raise ValueError(f"Unknown sim_metric: {metric}. Choose 'cosine' or 'l2'.")
 
-    def aggregate_models(self):
+    def aggregate_client_updates(self, packages) -> None:
         """
-        Override FedIT.aggregate_models:
+        Override FedIT.aggregate_client_updates:
         1) compute A_bar, B_bar (weighted average)
         2) compute ideal W_target = Σ p_k (A_k @ B_k)
         3) optimize small ΔB per layer to minimize S(A_bar @ (B_bar+ΔB), W_target) + λ||ΔB||^2
         4) update global model with A_bar and B_bar' = B_bar + ΔB
         """
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        cids = list(packages.keys())
+        weights = [packages[cid]["score"] / total for cid in cids]
+
         device = next(self.model.parameters()).device
 
-        # Build lora layer map from first client's lora_params keys
-        first_client = self.client_data[0]["lora_params"]
+        # Build lora layer map from first client
+        first_params = packages[cids[0]]["regular_model_params"]
         lora_layers = {}
-        for key in first_client.keys():
+        for key in first_params.keys():
             if key.endswith(".lora_A"):
                 layer = key[: -len(".lora_A")]
                 lora_layers.setdefault(layer, {})["A_name"] = key
@@ -70,42 +77,37 @@ class LoRA_FAIR(FedIT):
                 layer = key[: -len(".lora_B")]
                 lora_layers.setdefault(layer, {})["B_name"] = key
 
-        # Prepare aggregated containers
         A_bar = {}
         B_bar = {}
         W_target = {}
 
-        # Initialize zeros using shapes from first client
         for layer, info in lora_layers.items():
             A_name = info.get("A_name")
             B_name = info.get("B_name")
             if not (A_name and B_name):
                 continue
-            sample_A = first_client[A_name]
-            sample_B = first_client[B_name]
+            sample_A = first_params[A_name]
+            sample_B = first_params[B_name]
             A_bar[A_name] = torch.zeros_like(sample_A, device=device)
             B_bar[B_name] = torch.zeros_like(sample_B, device=device)
-            # target full product shape = [in_features, out_features] => sample_A @ sample_B
             in_features = sample_A.shape[0]
             out_features = sample_B.shape[1]
             W_target[layer] = torch.zeros((in_features, out_features), device=device)
 
-        # Weighted aggregation for A_bar, B_bar and ideal product W_target
-        for client_data, weight in zip(self.client_data, self.weights):
-            client_lora = client_data["lora_params"]
+        for cid, w in zip(cids, weights):
+            cparams = packages[cid]["regular_model_params"]
             for layer, info in lora_layers.items():
                 A_name = info.get("A_name")
                 B_name = info.get("B_name")
-                if A_name in client_lora and B_name in client_lora:
-                    cA = client_lora[A_name].to(device)
-                    cB = client_lora[B_name].to(device)
-                    A_bar[A_name].add_(cA, alpha=weight)
-                    B_bar[B_name].add_(cB, alpha=weight)
-                    W_target[layer].add_(cA @ cB, alpha=weight)
+                if A_name in cparams and B_name in cparams:
+                    cA = cparams[A_name].to(device)
+                    cB = cparams[B_name].to(device)
+                    A_bar[A_name].add_(cA, alpha=w)
+                    B_bar[B_name].add_(cB, alpha=w)
+                    W_target[layer].add_(cA @ cB, alpha=w)
 
         aggregated_lora = {}
 
-        # Per-layer small optimization for ΔB
         for layer, info in lora_layers.items():
             A_name = info.get("A_name")
             B_name = info.get("B_name")
@@ -116,7 +118,6 @@ class LoRA_FAIR(FedIT):
             B_t = B_bar[B_name]  # [r, out]
             W_tgt = W_target[layer]  # [in, out]
 
-            # delta_B parameter initialized to zero
             delta_B = torch.zeros_like(B_t, device=device, requires_grad=True)
             optimizer = torch.optim.SGD([delta_B], lr=self.lora_delta_lr)
 
@@ -129,12 +130,15 @@ class LoRA_FAIR(FedIT):
                 loss.backward()
                 optimizer.step()
 
-            # finalize aggregated params (move to cpu for storage/transmission)
             aggregated_lora[A_name] = A_t.detach().cpu().clone()
             aggregated_lora[B_name] = (B_t + delta_B.detach()).cpu().clone()
 
-        # Update global model with corrected LoRA params
         self.update_lora_params(self.model, aggregated_lora)
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class LoRA_FAIR_Client(FedIT_Client):

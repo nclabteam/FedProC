@@ -25,6 +25,8 @@ Benefits:
     - Higher communication in first round (send tailored components)
 """
 
+from collections import OrderedDict
+
 import torch
 
 from .FedIT import FedIT, FedIT_Client
@@ -36,7 +38,7 @@ class FlexLoRA(FedIT):
 
     Aggregation:
         1. Receive (A_k, B_k) from each client (may have different ranks r_k)
-        2. Aggregate: W_global = Σ p_k (B_k @ A_k)  (full product matrix)
+        2. Aggregate: W_global = Σ p_k (A_k @ B_k)  (full product matrix)
         3. Decompose: U, Σ, V = SVD(W_global)
         4. For each client i, prepare tailored components based on their rank r_i:
            W_global_i = U[:, :r_i] @ Σ[:r_i, :r_i] @ V[:r_i, :]^T
@@ -78,18 +80,11 @@ class FlexLoRA(FedIT):
         # Per-client tailored LoRA from SVD (set during aggregation)
         self.tailored_lora_params = {}
 
-    def _resolve_client_rank(self, client_data, lora_layers):
-        """Resolve a valid positive int rank for a client.
-
-        Priority:
-        1) client_data['client_rank'] if valid
-        2) infer from any available LoRA A tensor shape
-        3) fallback to configured self.lora_r
-        """
-        raw_rank = client_data.get("client_rank", None)
-        if raw_rank is not None:
+    def _resolve_client_rank(self, lora_params, client_rank_hint, lora_layers):
+        """Resolve a valid positive int rank for a client."""
+        if client_rank_hint is not None:
             try:
-                rank_int = int(raw_rank)
+                rank_int = int(client_rank_hint)
                 if rank_int > 0:
                     return rank_int
             except (TypeError, ValueError):
@@ -97,31 +92,35 @@ class FlexLoRA(FedIT):
 
         for layer_info in lora_layers.values():
             a_key = layer_info.get("A_name")
-            if a_key and a_key in client_data.get("lora_params", {}):
-                a_tensor = client_data["lora_params"][a_key]
+            if a_key and a_key in lora_params:
+                a_tensor = lora_params[a_key]
                 if hasattr(a_tensor, "shape") and len(a_tensor.shape) >= 2:
-                    # LoRALinear convention in this repo: lora_A shape is [in_features, r]
                     rank_int = int(a_tensor.shape[1])
                     if rank_int > 0:
                         return rank_int
 
         return max(1, int(self.lora_r))
 
-    def aggregate_models(self):
-        """
-        Aggregate heterogeneous LoRA ranks via SVD.
+    def package(self, client_id: int) -> dict:
+        result = super().package(client_id)
+        if self.tailored_lora_params:
+            result["tailored_lora_params"] = self.tailored_lora_params
+            result["client_ranks"] = self.client_ranks
+        return result
 
-        Key difference from LoRA_FAIR:
-            - Aggregates to full W_global matrix (like LoRA_FAIR)
-            - Then SVD decomposes and tailors back to each client's rank
-            - Stores tailored components for sending back
-        """
+    def aggregate_client_updates(self, packages) -> None:
+        """Aggregate heterogeneous LoRA ranks via SVD."""
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        cids = list(packages.keys())
+        weights = [packages[cid]["score"] / total for cid in cids]
+
         device = next(self.model.parameters()).device
 
         # Build lora layer map from first client
-        first_client = self.client_data[0]["lora_params"]
+        first_params = packages[cids[0]]["regular_model_params"]
         lora_layers = {}
-        for key in first_client.keys():
+        for key in first_params.keys():
             if key.endswith(".lora_A"):
                 layer = key[: -len(".lora_A")]
                 lora_layers.setdefault(layer, {})["A_name"] = key
@@ -129,63 +128,55 @@ class FlexLoRA(FedIT):
                 layer = key[: -len(".lora_B")]
                 lora_layers.setdefault(layer, {})["B_name"] = key
 
-        # Collect client ranks keyed by actual client.id (not enumeration index).
-        # self.selected_clients[i] aligns with self.client_data[i].
+        # Resolve client ranks
         self.client_ranks = {}
-        for i, client_data in enumerate(self.client_data):
-            actual_id = self.selected_clients[i].id
-            self.client_ranks[actual_id] = self._resolve_client_rank(
-                client_data, lora_layers
-            )
+        for cid in cids:
+            cparams = packages[cid]["regular_model_params"]
+            hint = packages[cid].get("client_rank", None)
+            self.client_ranks[cid] = self._resolve_client_rank(cparams, hint, lora_layers)
 
-        # Store tailored LoRA for each client (computed from SVD)
         self.tailored_lora_params = {}
 
-        # Aggregate and SVD decompose for each layer
+        lora_params_averaged = {}
+        for key in first_params:
+            if "lora_" in key:
+                lora_params_averaged[key] = torch.zeros_like(first_params[key], device=device)
+
         for layer, info in lora_layers.items():
             A_name = info.get("A_name")
             B_name = info.get("B_name")
             if not (A_name and B_name):
                 continue
 
-            # Step 1: Aggregate to full product W_global = Σ p_k (A_k @ B_k)
-            # LoRALinear in this repo uses x @ A @ B, so A:[in,r], B:[r,out].
             W_global = None
-            for client_data, weight in zip(self.client_data, self.weights):
-                client_lora = client_data["lora_params"]
-                if A_name in client_lora and B_name in client_lora:
-                    A_k = client_lora[A_name].to(device)
-                    B_k = client_lora[B_name].to(device)
+            for cid, w in zip(cids, weights):
+                cparams = packages[cid]["regular_model_params"]
+                if A_name in cparams and B_name in cparams:
+                    A_k = cparams[A_name].to(device)
+                    B_k = cparams[B_name].to(device)
                     W_k = A_k @ B_k
                     if W_global is None:
-                        W_global = W_k * weight
+                        W_global = W_k * w
                     else:
-                        W_global.add_(W_k, alpha=weight)
+                        W_global.add_(W_k, alpha=w)
+                    # Accumulate for server model update
+                    if A_name in lora_params_averaged and lora_params_averaged[A_name].shape == A_k.shape:
+                        lora_params_averaged[A_name].add_(A_k, alpha=w)
+                    if B_name in lora_params_averaged and lora_params_averaged[B_name].shape == B_k.shape:
+                        lora_params_averaged[B_name].add_(B_k, alpha=w)
 
             if W_global is None:
                 continue
 
-            # Step 2: SVD decompose
             U, Sigma, Vh = torch.linalg.svd(W_global, full_matrices=False)
-            # U: [m, min(m,n)]
-            # Sigma: [min(m,n)]
-            # Vh: [min(m,n), n]
 
-            # Step 3: Tailor components for each client based on their rank
             self.tailored_lora_params[layer] = {}
-            for client_id, r_i in self.client_ranks.items():
-                # Ensure r_i doesn't exceed SVD rank
+            for cid, r_i in self.client_ranks.items():
                 r_i = min(r_i, Sigma.shape[0])
 
-                # Extract top r_i components
-                U_i = U[:, :r_i]  # [m, r_i]
-                Sigma_i = Sigma[:r_i]  # [r_i]
-                Vh_i = Vh[:r_i, :]  # [r_i, n]
-
-                # Reconstruct for this client's LoRA parameter convention:
-                # A:[in,r], B:[r,out], forward uses x @ A @ B * (alpha/r).
-                # Choose A_i = U_i and B_i = diag(Sigma_i) @ Vh_i scaled by (r_i/alpha)
-                # so A_i @ B_i * (alpha/r_i) = U_i @ diag(Sigma_i) @ Vh_i.
+                U_i = U[:, :r_i]
+                Sigma_i = Sigma[:r_i]
+                Vh_i = Vh[:r_i, :]
 
                 if self.lora_alpha is None or float(self.lora_alpha) == 0.0:
                     scale = 1.0
@@ -195,59 +186,18 @@ class FlexLoRA(FedIT):
                 A_i = U_i
                 B_i = (torch.diag(Sigma_i) @ Vh_i) * scale
 
-                # Store for later transmission
-                if client_id not in self.tailored_lora_params[layer]:
-                    self.tailored_lora_params[layer][client_id] = {}
+                self.tailored_lora_params[layer][cid] = {
+                    "B": B_i.detach().cpu(),
+                    "A": A_i.detach().cpu(),
+                }
 
-                self.tailored_lora_params[layer][client_id]["B"] = B_i.detach().cpu()
-                self.tailored_lora_params[layer][client_id]["A"] = A_i.detach().cpu()
-
-        # Update server model (keep same rank as initialization)
-        # Average the full W_global and decompose back to original rank
-        self._update_server_model_from_w_global(device)
-
-    def _update_server_model_from_w_global(self, device):
-        """
-        After SVD, update server model with averaged components (using original rank).
-        This keeps server model consistent for reference.
-        """
-        # For simplicity, just use FedIT's regular averaging on the server side
-        # (Server maintains original rank, clients get heterogeneous ranks)
-        lora_params_averaged = {}
-
-        first_client = self.client_data[0]["lora_params"]
-        for key in first_client.keys():
-            if "lora_" in key:
-                lora_params_averaged[key] = torch.zeros_like(
-                    first_client[key], device=device
-                )
-
-        for client_data, weight in zip(self.client_data, self.weights):
-            for key in client_data["lora_params"].keys():
-                if "lora_" in key:
-                    # Simple average of original client LoRA (ignoring heterogeneous ranks)
-                    # This is just for server model consistency
-                    local_tensor = client_data["lora_params"][key].to(device)
-                    if (
-                        key in lora_params_averaged
-                        and lora_params_averaged[key].shape == local_tensor.shape
-                    ):
-                        lora_params_averaged[key].add_(local_tensor, alpha=weight)
-
-        # Update server model (as backup/reference)
+        # Update server model with averaged LoRA params (for reference)
         self.update_lora_params(self.model, lora_params_averaged)
-
-    def variables_to_be_sent(self):
-        """
-        Return dictionary with per-client tailored LoRA parameters.
-        """
-        if not self.tailored_lora_params:
-            return super().variables_to_be_sent()
-
-        return {
-            "tailored_lora_params": self.tailored_lora_params,
-            "client_ranks": self.client_ranks,
-        }
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FlexLoRA_Client(FedIT_Client):
@@ -258,56 +208,32 @@ class FlexLoRA_Client(FedIT_Client):
     After receiving SVD-tailored components, reconstruct (A, B) for next training.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.client_rank = None  # Will be set during setup
+    def __init__(self, configs, times, device) -> None:
+        super().__init__(configs=configs, times=times, device=device)
+        self.client_rank = None
 
-    def variables_to_be_sent(self):
-        """Send current LoRA parameters (A, B) to server."""
-        lora_params = {}
-        for name, param in self.model.named_parameters():
-            if "lora_" in name:
-                lora_params[name] = param.data.clone().to("cpu")
-
-        # Also send client's rank for server to know
-        return {
-            "lora_params": lora_params,
-            "score": self.train_samples,
-            "client_rank": self.client_rank,
-        }
-
-    def receive_from_server(self, data):
-        """
-        Receive SVD-tailored LoRA components from server.
-
-        Reconstruct (A_i, B_i) from U[:, :r_i] @ diag(Σ_i) @ V[:r_i, :]^T
-        """
-        if "tailored_lora_params" in data:
-            # data["tailored_lora_params"][layer][client_id] = {"B": B_i, "A": A_i}
-            # But we need to know client_id...
-            # For now, assume single-threaded and use first (only) tailored entry
-            tailored = data["tailored_lora_params"]
-
-            # Map layers to parameter names using this client's actual ID
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        # Apply tailored lora params from server's SVD decomposition
+        if "tailored_lora_params" in package:
+            tailored = package["tailored_lora_params"]
             reconstructed_lora = {}
             for name, param in self.model.named_parameters():
                 if "lora_B" in name:
                     layer = name[: -len(".lora_B")]
                     if layer in tailored and self.id in tailored[layer]:
-                        B_new = tailored[layer][self.id]["B"]
-                        reconstructed_lora[name] = B_new
+                        reconstructed_lora[name] = tailored[layer][self.id]["B"]
                 elif "lora_A" in name:
                     layer = name[: -len(".lora_A")]
                     if layer in tailored and self.id in tailored[layer]:
-                        A_new = tailored[layer][self.id]["A"]
-                        reconstructed_lora[name] = A_new
-
+                        reconstructed_lora[name] = tailored[layer][self.id]["A"]
             if reconstructed_lora:
                 self.update_lora_params(self.model, reconstructed_lora)
-                # Update client rank if provided
-                if "client_ranks" in data and self.id in data["client_ranks"]:
-                    self.client_rank = data["client_ranks"][self.id]
-                self.setup_lora_training(self.model)
-        else:
-            # Fallback to regular LoRA update
-            super().receive_from_server(data)
+                if "client_ranks" in package and self.id in package["client_ranks"]:
+                    self.client_rank = package["client_ranks"][self.id]
+        self.setup_lora_training(self.model)
+
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        result["client_rank"] = self.client_rank
+        return result

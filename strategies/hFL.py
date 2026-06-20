@@ -89,21 +89,10 @@ class hFL(pFL):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.model_map, f, indent=2)
 
-    def send_to_clients(self) -> None:
-        """No model broadcast — clients have heterogeneous architectures."""
-        for client in self.clients:
-            client.current_iter = self.current_iter
-
-    def receive_from_clients(self) -> None:
-        """No model collection — clients keep their own models."""
-
-    def calculate_aggregation_weights(self) -> None:
+    def aggregate_client_updates(self, packages) -> None:
         """No aggregation — heterogeneous models cannot be averaged."""
 
-    def aggregate_models(self) -> None:
-        """No aggregation — heterogeneous models cannot be averaged."""
-
-    def evaluate_generalization_loss(self, dataset_type: str) -> None:
+    def evaluate_generalization(self, *args, **kwargs) -> None:
         """No generalization eval — no shared server model."""
 
     def save_models(self, save_type: str) -> None:
