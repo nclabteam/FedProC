@@ -1,6 +1,8 @@
 import time
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 
+import ray
 import torch
 
 from .tFL import tFL, tFL_Client
@@ -44,111 +46,74 @@ class FedRidge(_LinearWeightsMixin, tFL):
         )
         return parser
 
-    # ------------------------------------------------------------------ train
-
     def train(self) -> None:
-        self.current_iter = 0
         self.logger.info(
             "%s: one-shot sufficient-statistics FL", self.__class__.__name__
         )
         round_start = time.time()
-
-        self.selected_clients = [c for c in self.clients if not c.is_new]
-        self.train_clients()
-        self.receive_from_clients()
-        self.calculate_aggregation_weights()
-        self.aggregate_models()
-
-        self.send_to_clients()
+        self.current_iter = 0
+        self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
+        self.metrics["send_mb"].append(self._send_mb_per_round)
+        packages = self.trainer.train(self.selected_clients)
+        self.aggregate_client_updates(packages)
 
         for dataset_type in ["train", "test"]:
             if dataset_type == "train" and self.skip_eval_train:
                 continue
             if not self.exclude_server_model_processes:
-                self.evaluate_generalization_loss(dataset_type)
+                self.evaluate_generalization(dataset_type)
             self._pre_eval_hook(dataset_type)
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
-        self.save_models(save_type="best")
-        self.fix_results()
-        self.post_process()
+        self.fix_results(default=self.default_value)
+        self.save_results()
+        try:
+            self.close_logger()
+        except Exception:
+            pass
+        try:
+            ray.shutdown()
+        except Exception:
+            pass
 
-    # --------------------------------------------------- federated FL hooks
-
-    def _apply_client_result(
-        self, client, package: Optional[Dict[str, Any]]
-    ) -> None:
-        """Apply sufficient statistics returned by :meth:`FedRidge_Client.train`.
-
-        Called by :meth:`~tFL._dispatch` in Ray-parallel mode to write the
-        statistics computed on the remote copy back to the original client.
-        Serial mode does not need this because :meth:`FedRidge_Client.train`
-        already sets the attributes in place.
-
-        Parameters
-        ----------
-        client : FedRidge_Client
-            The original client object whose statistics will be updated.
-        package : dict or None
-            Return value of ``FedRidge_Client.train()``, containing
-            ``sigma_xx``, ``sigma_xy``, and ``train_samples``.
-        """
-        if package is None:
-            return
-        client._sigma_xx = package["sigma_xx"]
-        client._sigma_xy = package["sigma_xy"]
-        client.train_samples = package["train_samples"]
-
-    def aggregate_models(self) -> None:
+    def aggregate_client_updates(self, packages) -> None:
         L = self.input_len
         H = self.output_len
+        cids = list(packages.keys())
+        scores = [packages[cid]["score"] for cid in cids]
+        total = float(sum(scores))
 
         sigma_xx_g = torch.zeros(L, L)
         sigma_xy_g = torch.zeros(L, H)
-        for cd, w in zip(self.client_data, self.weights):
-            sigma_xx_g.add_(cd["sigma_xx"], alpha=w.item())
-            sigma_xy_g.add_(cd["sigma_xy"], alpha=w.item())
+        for cid, w in zip(cids, [s / total for s in scores]):
+            sigma_xx_g.add_(packages[cid]["sigma_xx"], alpha=w)
+            sigma_xy_g.add_(packages[cid]["sigma_xy"], alpha=w)
 
         W = torch.linalg.solve(sigma_xx_g + self.gamma * torch.eye(L), sigma_xy_g)
-
         self.sigma_xx_g = sigma_xx_g
         self.sigma_xy_g = sigma_xy_g
         self._load_linear_weights(self.model, W)
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
     """Client for FedRidge.
 
-    Computes the local sufficient statistics ``Sigma_xx`` (L × L) and
-    ``Sigma_xy`` (L × H) from the training data and uploads them to the
+    Computes the local sufficient statistics Sigma_xx (L × L) and
+    Sigma_xy (L × H) from the training data and uploads them to the
     server.  The server aggregates the weighted statistics and solves the
     global ridge regression in one round.
-
-    Attributes
-    ----------
-    _sigma_xx : torch.Tensor or None
-        Sample-normalised input covariance, shape ``(L, L)``.
-    _sigma_xy : torch.Tensor or None
-        Sample-normalised input-output cross-covariance, shape ``(L, H)``.
     """
 
     _sigma_xx: Optional[torch.Tensor] = None
     _sigma_xy: Optional[torch.Tensor] = None
 
-    def train(self) -> Dict[str, Any]:
-        """Compute local sufficient statistics from the training data.
-
-        Sets :attr:`_sigma_xx` and :attr:`_sigma_xy` in place (consumed by
-        :meth:`variables_to_be_sent` in serial mode) and returns the same
-        values so :meth:`FedRidge._apply_client_result` can propagate them
-        back to the original client object in Ray-parallel mode.
-
-        Returns
-        -------
-        dict
-            ``{"sigma_xx": Tensor[L, L], "sigma_xy": Tensor[L, H],
-            "train_samples": int}``
-        """
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
@@ -166,15 +131,8 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
         self._sigma_xx = sigma_xx / N
         self._sigma_xy = sigma_xy / N
 
-        return {
-            "sigma_xx": self._sigma_xx,
-            "sigma_xy": self._sigma_xy,
-            "train_samples": N,
-        }
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        return {
-            "sigma_xx": self._sigma_xx,
-            "sigma_xy": self._sigma_xy,
-            "score": self.train_samples,
-        }
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["sigma_xx"] = self._sigma_xx
+        result["sigma_xy"] = self._sigma_xy
+        return result

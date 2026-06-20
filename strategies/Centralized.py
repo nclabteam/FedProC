@@ -1,16 +1,13 @@
-from collections import deque
+from collections import OrderedDict
 
 import ray
 
 from .base import SharedMethods
-from .nFL import nFL, nFL_Client
+from .tFL import tFL, tFL_Client
 
 
-class Centralized(nFL):
+class Centralized(tFL):
     compulsory = {"exclude_server_model_processes": False}
-
-    def initialize_model(self):
-        super(nFL, self).initialize_model()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -18,52 +15,29 @@ class Centralized(nFL):
         self.initialize_optimizer()
         self.initialize_scheduler()
 
-        self.receive_from_clients()
-        self.fix_results()
-
-    def train_clients(self, new_only: bool = False):
-        if self.parallel:  # Use parallel execution with Ray
+    def aggregate_client_updates(self, packages) -> None:
+        if self.parallel:
             futures = []
-            idle_workers = deque(range(self.num_workers))
-            job_map = {}
+            for cid, pkg in packages.items():
+                train_loader = pkg["train_loader"]
+                future = train_one_epoch_remote.remote(
+                    model=self.model,
+                    dataloader=train_loader,
+                    optimizer=self.optimizer,
+                    criterion=self.loss,
+                    scheduler=self.scheduler,
+                    device=self.device,
+                    epochs=self.epochs,
+                )
+                futures.append(future)
 
-            i = 0
-            while i < len(self.client_data) or len(futures) > 0:
-                while i < len(self.client_data) and len(idle_workers) > 0:
-                    worker_id = idle_workers.popleft()
-                    client = self.client_data[i]
-                    train_loader = client["dataloader"]
-
-                    # Parallelized `train_one_epoch` execution
-                    future = train_one_epoch_remote.remote(
-                        model=self.model,
-                        dataloader=train_loader,
-                        optimizer=self.optimizer,
-                        criterion=self.loss,
-                        scheduler=self.scheduler,
-                        device=self.device,
-                        epochs=self.epochs,
-                    )
-
-                    job_map[future] = (client, worker_id)
-                    futures.append(future)
-                    i += 1
-
-                if len(futures) > 0:
-                    all_finished, futures = ray.wait(futures)
-                    for finished in all_finished:
-                        client, worker_id = job_map[finished]
-                        model_state, optimizer_state = ray.get(finished)
-
-                        # Assign updated model & optimizer back
-                        self.model.load_state_dict(model_state)
-                        self.optimizer.load_state_dict(optimizer_state)
-
-                        idle_workers.append(worker_id)
-
-        else:  # Run in serial mode
-            for client in self.client_data:
-                train_loader = client["dataloader"]
+            for future in futures:
+                model_state, optimizer_state = ray.get(future)
+                self.model.load_state_dict(model_state)
+                self.optimizer.load_state_dict(optimizer_state)
+        else:
+            for cid, pkg in packages.items():
+                train_loader = pkg["train_loader"]
                 for _ in range(self.epochs):
                     self.train_one_epoch(
                         model=self.model,
@@ -74,18 +48,24 @@ class Centralized(nFL):
                         device=self.device,
                     )
 
-    def receive_from_clients(self):
-        self.client_data = []
-        for client in self.clients:
-            self.client_data.append(client.send_to_server())
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
     def evaluate_personalization_loss(self, *args, **kwargs):
         pass
 
 
-class Centralized_Client(nFL_Client):
-    def variables_to_be_sent(self):
-        return {"dataloader": self.load_train_data()}
+class Centralized_Client(tFL_Client):
+    def fit(self) -> None:
+        pass  # server trains on collected client data; no client-side training
+
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        result["train_loader"] = self.load_train_data()
+        return result
 
 
 @ray.remote

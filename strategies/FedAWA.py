@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 
@@ -16,6 +18,7 @@ class FedAWA(Server):
     }
 
     awa_weights = None
+    _awa_optimizer = None
 
     @classmethod
     def args_update(cls, parser):
@@ -51,46 +54,39 @@ class FedAWA(Server):
         """
         x_col = x.unsqueeze(-2)
         y_lin = y.unsqueeze(-3)
-        # Ensure both are float (real) tensors
         if torch.is_complex(x_col):
             x_col = x_col.real
         if torch.is_complex(y_lin):
             y_lin = y_lin.real
         if dis == "cos":
-            # Cosine distance: 1 - cosine similarity
             d_cosine = nn.CosineSimilarity(dim=-1, eps=1e-8)
             C = 1 - d_cosine(x_col, y_lin)
         elif dis == "euc":
-            # Average L_p distance across the feature dimension
             C = torch.mean((torch.abs(x_col - y_lin)) ** p, -1)
         else:
             raise ValueError(f"Unsupported distance type: {dis}")
         return C
 
-    def calculate_aggregation_weights(self):
-        """
-        Learns aggregation weights using the FedAWA server optimization process.
-        Updates self.weights with the learned, scaled, and normalized weights.
-        Updates self.awa_weights with the raw learned logits for the next round.
-        """
+    def aggregate_client_updates(self, packages) -> None:
+        cids = list(packages.keys())
+        num_clients = len(cids)
+        scores = [packages[cid]["score"] for cid in cids]
 
-        num_clients = len(self.client_data)
+        client_params = [packages[cid]["regular_model_params"] for cid in cids]
+        client_flats = torch.stack([
+            torch.cat([p.view(-1).float() for p in params.values()])
+            for params in client_params
+        ]).to(self.device)
 
-        # 1. Initialize or retrieve learnable weights (logits)
+        global_flat = torch.cat(
+            [p.view(-1).float() for p in self.public_model_params.values()]
+        ).to(self.device)
+
         if self.awa_weights is None or self.awa_weights.shape[0] != num_clients:
-            # Initialize based on sample counts for the first time or if client set changes
-            ts = torch.tensor(
-                [client["score"] for client in self.client_data],
-                dtype=torch.float32,
-                device=self.device,
-            )
-            # Initialize logits (e.g., log of counts) for stability. Add epsilon for non-zero counts.
-            self.awa_weights = (
-                torch.log(ts + 1e-9).clone().detach().requires_grad_(True)
-            )
-
+            ts = torch.tensor(scores, dtype=torch.float32, device=self.device)
+            self.awa_weights = torch.log(ts + 1e-9).clone().detach().requires_grad_(True)
             obj = self._get_objective_function("optimizers", self.server_optimizer)
-            self.optimizer = obj(
+            self._awa_optimizer = obj(
                 params=[self.awa_weights],
                 configs=type(
                     "Config",
@@ -107,91 +103,53 @@ class FedAWA(Server):
                 )(),
             )
         else:
-            # Use weights (logits) from the previous round
             self.awa_weights = self.awa_weights.clone().detach().requires_grad_(True)
 
-        # Ensure weights are on the correct device and require gradients
         self.awa_weights = self.awa_weights.to(self.device).requires_grad_(True)
 
-        # 2. Prepare models and flatten parameters
-        # Detach parameters as they are constants during weight optimization
-        global_flat = self._flatten_params(self.model).detach().to(self.device)
-        client_models = [client["model"] for client in self.client_data]
-        client_flats = torch.stack(
-            [self._flatten_params(m).detach() for m in client_models]
-        ).to(self.device)
+        for _ in range(self.server_epochs):
+            self._awa_optimizer.zero_grad()
 
-        # 4. Server optimization loop
-        for i in range(self.server_epochs):
-            self.optimizer.zero_grad()
-
-            # Current probabilities from logits
             probability_train = torch.nn.functional.softmax(self.awa_weights, dim=0)
 
-            # --- Calculate Regularization Loss (Distance-based) ---
-            # Cost matrix between global model and each client model (flattened)
-            # Input shapes: global_flat [flat_dim], client_flats [num_clients, flat_dim]
-            # Need global_flat unsqueezed to [1, flat_dim] for cost_matrix function
             C = self._cost_matrix(
                 x=global_flat.unsqueeze(0),
                 y=client_flats,
                 dis=self.reg_distance,
             )
-            # C shape is likely [1, num_clients] after mean over features in _cost_matrix
-            # Ensure dimensions match for multiplication with probability_train [num_clients]
-            reg_loss = torch.sum(
-                probability_train * C.squeeze(0)
-            )  # Squeeze C if needed
+            reg_loss = torch.sum(probability_train * C.squeeze(0))
 
-            # --- Calculate Similarity Loss (Update direction-based) ---
-            # Client updates relative to the global model
-            # tau_local = theta_local - theta_global (equation 1)
-            client_updates = client_flats - global_flat  # Shape [num_clients, flat_dim]
-            # Weighted average of client updates
-            # tau_global = sum of trainable_coffeicients * tau_local (equation 1)
+            client_updates = client_flats - global_flat
             weighted_avg_update = torch.sum(
                 client_updates * probability_train.unsqueeze(1), dim=0, keepdim=True
-            )  # Shape [1, flat_dim]
-            # L2 distance between each client update and the weighted average update
-            # equation 3 - first half
-            l2_distance = torch.norm(
-                client_updates - weighted_avg_update, p=2, dim=1
-            )  # Shape [num_clients]
-            # equation 3 - second half
+            )
+            l2_distance = torch.norm(client_updates - weighted_avg_update, p=2, dim=1)
             sim_loss = torch.sum(probability_train * l2_distance)
 
-            # --- Total Loss ---
-            # equation 3 - full loss
             total_loss = sim_loss + reg_loss
-
-            # Backpropagate gradients w.r.t awa_weights
             total_loss.backward()
-            self.optimizer.step()
+            self._awa_optimizer.step()
 
-        # 5. Store final weights
-        # Detach the learned weights (logits) for storage and use in aggregation
-        final_awa_weights_logits = self.awa_weights.detach().clone()
-        # Store raw weights (logits) for potential use in the next round
-        self.awa_weights = final_awa_weights_logits
+        final_logits = self.awa_weights.detach().clone()
+        self.awa_weights = final_logits
 
-        # Calculate final aggregation probabilities
-        final_probabilities = torch.nn.functional.softmax(
-            final_awa_weights_logits, dim=0
-        )
-
-        # Apply fedawa_gamma scaling
+        final_probabilities = torch.nn.functional.softmax(final_logits, dim=0)
         scaled_weights = final_probabilities * self.fedawa_gamma
-
-        # Renormalize weights to sum to 1 for standard aggregation framework
-        # This ensures the aggregation behaves like a weighted average.
-        # The original FedAWA implementation might handle gamma differently,
-        # but renormalization is safer for general use.
-        sum_scaled_weights = scaled_weights.sum()
-        if sum_scaled_weights > 1e-8:  # Avoid division by zero
-            self.weights = scaled_weights / sum_scaled_weights
+        sum_scaled = scaled_weights.sum()
+        if sum_scaled > 1e-8:
+            weights = scaled_weights / sum_scaled
         else:
-            # Fallback to uniform weights if learned weights are too small/zero
-            self.weights = torch.ones_like(final_probabilities) / num_clients
+            weights = torch.ones_like(final_probabilities) / num_clients
+
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [client_params[i][name].float() for i in range(num_clients)], dim=-1
+            )
+            new_params[name] = torch.sum(
+                stacked * weights.to(stacked.dtype), dim=-1
+            ).to(self.public_model_params[name].dtype)
+        self._commit_global(new_params)
 
 
 class DFedAWA(FedAWA, dFL):

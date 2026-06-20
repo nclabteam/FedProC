@@ -1,6 +1,6 @@
 import time
-from typing import Any, Dict
 
+import ray
 import torch
 
 from .FedRidge import _LinearWeightsMixin
@@ -23,12 +23,14 @@ class LocalOLS(LocalOnly):
     optional = {"gamma": 0.0}
 
     def train(self) -> None:
-        self.current_iter = 0
         self.logger.info("%s: one-shot local OLS", self.__class__.__name__)
         round_start = time.time()
-
-        self.selected_clients = [c for c in self.clients if not c.is_new]
-        self.train_clients()
+        self.current_iter = 0
+        self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
+        self.metrics["send_mb"].append(self._send_mb_per_round)
+        packages = self.trainer.train(self.selected_clients)
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
         for dataset_type in ["train", "test"]:
             if dataset_type == "train" and self.skip_eval_train:
@@ -36,8 +38,16 @@ class LocalOLS(LocalOnly):
             self._pre_eval_hook(dataset_type)
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
-        self.fix_results()
-        self.post_process()
+        self.fix_results(default=self.default_value)
+        self.save_results()
+        try:
+            self.close_logger()
+        except Exception:
+            pass
+        try:
+            ray.shutdown()
+        except Exception:
+            pass
 
 
 class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
@@ -48,8 +58,8 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
     Data never changes, so recomputing is idempotent.
     """
 
-    def train(self) -> Dict[str, Any]:
-        start_time = time.time()
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
@@ -65,13 +75,3 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
         N = self.train_samples
         W_i = torch.linalg.solve(sxx / N + self.gamma * torch.eye(L), sxy / N)
         self._load_linear_weights(self.model, W_i)
-
-        return {
-            "model": self.model,
-            "optimizer_state": self.optimizer,
-            "train_time": time.time() - start_time,
-            "train_samples": self.train_samples,
-        }
-
-    def adapt(self, global_model=None) -> None:
-        self.train()

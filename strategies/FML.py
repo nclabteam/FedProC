@@ -1,6 +1,6 @@
 import copy
+from collections import OrderedDict
 
-# import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -21,24 +21,58 @@ class FML(pFL):
         parser.add_argument("--alpha", type=float, default=None)
         parser.add_argument("--beta", type=float, default=None)
 
-    def calculate_aggregation_weights(self):
-        self.weights = torch.tensor([1 / len(self.client_data)] * len(self.client_data))
-
 
 class FML_Client(pFL_Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # self.metrics["train_loss_g"] = []
-        # self.metrics["test_loss_g"] = []
-
+    def __init__(self, configs, times, device):
+        super().__init__(configs, times, device)
         self.model_g = copy.deepcopy(self.model)
         obj = self._get_objective_function("optimizers", "Adam")
         self.optimizer_g = obj(params=self.model_g.parameters(), configs=self.configs)
         self.KL = KLDivergence()
 
-    def variables_to_be_sent(self):
-        return {"model": self.model_g}
+    def set_parameters(self, package: dict) -> None:
+        self.id = package["client_id"]
+        self.current_iter = package["current_iter"]
+        self._load_private(self.id)
+
+        # regular_model_params carries the FedAvg'd model_g
+        self.model_g.load_state_dict(package["regular_model_params"])
+
+        # personal_model_params carries model_i state + optimizer_g state
+        personal = package["personal_model_params"]
+        if personal:
+            # strict=False silently ignores "optimizer_g_state" key
+            self.model.load_state_dict(personal, strict=False)
+            if "optimizer_g_state" in personal:
+                self.optimizer_g.load_state_dict(personal["optimizer_g_state"])
+                self._move_optimizer_state_to_param_devices(self.optimizer_g)
+
+        if package["optimizer_state"]:
+            self.optimizer.load_state_dict(package["optimizer_state"])
+            self._move_optimizer_state_to_param_devices(self.optimizer)
+        else:
+            self.optimizer.load_state_dict(self.init_optimizer_state)
+        if package["scheduler_state"]:
+            self.scheduler.load_state_dict(package["scheduler_state"])
+        else:
+            self.scheduler.load_state_dict(self.init_scheduler_state)
+
+    def fit(self) -> None:
+        super().fit()
+        if self.efficiency == "med":
+            self.model_g.to("cpu")
+
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        # regular_model_params = model_g (FedAvg'd by server each round)
+        result["regular_model_params"] = OrderedDict(
+            (k, v.detach().cpu().clone()) for k, v in self.model_g.state_dict().items()
+        )
+        # personal_model_params = model_i state + optimizer_g state (stored per-client)
+        personal = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
+        personal["optimizer_g_state"] = self._optimizer_state_to_cpu(self.optimizer_g)
+        result["personal_model_params"] = personal
+        return result
 
     def train_one_epoch(self, dataloader, *args, offload_after=True, **kwargs):
         self.model.to(self.device)
@@ -72,30 +106,3 @@ class FML_Client(pFL_Client):
         if offload_after:
             self.model.to("cpu")
             self.model_g.to("cpu")
-
-    def receive_from_server(self, data):
-        self.update_model_params(old=self.model_g, new=data["model"])
-
-    # def get_train_loss(self):
-    #     results = super().get_train_loss()
-    #     losses = self.calculate_loss(
-    #         model=self.model_g,
-    #         dataloader=self.load_train_data(),
-    #         criterion=self.loss,
-    #         device=self.device,
-    #     )
-    #     losses = np.mean(losses)
-    #     self.metrics["train_loss_g"].append(losses)
-    #     return results
-
-    # def get_test_loss(self):
-    #     results = super().get_test_loss()
-    #     losses = self.calculate_loss(
-    #         model=self.model_g,
-    #         dataloader=self.load_test_data(),
-    #         criterion=self.loss,
-    #         device=self.device,
-    #     )
-    #     losses = np.mean(losses)
-    #     self.metrics["test_loss_g"].append(losses)
-    #     return results

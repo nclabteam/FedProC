@@ -14,35 +14,31 @@ class FedCAC(pFL):
         parser.add_argument("--tau", type=float, default=None)
         parser.add_argument("--beta", type=int, default=None)
 
-    def get_customized_global_models(self):
-        num_clients = len(self.client_data)
+    def aggregate_client_updates(self, packages) -> None:
+        # Standard FedAvg of regular_model_params
+        super().aggregate_client_updates(packages)
 
-        # Skip if any client lacks critical parameters (first round)
-        for i in range(num_clients):
-            if self.client_data[i].get("critical_parameter") is None:
+        cids = list(packages.keys())
+
+        # Skip customization if any client lacks critical_parameter (first round)
+        for cid in cids:
+            if "critical_parameter" not in self.clients_personal_model_params[cid]:
                 return
 
-        overlap_buffer = [[] for i in range(num_clients)]
+        num_clients = len(cids)
+        overlap_buffer = [[] for _ in range(num_clients)]
 
-        # calculate overlap rate between client i and client j in the selected clients
         for i in range(num_clients):
             for j in range(num_clients):
                 if i == j:
                     continue
-                overlap_rate = 1 - torch.sum(
-                    torch.abs(
-                        self.client_data[i]["critical_parameter"].to(self.device)
-                        - self.client_data[j]["critical_parameter"].to(self.device)
-                    )
-                ) / float(
-                    torch.sum(
-                        self.client_data[i]["critical_parameter"].to(self.device)
-                    ).cpu()
-                    * 2
+                cp_i = self.clients_personal_model_params[cids[i]]["critical_parameter"].to(self.device)
+                cp_j = self.clients_personal_model_params[cids[j]]["critical_parameter"].to(self.device)
+                overlap_rate = 1 - torch.sum(torch.abs(cp_i - cp_j)) / float(
+                    torch.sum(cp_i).cpu() * 2
                 )
                 overlap_buffer[i].append(overlap_rate.item())
 
-        # calculate the global threshold
         overlap_buffer_tensor = torch.tensor(overlap_buffer)
         overlap_sum = overlap_buffer_tensor.sum()
         overlap_avg = overlap_sum / ((num_clients - 1) * num_clients)
@@ -51,134 +47,103 @@ class FedCAC(pFL):
             overlap_max - overlap_avg
         )
 
-        # calculate the customized global model for each client
-        for i in range(num_clients):
-            w_customized_global = copy.deepcopy(
-                self.client_data[i]["model"].state_dict()
-            )
-            collaboration_clients = [i]
-            # find clients whose critical parameter locations are similar to client i
+        for i, cid in enumerate(cids):
+            w_customized = copy.deepcopy(packages[cid]["regular_model_params"])
+            collaboration_cids = [cid]
             index = 0
             for j in range(num_clients):
                 if i == j:
                     continue
                 if overlap_buffer[i][index] >= threshold:
-                    collaboration_clients.append(j)
+                    collaboration_cids.append(cids[j])
                 index += 1
 
-            for key in w_customized_global.keys():
-                for client in collaboration_clients:
-                    if client == i:
+            for name in w_customized:
+                for collab_cid in collaboration_cids:
+                    if collab_cid == cid:
                         continue
-                    w_customized_global[key] += self.client_data[client][
-                        "model"
-                    ].state_dict()[key]
-                w_customized_global[key] = torch.div(
-                    w_customized_global[key], float(len(collaboration_clients))
+                    w_customized[name] = (
+                        w_customized[name]
+                        + packages[collab_cid]["regular_model_params"][name]
+                    )
+                w_customized[name] = torch.div(
+                    w_customized[name], float(len(collaboration_cids))
                 )
-            # send the customized global model to client i
-            self.client_data[i]["customized_model"] = copy.deepcopy(self.model)
-            self.client_data[i]["customized_model"].load_state_dict(w_customized_global)
 
-    def variables_to_be_sent(self):
-        if self.current_iter == 0:
-            return super().variables_to_be_sent()
-        self.get_customized_global_models()
-        customized_models = []
-        for client in self.clients:
-            if self.client_data[client.id].get("customized_model") is not None:
-                customized_models.append(
-                    self.client_data[client.id]["customized_model"]
-                )
-            else:
-                customized_models.append(None)
-        return {**super().variables_to_be_sent(), "customized_model": customized_models}
+            self.clients_personal_model_params[cid]["customized_model_state"] = w_customized
 
 
 class FedCAC_Client(pFL_Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.critical_parameter = (
-            None  # record the critical parameter positions in FedCAC
-        )
-        self.customized_model = copy.deepcopy(self.model)  # customized global model
-        self.critical_parameter = None
-        self.global_mask = None
-        self.local_mask = None
+    def set_parameters(self, package: dict) -> None:
+        self.id = package["client_id"]
+        self.current_iter = package["current_iter"]
+        self._load_private(self.id)
+        self.model.load_state_dict(package["regular_model_params"])
 
-    def train(self):
-        self.snapshot = copy.deepcopy(self.model)
-        result = super().train()
-        (
-            self.critical_parameter,
-            self.global_mask,
-            self.local_mask,
-        ) = self.evaluate_critical_parameter(
-            prevModel=self.snapshot, model=self.model, tau=self.tau
+        personal = package["personal_model_params"]
+        if personal:
+            if personal.get("local_mask") is not None and "customized_model_state" in personal:
+                # Replicate original FedCAC behavior: load customized model
+                self.model.load_state_dict(personal["customized_model_state"])
+            else:
+                self.model.load_state_dict(personal, strict=False)
+
+        if package["optimizer_state"]:
+            self.optimizer.load_state_dict(package["optimizer_state"])
+            self._move_optimizer_state_to_param_devices(self.optimizer)
+        else:
+            self.optimizer.load_state_dict(self.init_optimizer_state)
+        if package["scheduler_state"]:
+            self.scheduler.load_state_dict(package["scheduler_state"])
+        else:
+            self.scheduler.load_state_dict(self.init_scheduler_state)
+
+    def fit(self) -> None:
+        prev_params = [p.data.clone() for p in self.model.parameters()]
+        super().fit()
+        cp, gm, lm = self._evaluate_critical_parameter(
+            prev_params, list(self.model.parameters())
         )
+        self._critical_parameter = cp
+        self._global_mask = gm
+        self._local_mask = lm
+
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        result["personal_model_params"]["critical_parameter"] = self._critical_parameter
+        result["personal_model_params"]["local_mask"] = self._local_mask
+        result["personal_model_params"]["global_mask"] = self._global_mask
         return result
 
-    def evaluate_critical_parameter(self, prevModel, model, tau):
-        r"""
-        Overview:
-            Implement critical parameter selection.
-        """
-        device = next(model.parameters()).device
-        prevModel = prevModel.to(device)
-        global_mask = []  # mark non-critical parameter
-        local_mask = []  # mark critical parameter
+    def _evaluate_critical_parameter(self, prev_params, curr_params):
+        device = curr_params[0].device
+        global_mask = []
+        local_mask = []
         critical_parameter = []
 
-        # select critical parameters in each layer
-        for prevparam, param in zip(prevModel.parameters(), model.parameters()):
-            g = param.data - prevparam.data
+        for prevparam, param in zip(prev_params, curr_params):
+            prevparam = prevparam.to(device)
+            g = param.data - prevparam
             v = param.data
             c = torch.abs(g * v)
 
             metric = c.view(-1)
             num_params = metric.size(0)
-            nz = int(tau * num_params)
+            nz = int(self.tau * num_params)
             top_values, _ = torch.topk(metric, nz)
             thresh = top_values[-1] if len(top_values) > 0 else np.inf
-            # if threshold equals 0, select minimal nonzero element as threshold
             if thresh <= 1e-10:
                 new_metric = metric[metric > 1e-20]
-                if len(new_metric) == 0:  # this means all items in metric are zero
-                    print(f"Abnormal!!! metric:{metric}")
-                else:
+                if len(new_metric) > 0:
                     thresh = new_metric.sort()[0][0]
 
-            # Get the local mask and global mask
             mask = (c >= thresh).int().to("cpu")
             global_mask.append((c < thresh).int().to("cpu"))
             local_mask.append(mask)
             critical_parameter.append(mask.view(-1))
-        model.zero_grad()
+
+        for param in curr_params:
+            param.grad = None
         critical_parameter = torch.cat(critical_parameter)
 
         return critical_parameter, global_mask, local_mask
-
-    def receive_from_server(self, data):
-        if self.local_mask is not None:
-            self.customized_model = data["customized_model"]
-            index = 0
-            for param1, param2, param3 in zip(
-                self.model.parameters(),
-                self.customized_model.parameters(),
-                self.customized_model.parameters(),
-            ):
-                param1.data = (
-                    self.local_mask[index].to(self.device).float() * param3.data
-                    + self.global_mask[index].to(self.device).float() * param2.data
-                )
-                index += 1
-
-        else:
-            super().receive_from_server(data=data)
-
-    def variables_to_be_sent(self):
-        return {
-            **super().variables_to_be_sent(),
-            "critical_parameter": self.critical_parameter,
-            "id": self.id,
-        }

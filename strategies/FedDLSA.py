@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 
 import torch
@@ -28,40 +29,24 @@ class FedDLSA(FedRidge):
 
     optional = {"gamma": 0.0}
 
-    def _apply_client_result(
-        self, client, package: Optional[Dict[str, Any]]
-    ) -> None:
-        """Apply local OLS and precision matrix returned by :meth:`FedDLSA_Client.train`.
-
-        Parameters
-        ----------
-        client : FedDLSA_Client
-            Original client object to update.
-        package : dict or None
-            Return value of ``FedDLSA_Client.train()``, containing ``w_i``,
-            ``h_i``, and ``train_samples``.
-        """
-        if package is None:
-            return
-        client._w_i = package["w_i"]
-        client._h_i = package["h_i"]
-        client.train_samples = package["train_samples"]
-
-    def aggregate_models(self) -> None:
+    def aggregate_client_updates(self, packages) -> None:
         L = self.input_len
         H = self.output_len
+        cids = list(packages.keys())
 
         h_sum = torch.zeros(L, L)
         hw_sum = torch.zeros(L, H)
-        for cd in self.client_data:
-            h_sum.add_(cd["H_i"])
-            hw_sum.add_(cd["H_i"] @ cd["W_i"])
+        for cid in cids:
+            h_sum.add_(packages[cid]["h_i"])
+            hw_sum.add_(packages[cid]["h_i"] @ packages[cid]["w_i"])
 
         W_g = torch.linalg.solve(h_sum + self.gamma * torch.eye(L), hw_sum)
         self._load_linear_weights(self.model, W_g)
-
-    def calculate_aggregation_weights(self) -> None:
-        pass  # H_i encodes precision weighting; self.weights is unused
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FedDLSA_Client(FedRidge_Client):
@@ -72,30 +57,13 @@ class FedDLSA_Client(FedRidge_Client):
     sigma_i^2 is estimated from the training residuals.
 
     No personalisation — receives and loads the global model only.
-
-    Attributes
-    ----------
-    _w_i : torch.Tensor or None
-        Local OLS solution, shape ``(L, H)``.
-    _h_i : torch.Tensor or None
-        Precision matrix H_i = Sigma_xx_i / sigma_i^2, shape ``(L, L)``.
     """
 
     _w_i: Optional[torch.Tensor] = None
     _h_i: Optional[torch.Tensor] = None
 
-    def train(self) -> Dict[str, Any]:
-        """Compute local OLS and precision matrix from the training data.
-
-        Sets :attr:`_w_i` and :attr:`_h_i` in place (serial mode) and also
-        returns them so :meth:`FedDLSA._apply_client_result` can propagate
-        the results back in Ray-parallel mode.
-
-        Returns
-        -------
-        dict
-            ``{"w_i": Tensor[L, H], "h_i": Tensor[L, L], "train_samples": int}``
-        """
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
@@ -119,23 +87,16 @@ class FedDLSA_Client(FedRidge_Client):
 
         w_i = torch.linalg.solve(sxx, sxy)
 
-        # Gaussian-NLL residual variance: RSS/n_obs via OLS optimality
-        # trace(W_i^T Sxx W_i) = trace(W_i^T Sxy) at the optimum
         yy_mean = yy_sum / n_obs
         fit_trace = (w_i * sxy).sum().item()
         sigma_sq = max((yy_mean - fit_trace) / H, 1e-8)
 
         self._w_i = w_i
         self._h_i = sigma_xx / sigma_sq
+        self.train_samples = n_obs
 
-        return {
-            "w_i": self._w_i,
-            "h_i": self._h_i,
-            "train_samples": n_obs,
-        }
-
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        return {
-            "W_i": self._w_i,
-            "H_i": self._h_i,
-        }
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["w_i"] = self._w_i
+        result["h_i"] = self._h_i
+        return result

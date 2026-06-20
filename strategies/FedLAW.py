@@ -1,4 +1,5 @@
 import copy
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -66,19 +67,17 @@ class FedLAW(tFL):
             shuffle=True,
         )
 
-    def aggregate_models(self):
-        device = self.clients[0].device
+    def aggregate_client_updates(self, packages) -> None:
+        cids = list(packages.keys())
+        device = self.device
         self.model.to(device)
 
-        # Collect flat parameter vectors from clients
         flat_params = torch.stack(
-            [client["flat_params"].to(device) for client in self.client_data]
+            [packages[cid]["flat_params"].to(device) for cid in cids]
         )  # [N, D]
-        n_clients = flat_params.shape[0]
 
-        # Learnable log-weights (a) and log-scale (g); init from data-size weights
         scores = torch.tensor(
-            [client["score"] for client in self.client_data],
+            [packages[cid]["score"] for cid in cids],
             dtype=torch.float32,
             device=device,
         )
@@ -88,7 +87,6 @@ class FedLAW(tFL):
 
         optimizer = torch.optim.Adam([a, g], lr=self.server_lr)
 
-        # Build a param-name → shape mapping from server model for functional_call
         param_names = [name for name, _ in self.model.named_parameters()]
         param_shapes = [p.shape for p in self.model.parameters()]
         param_numels = [p.numel() for p in self.model.parameters()]
@@ -105,7 +103,6 @@ class FedLAW(tFL):
                 gamma = torch.exp(g)  # scalar
                 merged = gamma * (lam @ flat_params)  # [D]
 
-                # Build param dict for functional_call
                 param_dict = {}
                 offset = 0
                 for name, shape, numel in zip(param_names, param_shapes, param_numels):
@@ -124,7 +121,6 @@ class FedLAW(tFL):
                 loss.backward()
                 optimizer.step()
 
-        # Apply optimized weights to server model
         with torch.no_grad():
             lam = torch.softmax(a, dim=0)
             gamma = torch.exp(g)
@@ -132,9 +128,17 @@ class FedLAW(tFL):
             vector_to_parameters(best_flat, self.model.parameters())
 
         self.model.to("cpu")
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )
 
 
 class FedLAW_Client(tFL_Client):
-    def variables_to_be_sent(self):
-        flat = parameters_to_vector(self.model.parameters()).detach().cpu()
-        return {"flat_params": flat, "score": self.train_samples}
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        result["flat_params"] = parameters_to_vector(
+            self.model.parameters()
+        ).detach().cpu()
+        return result

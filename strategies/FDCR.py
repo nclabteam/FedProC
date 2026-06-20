@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -99,52 +101,42 @@ class FDCR(pFL):
 
     def __init__(self, configs, times):
         self.prev_global_params = None
-        self.fisher_dict = {}
         super().__init__(configs, times)
 
-    def receive_from_clients(self):
-        """Collect client models and Fisher Information."""
-        super().receive_from_clients()
-        for client, data in zip(self.selected_clients, self.client_data):
-            if "fisher_info" in data:
-                self.fisher_dict[client.id] = data["fisher_info"]
+    def aggregate_client_updates(self, packages) -> None:
+        cids = list(packages.keys())
+        scores = [packages[cid]["score"] for cid in cids]
+        total = float(sum(scores))
+        freq = torch.tensor([s / total for s in scores])
+        lr = self.learning_rate
 
-    def aggregate_models(self):
-        """FDCR aggregation: detect attackers via Fisher-weighted disparities, rescale benign params."""
-        freq = self.weights.clone()
-        lr = self.clients[0].learning_rate
-
-        # Snapshot previous global model
         if self.prev_global_params is None:
-            self.prev_global_params = {
-                name: p.data.clone() for name, p in self.model.named_parameters()
-            }
+            self.prev_global_params = OrderedDict(
+                (k, v.clone()) for k, v in self.public_model_params.items()
+            )
 
         prev_vec = torch.cat(
             [p.view(-1) for p in self.prev_global_params.values()]
         ).detach()
 
-        # Compute pseudo-gradients and Fisher-weighted gradients
         grad_list = []
         weight_grad_list = []
-        for client in self.selected_clients:
+        for cid in cids:
+            client_params = packages[cid]["regular_model_params"]
             client_vec = torch.cat(
-                [p.view(-1) for p in client.model.parameters()]
+                [p.view(-1) for p in client_params.values()]
             ).detach()
             grad = (prev_vec - client_vec) / lr
             grad_list.append(grad)
 
-            # Fisher Information (computed during training, or fallback to uniform)
-            fish = self.fisher_dict.get(client.id, torch.ones_like(grad))
+            fish = packages[cid].get("fisher_info", torch.ones_like(grad))
             norm_fish = (fish - fish.min()) / (fish.max() - fish.min() + 1e-10)
             weight_grad_list.append(grad * norm_fish)
 
-        # Global weighted gradient
         weight_global_grad = torch.zeros_like(weight_grad_list[0])
         for wg, w in zip(weight_grad_list, freq):
             weight_global_grad += wg * w
 
-        # Parameter disparity scores
         div_scores = []
         for wg in weight_grad_list:
             score = F.pairwise_distance(
@@ -153,7 +145,6 @@ class FDCR(pFL):
             div_scores.append(score.item())
         div_scores = torch.tensor(div_scores).view(-1, 1)
 
-        # FINCH clustering to detect attackers
         fin = FINCH()
         fin.fit(div_scores.numpy())
 
@@ -164,54 +155,56 @@ class FDCR(pFL):
             evils_center = max(partition["cluster_centers"])
             evils_center_idx = np.where(partition["cluster_centers"] == evils_center)[0]
             evils_idx = partition["cluster_core_indices"][int(evils_center_idx)]
-            benign_idx = [i for i in range(len(self.selected_clients)) if i not in evils_idx]
+            benign_idx = [i for i in range(len(cids)) if i not in evils_idx]
 
             self.logger.info(f"FDCR: benign={benign_idx}, evil={evils_idx}")
 
             freq[evils_idx] = 0
             reconstructed_freq = freq / freq.sum()
 
-            # Rescale benign client parameters using Fisher weights
             for i in benign_idx:
-                client = self.selected_clients[i]
-                fish = self.fisher_dict.get(client.id, torch.ones_like(grad_list[0]))
+                cid = cids[i]
+                client_params = packages[cid]["regular_model_params"]
+                fish = packages[cid].get("fisher_info", torch.ones_like(grad_list[0]))
                 norm_fish = (fish - fish.min()) / (fish.max() - fish.min() + 1e-10)
-                idx = 0
-                for name, param in client.model.named_parameters():
-                    prev_param = self.prev_global_params[name]
-                    delta = prev_param - param.detach()
+                offset = 0
+                for name, prev_param in self.prev_global_params.items():
                     numel = prev_param.numel()
                     size = prev_param.size()
+                    weight_para = torch.sigmoid(
+                        norm_fish[offset : offset + numel].reshape(size)
+                    ) * 2
+                    delta = prev_param - client_params[name].detach()
+                    client_params[name] = prev_param - delta * weight_para
+                    offset += numel
 
-                    weight_para = norm_fish[idx : idx + numel].reshape(size)
-                    weight_para = torch.sigmoid(weight_para) * 2
-                    param.data.copy_(prev_param - delta * weight_para)
-                    idx += numel
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [packages[cids[i]]["regular_model_params"][name].float()
+                 for i in range(len(cids))],
+                dim=-1,
+            )
+            new_params[name] = torch.sum(
+                stacked * reconstructed_freq.to(stacked.dtype), dim=-1
+            ).to(self.public_model_params[name].dtype)
+        self._commit_global(new_params)
 
-        self.weights = reconstructed_freq
-        super().aggregate_models()
-
-        # Save current global params for next round
-        self.prev_global_params = {
-            name: p.data.clone() for name, p in self.model.named_parameters()
-        }
+        self.prev_global_params = OrderedDict(
+            (k, v.clone()) for k, v in self.public_model_params.items()
+        )
 
 
 class FDCR_Client(pFL_Client):
     """Client that computes Fisher Information during training."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fisher_info = None
-
-    def train(self):
-        """Train and compute diagonal Fisher Information."""
-        result = super().train()
+    def fit(self) -> None:
+        super().fit()
         self._compute_fisher()
-        return result
 
     def _compute_fisher(self):
         """Compute diagonal Fisher Information Matrix approximation."""
+        self.model.to(self.device)
         self.model.eval()
         fisher = {
             name: torch.zeros_like(p) for name, p in self.model.named_parameters()
@@ -229,13 +222,16 @@ class FDCR_Client(pFL_Client):
                 if param.grad is not None:
                     fisher[name] += param.grad.data.clone() ** 2
             n_batches += 1
-        # Average
         for name in fisher:
             fisher[name] /= max(n_batches, 1)
-        self.fisher_info = torch.cat([f.view(-1) for f in fisher.values()]).detach()
+        self._fisher_info = torch.cat(
+            [f.view(-1) for f in fisher.values()]
+        ).detach().cpu()
+        if self.efficiency != "high":
+            self.model.to("cpu")
 
-    def variables_to_be_sent(self):
-        result = super().variables_to_be_sent()
-        if self.fisher_info is not None:
-            result["fisher_info"] = self.fisher_info
+    def package(self, train_time: float) -> dict:
+        result = super().package(train_time)
+        if hasattr(self, "_fisher_info"):
+            result["fisher_info"] = self._fisher_info
         return result
