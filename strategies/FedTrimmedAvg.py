@@ -6,7 +6,15 @@ from .tFL import tFL, tFL_Client
 
 
 class FedTrimmedAvg(tFL):
-    """Coordinate-wise trimmed-mean aggregation (Byzantine-robust)."""
+    """Coordinate-wise trimmed-mean aggregation (Byzantine-robust).
+
+    Sorts client parameters per coordinate, removes the bottom and top
+    ``beta`` fraction of values, then averages the remainder. Tolerates
+    up to ⌊beta * n⌋ Byzantine workers where n is the number of clients.
+
+    Reference: Yin et al., "Byzantine-Robust Distributed Learning: Towards
+    Optimal Statistical Rates", ICML 2018.
+    """
 
     optional = {
         "beta": 0.2,

@@ -6,7 +6,15 @@ from .tFL import tFL, tFL_Client
 
 
 class FedMedian(tFL):
-    """Coordinate-wise median aggregation (Byzantine-robust)."""
+    """Coordinate-wise median aggregation (Byzantine-robust).
+
+    Aggregates client updates by taking the element-wise median across all
+    clients, rather than a weighted mean. Tolerates up to ⌊(n-1)/2⌋ Byzantine
+    workers where n is the number of clients.
+
+    Reference: Yin et al., "Byzantine-Robust Distributed Learning: Towards
+    Optimal Statistical Rates", ICML 2018.
+    """
 
     def aggregate_client_updates(self, packages):
         new_params = OrderedDict()

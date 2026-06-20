@@ -8,6 +8,23 @@ from .tFL import tFL, tFL_Client
 
 
 class MOON(tFL):
+    """Model-Contrastive Federated Learning (Li et al., CVPR 2021).
+
+    Each client's local loss = supervised loss + μ * model-contrastive loss.
+    The contrastive term pulls the current local representation toward the
+    global model's representation (positive) and away from the previous local
+    model's representation (negative).
+
+    Default hyperparameters from the paper: temperature τ = 0.5, μ ∈ {0.1,1,5,10}
+    (dataset-dependent; 1.0 used as a reasonable default here).
+
+    TSF adaptation: the paper uses a projection head R_w(x) before the output
+    layer as the representation. For TSF models that lack a projection head,
+    we use the flattened model output directly.
+
+    Reference: arXiv:2103.16257.
+    """
+
     optional = {
         "mu": 1.0,
         "temperature": 0.5,
@@ -21,27 +38,14 @@ class MOON(tFL):
 
 class MOON_Client(tFL_Client):
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        self.id = package["client_id"]
-        self.current_iter = package["current_iter"]
-        self._load_private(self.id)
-        # Load global model as the starting point for local training (w^t)
-        self.model.load_state_dict(package["regular_model_params"], strict=False)
-        if package["optimizer_state"]:
-            self.optimizer.load_state_dict(package["optimizer_state"])
-        else:
-            self.optimizer.load_state_dict(self.init_optimizer_state)
-        if package["scheduler_state"]:
-            self.scheduler.load_state_dict(package["scheduler_state"])
-        else:
-            self.scheduler.load_state_dict(self.init_scheduler_state)
-        # [§Method] — save w^t (global model) as positive contrastive reference
+        # Save contrastive references before super() loads the global model params
         self._global_model_params = copy.deepcopy(package["regular_model_params"])
-        # [§Method] — restore w_i^{t-1} (previous local model); on first round fall back to global
         personal = package["personal_model_params"]
         self._prev_model_params = personal.get(
             "prev_model_state",
             copy.deepcopy(package["regular_model_params"]),
         )
+        super().set_parameters(package)
 
     def package(self, train_time: float) -> Dict[str, Any]:
         out = super().package(train_time)
@@ -64,7 +68,7 @@ class MOON_Client(tFL_Client):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
 
-        # [§Method] — frozen reference models for contrastive loss
+        # Frozen reference models for contrastive loss
         global_model = copy.deepcopy(model)
         global_model.load_state_dict(self._global_model_params, strict=False)
         global_model.to(device).eval()
@@ -81,29 +85,24 @@ class MOON_Client(tFL_Client):
             x_mark = x_mark.to(device)
             y_mark = y_mark.to(device)
 
-            # [eq.3] — supervised loss ℓ_sup
+            # Supervised loss ℓ_sup (Eq. 4)
             outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss_sup = criterion(outputs, batch_y)
 
-            # [§Method] — representations z, z_glob, z_prev
-            # TSF adaptation: use flattened output as representation (no projection head)
+            # Representations z, z_glob, z_prev (flattened output as proxy for R_w(x))
             z = outputs.flatten(start_dim=1)
             with torch.no_grad():
-                z_glob = global_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
-                    start_dim=1
-                )
-                z_prev = prev_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
-                    start_dim=1
-                )
+                z_glob = global_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(start_dim=1)
+                z_prev = prev_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(start_dim=1)
 
-            # [eq.1] — model-contrastive loss ℓ_con (NT-Xent style)
+            # Model-contrastive loss ℓ_con (Eq. 3)
             sim_glob = F.cosine_similarity(z, z_glob, dim=1) / self.temperature
             sim_prev = F.cosine_similarity(z, z_prev, dim=1) / self.temperature
             loss_con = -torch.log(
                 torch.exp(sim_glob) / (torch.exp(sim_glob) + torch.exp(sim_prev))
             ).mean()
 
-            # [eq.2] — total loss ℓ = ℓ_sup + μ * ℓ_con
+            # Total loss ℓ = ℓ_sup + μ * ℓ_con (Eq. 4)
             loss = loss_sup + self.mu * loss_con
             loss.backward()
             optimizer.step()
