@@ -1,5 +1,4 @@
 import copy
-import time
 from argparse import Namespace
 
 import torch
@@ -46,8 +45,10 @@ class PerAvg_Client(tFL_Client):
     Client for PerAvg. Supports both FO and HF variants via self.hf flag.
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
+    hf: bool = False
+
+    def __init__(self, configs: Namespace, times: int, device: str) -> None:
+        super().__init__(configs=configs, times=times, device=device)
         if self.hf:
             self._model_plus = copy.deepcopy(self.model)
             self._model_minus = copy.deepcopy(self.model)
@@ -58,9 +59,9 @@ class PerAvg_Client(tFL_Client):
         except StopIteration:
             return next(iter(loader))
 
-    def train(self):
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
         train_loader = self.load_train_data()
-        start_time = time.time()
 
         self.model.to(self.device)
         self.model.train()
@@ -73,7 +74,6 @@ class PerAvg_Client(tFL_Client):
         self.scheduler.step()
         if self.efficiency != "high":
             self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
 
     def _train_fo(self, train_loader):
         """First-order MAML: 2 batches per meta-step."""

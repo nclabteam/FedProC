@@ -1,4 +1,4 @@
-import gc
+from collections import OrderedDict
 
 import torch
 
@@ -13,79 +13,85 @@ class Elastic(tFL):
         "mu": 0.95,
     }
 
-    compulsory = {
-        "return_diff": True,
-    }
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--tau", type=float, default=None)
         parser.add_argument("--sample_ratio", type=float, default=None)
         parser.add_argument("--mu", type=float, default=None)
 
-    def calculate_aggregation_weights(self):
-        super().calculate_aggregation_weights()
-        sensitivities = torch.stack(
-            [client["sensitivity"] for client in self.client_data], dim=-1
-        )
-        aggregated_sensitivity = torch.sum(sensitivities * self.weights, dim=-1)
-        max_sensitivity = sensitivities.max(dim=-1)[0]
-        self.zeta = 1 + self.tau - aggregated_sensitivity / max_sensitivity
+    def aggregate_client_updates(self, packages) -> None:
+        cids = list(packages.keys())
+        scores = [packages[cid]["score"] for cid in cids]
+        total = float(sum(scores))
+        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
 
-    def aggregate_models(self):
-        for (server_key, server_param), coef in zip(
-            self.model.named_parameters(), self.zeta
-        ):
-            diffs = torch.stack(
-                [
-                    client_param["model"].state_dict()[server_key]
-                    for client_param in self.client_data
-                ],
+        # Per-layer sensitivity: weighted mean across clients
+        sensitivities = torch.stack(
+            [packages[cid]["sensitivity"] for cid in cids], dim=-1
+        )
+        agg_sensitivity = torch.sum(sensitivities * weights, dim=-1)
+        max_sensitivity = sensitivities.max(dim=-1)[0]
+        zeta = 1 + self.tau - agg_sensitivity / max_sensitivity.clamp(min=1e-12)
+
+        # Elastic aggregation: new_global[i] = old[i] - zeta[i] * sum(w * (trained[i] - old[i]))
+        new_global = OrderedDict()
+        for k, (name, server_p) in enumerate(self.public_model_params.items()):
+            trained_stacked = torch.stack(
+                [packages[cid]["regular_model_params"][name].float() for cid in cids],
                 dim=-1,
             )
-            aggregated = torch.sum(diffs * self.weights, dim=-1)
-            server_param.data -= coef * aggregated
+            agg_trained = torch.sum(
+                trained_stacked * weights.to(trained_stacked.dtype), dim=-1
+            )
+            coef = zeta[k] if k < len(zeta) else torch.tensor(1.0)
+            new_global[name] = (
+                server_p.float() - coef * (agg_trained - server_p.float())
+            ).to(server_p.dtype)
 
-    def pre_train_clients(self):
-        for client in self.selected_clients:
-            client.calculate_sensitivity()
+        self._commit_global(new_global)
 
 
 class Elastic_Client(tFL_Client):
-    def variables_to_be_sent(self):
-        to_be_sent = super().variables_to_be_sent()
-        to_be_sent["sensitivity"] = self.sensitivity
-        del self.sensitivity
-        gc.collect()
-        return to_be_sent
 
-    def calculate_sensitivity(self):
-        sensitivity = torch.zeros(
-            len(list(self.model.parameters())),
-            device=self.device,
-        )
+    sample_ratio: float = 0.3
+    mu: float = 0.95
+
+    def fit(self) -> None:
+        # Compute per-layer sensitivity on a sample of training data before training
         self.model.to(self.device)
         self.model.eval()
-        for x, y, _x_mark, _y_mark in self.load_train_data(
-            sample_ratio=self.sample_ratio, shuffle=False
-        ):
-            x = x.to(self.device)
-            y = y.to(self.device)
-            logits = self.model(x)
-            loss = self.loss(logits, y)
+        sensitivity = torch.zeros(
+            len(list(self.model.parameters())), device=self.device
+        )
+        sample_loader = self.load_data(
+            file=self.train_file,
+            sample_ratio=self.sample_ratio,
+            shuffle=False,
+            scaler=self.scaler,
+            batch_size=self.batch_size,
+            seed=self._loader_seed("train"),
+        )
+        for x, y, x_mark, y_mark in sample_loader:
+            x = x.to(self.device, dtype=torch.float32)
+            y = y.to(self.device, dtype=torch.float32)
+            x_mark = x_mark.to(self.device, dtype=torch.float32)
+            y_mark = y_mark.to(self.device, dtype=torch.float32)
+            self.model.zero_grad()
+            loss = self.loss(self.model(x, x_mark=x_mark, y_mark=y_mark), y)
             loss.backward()
-            grad_norms = []
-            for param in self.model.parameters():
-                if param.requires_grad:
-                    grad_norms.append(torch.norm(param.grad.data) ** 2)
-                else:
-                    grad_norms.append(None)
-            for i in range(len(grad_norms)):
-                if grad_norms[i]:
+            for i, param in enumerate(self.model.parameters()):
+                if param.requires_grad and param.grad is not None:
                     sensitivity[i] = (
-                        self.mu * sensitivity[i] + (1 - self.mu) * grad_norms[i].abs()
+                        self.mu * sensitivity[i]
+                        + (1 - self.mu) * (param.grad.data.norm() ** 2).abs()
                     )
                 else:
                     sensitivity[i] = 1.0
-        self.sensitivity = sensitivity.to("cpu")
-        self.model.to("cpu")
+        self._sensitivity = sensitivity.cpu()
+        # Standard training
+        super().fit()
+
+    def package(self, train_time: float) -> dict:
+        out = super().package(train_time)
+        out["sensitivity"] = self._sensitivity
+        return out

@@ -1,13 +1,16 @@
-from .nFL import nFL, nFL_Client
+from .pFL import pFL, pFL_Client
 
 
-class LocalOnly(nFL):
-    def evaluate_generalization_loss(self, *args, **kwargs):
+class LocalOnly(pFL):
+    """Local-only training: each client trains independently without any aggregation."""
+
+    def aggregate_client_updates(self, packages) -> None:
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
+
+    def evaluate_generalization(self, *args, **kwargs):
         pass
 
-    def _pre_eval_hook(self, dataset_type: str) -> None:
-        self.evaluate_personalization_loss(dataset_type)
 
-
-class LocalOnly_Client(nFL_Client):
+class LocalOnly_Client(pFL_Client):
     pass

@@ -19,15 +19,14 @@ Both masks default to *None* (disabled); set ``--r_u`` and/or ``--r_a`` to
 activate.  SL is **model-agnostic** and works with any registered forecaster.
 """
 
-import time
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
 
-from .nFL import nFL, nFL_Client
+from .pFL import pFL, pFL_Client
 
 
 # ---------------------------------------------------------------------------
@@ -113,16 +112,15 @@ class _DLinearEstimator(nn.Module):
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
-class SL(nFL):
+class SL(pFL):
     """
     Selective Learning — model-agnostic dual-mask training strategy.
 
-    Inherits from ``nFL`` (no federation). Each client trains independently
-    using uncertainty and/or anomaly masks to exclude noisy timesteps from
-    the loss computation.
+    Inherits from ``pFL``. Each client trains independently using uncertainty
+    and/or anomaly masks to exclude noisy timesteps from the loss computation.
+    Personalized evaluation uses each client's locally-trained model.
     """
 
-    compulsory = {**nFL.compulsory}
     optional = {
         "r_u": None,
         "r_a": None,
@@ -150,17 +148,15 @@ class SL(nFL):
             help="Epochs to pre-train the DLinear anomaly estimator.",
         )
 
-    def evaluate_generalization_loss(self, *args, **kwargs):
-        pass
-
-    def _pre_eval_hook(self, dataset_type: str) -> None:
-        self.evaluate_personalization_loss(dataset_type)
+    def aggregate_client_updates(self, packages) -> None:
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
 
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
-class SL_Client(nFL_Client):
+class SL_Client(pFL_Client):
     """Client-side Selective Learning logic."""
 
     # Class-level defaults for the ``optional`` hyper-parameters. The framework
@@ -171,15 +167,10 @@ class SL_Client(nFL_Client):
     r_a: Optional[float] = None
     estimator_epochs: int = 5
 
-    def train(self) -> Dict[str, Any]:
+    def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
 
         train_loader = self.load_train_data()
-        start_time = time.time()
-
-        r_u: Optional[float] = self.r_u
-        r_a: Optional[float] = self.r_a
-        estimator_epochs: int = self.estimator_epochs
 
         # Move model to device
         self.model.to(self.device)
@@ -194,14 +185,14 @@ class SL_Client(nFL_Client):
         uncertainty_mask: Optional[torch.Tensor] = None
 
         # ---- anomaly estimator ----
-        estimator: Optional[_DLinearEstimator] = None
-        if r_a is not None:
+        estimator = None
+        if self.r_a is not None:
             estimator = _DLinearEstimator(
                 input_len=self.input_len,
                 output_len=self.output_len,
                 channels=self.input_channels,
             ).to(self.device)
-            self._pretrain_estimator(estimator, train_loader, estimator_epochs)
+            self._pretrain_estimator(estimator, train_loader, self.estimator_epochs)
 
         # ---- main training loop ----
         for epoch in range(self.epochs):
@@ -228,7 +219,7 @@ class SL_Client(nFL_Client):
                 mask = torch.ones_like(batch_y, dtype=torch.bool)
 
                 # Uncertainty mask
-                if r_u is not None:
+                if self.r_u is not None:
                     if history_residual is None:
                         _, output_len, num_features = batch_y.shape
                         history_residual = torch.empty(
@@ -246,12 +237,12 @@ class SL_Client(nFL_Client):
                         mask = mask & unc_mask
 
                 # Anomaly mask
-                if r_a is not None and estimator is not None:
+                if self.r_a is not None and estimator is not None:
                     with torch.no_grad():
                         est_out = estimator(batch_x)
                     residual_lb = torch.abs(est_out - batch_y)
                     dist = residual - residual_lb
-                    thresholds = torch.quantile(dist, r_a, dim=1, keepdim=True)
+                    thresholds = torch.quantile(dist, self.r_a, dim=1, keepdim=True)
                     ano_mask = dist > thresholds
                     mask = mask & ano_mask
 
@@ -265,23 +256,15 @@ class SL_Client(nFL_Client):
                 self.optimizer.step()
 
             # End-of-epoch: recompute uncertainty mask for next epoch
-            if r_u is not None and history_residual is not None:
+            if self.r_u is not None and history_residual is not None:
                 res_entropy = self._compute_entropy(history_residual)
-                thresholds = torch.quantile(res_entropy, 1 - r_u, dim=0, keepdim=True)
+                thresholds = torch.quantile(res_entropy, 1 - self.r_u, dim=0, keepdim=True)
                 uncertainty_mask = res_entropy < thresholds  # [N+H-1, C]
 
             self.scheduler.step()
 
-        # Offload model to CPU
         if self.efficiency != "high":
             self.model.to("cpu")
-
-        return {
-            "model": self.model,
-            "optimizer_state": self.optimizer,
-            "train_time": time.time() - start_time,
-            "train_samples": self.train_samples,
-        }
 
     # ------------------------------------------------------------------
     # helpers

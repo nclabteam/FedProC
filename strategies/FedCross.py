@@ -1,12 +1,14 @@
 import copy
+from collections import OrderedDict
+from typing import Dict, List
 
 import torch
 import torch.nn.functional as F
 
-from .tFL import tFL as Server
+from .tFL import tFL, tFL_Client
 
 
-class FedCross(Server):
+class FedCross(tFL):
 
     optional = {
         "first_stage_bound": 0.0,
@@ -26,91 +28,67 @@ class FedCross(Server):
             choices=[0, 1, 2],
         )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def package(self, client_id: int) -> dict:
+        pkg = super().package(client_id)
+        # Send per-client w_local if available, otherwise global (first round)
+        personal = self.clients_personal_model_params.get(client_id, {})
+        if personal:
+            pkg["regular_model_params"] = copy.deepcopy(personal)
+            pkg["personal_model_params"] = {}
+        return pkg
 
-        self.w_locals = []
-        self.w_locals_num = self.num_join_clients
-        for i in range(self.w_locals_num):
-            self.w_locals.append(copy.deepcopy(self.model))
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        cids = list(packages.keys())
+        scores = [packages[cid]["score"] for cid in cids]
+        total = float(sum(scores))
+        w_locals = [dict(packages[cid]["regular_model_params"]) for cid in cids]
 
-    def variables_to_be_sent(self):
-        return {"model": self.w_locals}
+        # Store trained models as per-client local models
+        for cid, w in zip(cids, w_locals):
+            self.clients_personal_model_params[cid].update(w)
 
-    def _resize_w_locals(self, target_size):
-        if target_size < 1:
-            raise ValueError("FedCross requires at least one selected client")
-        if target_size == self.w_locals_num:
-            return
-
-        if target_size < self.w_locals_num:
-            self.w_locals = self.w_locals[:target_size]
-        else:
-            template = self.w_locals[-1] if self.w_locals else self.model
-            self.w_locals.extend(
-                copy.deepcopy(template) for _ in range(target_size - self.w_locals_num)
+        # Global FedAvg
+        param_names = list(self.public_model_params.keys())
+        new_global = OrderedDict()
+        weights_t = torch.tensor([s / total for s in scores], dtype=torch.float32)
+        for name in param_names:
+            stacked = torch.stack([w[name].float() for w in w_locals], dim=-1)
+            new_global[name] = torch.sum(stacked * weights_t, dim=-1).to(
+                self.public_model_params[name].dtype
             )
-        self.w_locals_num = target_size
+        self._commit_global(new_global)
 
-    def send_to_clients(self):
-        self._resize_w_locals(len(self.selected_clients))
-        total_bytes_sent = 0.0
+        # Cross-aggregation between w_locals
+        if len(w_locals) >= 2:
+            if self.current_iter >= self.first_stage_bound:
+                sim_tab, _ = self._calculate_similarity(w_locals)
+                new_w_locals = self._cross_aggregation(w_locals, sim_tab)
+                for cid, new_w in zip(cids, new_w_locals):
+                    self.clients_personal_model_params[cid].update(new_w)
+            else:
+                # Early rounds: sync all local models to global
+                for cid in cids:
+                    self.clients_personal_model_params[cid] = dict(self.public_model_params)
 
-        for client, model in zip(self.selected_clients, self.w_locals):
-            client.current_iter = self.current_iter
-            total_bytes_sent += self.get_size(model)
-            client.receive_from_server({"model": model})
-
-        self.metrics["send_mb"].append(total_bytes_sent)
-
-    def receive_from_clients(self):
-        super().receive_from_clients()
-        for w_local, client in zip(self.w_locals, self.client_data):
-            self.update_model_params(old=w_local, new=client["model"])
-
-    def aggregate_models(self):
-        super().aggregate_models()
-
-        # Calculate similarity between models
-        sim_tab, sim_value = self.calculate_similarity()
-
-        # Update global model
-        if self.current_iter >= self.first_stage_bound:
-            # Cross aggregation
-            self.w_locals = self.cross_aggregation(self.current_iter, sim_tab)
-        else:
-            for i in range(len(self.w_locals)):
-                for param, global_param in zip(
-                    self.w_locals[i].parameters(), self.model.parameters()
-                ):
-                    param.data = global_param.data.clone()
-
-    def calculate_similarity(self):
-        model_num = len(self.w_locals)
-        sim_tab = [[0 for _ in range(model_num)] for _ in range(model_num)]
+    def _calculate_similarity(self, w_locals: List[Dict[str, torch.Tensor]]):
+        n = len(w_locals)
+        sim_tab = [[0.0] * n for _ in range(n)]
         sum_sim = 0.0
 
-        w_locals_dict = [model.state_dict() for model in self.w_locals]
-
-        for k in range(model_num):
+        for k in range(n):
             for j in range(k):
                 s = 0.0
                 dict_a = torch.Tensor(0)
                 dict_b = torch.Tensor(0)
                 cnt = 0
+                sub_a = sub_b = None
 
-                for p in w_locals_dict[k].keys():
-                    a = w_locals_dict[k][p]
-                    b = w_locals_dict[j][p]
-                    a = a.view(-1)
-                    b = b.view(-1)
+                for p in w_locals[k]:
+                    a = w_locals[k][p].float().view(-1)
+                    b = w_locals[j][p].float().view(-1)
 
-                    if cnt == 0:
-                        dict_a = a
-                        dict_b = b
-                    else:
-                        dict_a = torch.cat((dict_a, a), dim=0)
-                        dict_b = torch.cat((dict_b, b), dim=0)
+                    dict_a = a if cnt == 0 else torch.cat((dict_a, a), dim=0)
+                    dict_b = b if cnt == 0 else torch.cat((dict_b, b), dim=0)
 
                     if cnt % 2 == 0:
                         sub_a = a
@@ -120,81 +98,85 @@ class FedCross(Server):
                         sub_b = torch.cat((sub_b, b), dim=0)
 
                     if cnt % 2 == 1:
-                        s += F.cosine_similarity(sub_a, sub_b, dim=0)
+                        s += F.cosine_similarity(sub_a, sub_b, dim=0).item()
                     cnt += 1
 
-                s += F.cosine_similarity(sub_a, sub_b, dim=0)
+                if sub_a is not None and sub_b is not None:
+                    s += F.cosine_similarity(sub_a, sub_b, dim=0).item()
+
                 sim_tab[k][j] = s
                 sim_tab[j][k] = s
-                sum_sim += copy.deepcopy(s)
+                sum_sim += s
 
-        l = int(len(w_locals_dict[0].keys()) / 5) + 1.0
-        sum_sim /= l * self.num_clients * (self.num_clients - 1) / 2.0
+        l = int(len(w_locals[0]) / 5) + 1.0
+        denom = l * self.num_clients * (self.num_clients - 1) / 2.0
+        sum_sim /= denom if denom > 0 else 1.0
 
         return sim_tab, sum_sim
 
-    def cross_aggregation(self, iter, sim_tab):
-        w_locals_new = copy.deepcopy(self.w_locals)
+    def _cross_aggregation(
+        self,
+        w_locals: List[Dict[str, torch.Tensor]],
+        sim_tab: List[List[float]],
+    ) -> List[Dict[str, torch.Tensor]]:
+        n = len(w_locals)
         crosslist = []
 
-        for j in range(self.w_locals_num):
+        for j in range(n):
             maxtag = 0
             submax = 1
-            mintag = (j + 1) % self.w_locals_num
+            mintag = (j + 1) % n
 
-            for p in range(self.w_locals_num):
+            for p in range(n):
                 if sim_tab[j][p] > sim_tab[j][maxtag]:
                     submax = maxtag
                     maxtag = p
                 elif sim_tab[j][p] > sim_tab[j][submax]:
                     submax = p
-                if sim_tab[j][p] < sim_tab[j][mintag] and p != j:
+                if p != j and sim_tab[j][p] < sim_tab[j][mintag]:
                     mintag = p
 
             rlist = []
-            offset = iter % (self.w_locals_num - 1) + 1
             sub_list = []
+            offset = int(self.current_iter) % (n - 1) + 1
 
-            for k in range(self.w_locals_num):
+            for k in range(n):
                 if k == j:
                     rlist.append(self.cross_alpha)
-                    sub_list.append(copy.deepcopy(self.w_locals[j]))
+                    sub_list.append(copy.deepcopy(w_locals[j]))
 
                 if self.collaborative_model_select_strategy == 0:
-                    if (j + offset) % self.w_locals_num == k:
+                    if (j + offset) % n == k:
                         rlist.append(1.0 - self.cross_alpha)
-                        sub_list.append(copy.deepcopy(self.w_locals[k]))
+                        sub_list.append(copy.deepcopy(w_locals[k]))
                 elif self.collaborative_model_select_strategy == 1:
                     if mintag == k:
                         rlist.append(1.0 - self.cross_alpha)
-                        sub_list.append(copy.deepcopy(self.w_locals[mintag]))
+                        sub_list.append(copy.deepcopy(w_locals[mintag]))
                 elif self.collaborative_model_select_strategy == 2:
                     if maxtag == k:
                         rlist.append(1.0 - self.cross_alpha)
-                        sub_list.append(copy.deepcopy(self.w_locals[maxtag]))
+                        sub_list.append(copy.deepcopy(w_locals[maxtag]))
 
-            # Aggregate selected models
-            w_cc = self.aggregate_parameters_cross(sub_list, rlist)
-            crosslist.append(w_cc)
+            crosslist.append(self._aggregate_parameters_cross(sub_list, rlist))
 
-        for k in range(self.w_locals_num):
-            w_locals_new[k] = crosslist[k]
-
-        return w_locals_new
+        return crosslist
 
     @staticmethod
-    def aggregate_parameters_cross(models, weights):
-        aggregated_model = copy.deepcopy(models[0])
-        for param in aggregated_model.parameters():
-            param.data.zero_()
+    def _aggregate_parameters_cross(
+        state_dicts: List[Dict[str, torch.Tensor]],
+        weights: List[float],
+    ) -> Dict[str, torch.Tensor]:
+        result = {name: torch.zeros_like(p.float()) for name, p in state_dicts[0].items()}
+        total = sum(weights)
+        for w, sd in zip(weights, state_dicts):
+            for name in result:
+                result[name] += sd[name].float() * (w / total)
+        return {
+            name: result[name].to(state_dicts[0][name].dtype)
+            for name in result
+        }
 
-        total_count = sum(weights)
-        for w, client_model in zip(weights, models):
-            for aggregated_model_param, client_param in zip(
-                aggregated_model.parameters(), client_model.parameters()
-            ):
-                aggregated_model_param.data += (
-                    client_param.data.clone() * w / total_count
-                )
 
-        return aggregated_model
+class FedCross_Client(tFL_Client):
+    pass

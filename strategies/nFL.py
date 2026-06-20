@@ -2,33 +2,11 @@ from .tFL import tFL, tFL_Client
 
 
 class nFL(tFL):
-    """
-    No-Federated-Learning base.
+    """No-federation base: clients train independently, global model never updated."""
 
-    For strategies that do not perform federated model aggregation
-    (e.g. Centralized, LocalOnly).  Server-model-dependent methods are
-    no-ops so subclasses only need to override what they actually use.
-    """
-
-    compulsory = {"exclude_server_model_processes": True}
-
-    def initialize_model(self, *args, **kwargs):
-        pass
-
-    def send_to_clients(self, *args, **kwargs):
-        pass
-
-    def receive_from_clients(self, *args, **kwargs):
-        pass
-
-    def aggregate_models(self, *args, **kwargs):
-        pass
-
-    def calculate_aggregation_weights(self, *args, **kwargs):
-        pass
-
-    def get_model_info(self) -> None:
-        pass
+    def aggregate_client_updates(self, packages) -> None:
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
 
 class nFL_Client(tFL_Client):

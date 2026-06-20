@@ -27,16 +27,6 @@ class TrackableModel(torch.nn.Module):
         return super().to(*args, **kwargs)
 
 
-class WrappedLinear(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.original_layer = torch.nn.Linear(1, 1)
-        self.lora_A = torch.nn.Parameter(torch.ones(1, 1))
-        self.lora_B = torch.nn.Parameter(torch.ones(1, 1))
-
-    def forward(self, x):
-        return self.original_layer(x) + x @ self.lora_A @ self.lora_B
-
 
 class TestDevicePolicy(unittest.TestCase):
     def make_loader(self):
@@ -135,43 +125,21 @@ class TestDevicePolicy(unittest.TestCase):
 
     def test_client_train_low_offloads_each_epoch(self):
         client = self.make_fake_client("low")
-        Client.train(client)
+        Client.fit(client)
         self.assertEqual(client.calls, [True, True, True])
         self.assertEqual(client.model.devices, [])
 
     def test_client_train_med_offloads_once_after_epochs(self):
         client = self.make_fake_client("med")
-        Client.train(client)
+        Client.fit(client)
         self.assertEqual(client.calls, [False, False, False])
         self.assertEqual(client.model.devices, ["cpu"])
 
     def test_client_train_high_keeps_model_resident(self):
         client = self.make_fake_client("high")
-        Client.train(client)
+        Client.fit(client)
         self.assertEqual(client.calls, [False, False, False])
         self.assertEqual(client.model.devices, [])
-
-    def test_clone_model_to_cpu_preserves_wrapped_modules(self):
-        client = type("ClientStub", (), {})()
-        wrapped = WrappedLinear()
-        with torch.no_grad():
-            wrapped.original_layer.weight.fill_(2.0)
-            wrapped.original_layer.bias.fill_(3.0)
-            wrapped.lora_A.fill_(4.0)
-            wrapped.lora_B.fill_(5.0)
-
-        clone = Client._clone_model_to_cpu(client, wrapped)
-
-        self.assertIsNot(clone, wrapped)
-        self.assertIsInstance(clone, WrappedLinear)
-        self.assertEqual(clone.original_layer.weight.device.type, "cpu")
-        self.assertTrue(torch.equal(clone.lora_A, wrapped.lora_A.cpu()))
-        self.assertTrue(torch.equal(clone.lora_B, wrapped.lora_B.cpu()))
-        with torch.no_grad():
-            clone.original_layer.weight.fill_(9.0)
-        self.assertFalse(
-            torch.equal(clone.original_layer.weight, wrapped.original_layer.weight)
-        )
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA is not available")
     def test_calculate_loss_cuda_smoke(self):
