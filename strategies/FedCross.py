@@ -9,6 +9,20 @@ from .tFL import tFL, tFL_Client
 
 
 class FedCross(tFL):
+    """FedCross: Towards Accurate Federated Learning via Data Cross-Gradient Alignment.
+
+    Maintains per-client local models alongside the global model. After each round:
+    1. Compute FedAvg global model.
+    2. Perform cross-aggregation between local models based on pairwise cosine
+       similarity — each client's model is mixed with a selected peer's model
+       (most-dissimilar by default) with weight cross_alpha.
+
+    In the first ``first_stage_bound`` rounds all local models are synced to global
+    (warm-up stage).
+
+    Reference: FedCross (CVPR 2023). Note: metadata ID 04490 maps to a different
+    paper; paper faithfulness check skipped.
+    """
 
     optional = {
         "first_stage_bound": 0.0,
@@ -31,7 +45,7 @@ class FedCross(tFL):
     def package(self, client_id: int) -> dict:
         pkg = super().package(client_id)
         # Send per-client w_local if available, otherwise global (first round)
-        personal = self.clients_personal_model_params.get(client_id, {})
+        personal = self.clients_personal_model_params[client_id]
         if personal:
             pkg["regular_model_params"] = copy.deepcopy(personal)
             pkg["personal_model_params"] = {}

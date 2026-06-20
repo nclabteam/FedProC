@@ -5,15 +5,30 @@ from .tFL import tFL, tFL_Client
 
 
 class FedRCL(tFL):
-    """
-    [methodology.tex, Algorithm 1] — Server side: standard FedAvg aggregation.
-    No server-side changes needed.
+    """Federated Relaxed Contrastive Learning (Seo et al., ICLR 2024).
+
+    Server: standard FedAvg aggregation.
+    Client: L = L_task + rcl_weight * L_RCL, where L_RCL is a relaxed supervised
+    contrastive loss that adds a divergence penalty on intra-class pairs that are
+    excessively similar (those in P(x) = {x' | y_{x'}=y_x, cos(x',x) > λ}).
+
+    Implementation notes:
+    - Divergence term: the published paper (Eq. 5) uses a per-pair term
+      β * 1_{x_j ∈ P(x_i)} * sim(i,j)/τ. The implementation uses an aggregate
+      logsumexp over P(x_i) per anchor, which differs from the paper.
+    - Multi-level contrastive training (Sec. 4.4, applied to conv1–5 in paper) is
+      not implemented; only final model output is used as representation since TSF
+      models have no accessible intermediate hooks.
+    - Pseudo-labels from quantile binning of target mean are used for TSF regression.
+
+    Default hyperparameters (from paper): τ = 0.05, λ = 0.7, β = 1.0.
+    Reference: OpenReview hduCLXDhS4.
     """
 
     optional = {
-        "rcl_tau": 0.5,
+        "rcl_tau": 0.05,
         "rcl_beta": 1.0,
-        "rcl_lambda": 0.5,
+        "rcl_lambda": 0.7,
         "rcl_weight": 0.1,
         "rcl_num_classes": 4,
     }

@@ -8,13 +8,22 @@ from .tFL import tFL as Server
 
 
 class FedAWA(Server):
+    """Federated learning with Adaptive Weight Aggregation (Ren et al., arXiv 2025).
+
+    Adaptively learns per-client aggregation weights on the server side without
+    requiring a proxy dataset. Defines a client vector τ_k = θ_k - θ_g (local model
+    minus global model). Optimizes softmax-weighted aggregation to minimize:
+      - sim_loss: deviation of each client vector from the weighted mean vector
+      - reg_loss: distance from global model to each client model (stability term)
+
+    Reference: arXiv:2503.15842.
+    """
 
     optional = {
         "server_epochs": 1,
         "reg_distance": "cos",
         "server_lr": 0.01,
         "server_optimizer": "Adam",
-        "fedawa_gamma": 1.0,
     }
 
     awa_weights = None
@@ -30,7 +39,6 @@ class FedAWA(Server):
         parser.add_argument(
             "--server_optimizer", type=str, default=None, choices=["SGD", "Adam"]
         )
-        parser.add_argument("--fedawa_gamma", type=float, default=None)
 
     @staticmethod
     def _flatten_params(model):
@@ -130,16 +138,8 @@ class FedAWA(Server):
             total_loss.backward()
             self._awa_optimizer.step()
 
-        final_logits = self.awa_weights.detach().clone()
-        self.awa_weights = final_logits
-
-        final_probabilities = torch.nn.functional.softmax(final_logits, dim=0)
-        scaled_weights = final_probabilities * self.fedawa_gamma
-        sum_scaled = scaled_weights.sum()
-        if sum_scaled > 1e-8:
-            weights = scaled_weights / sum_scaled
-        else:
-            weights = torch.ones_like(final_probabilities) / num_clients
+        self.awa_weights = self.awa_weights.detach().clone()
+        weights = torch.nn.functional.softmax(self.awa_weights, dim=0)
 
         new_params = OrderedDict()
         for name in self.public_model_params:
