@@ -1,8 +1,4 @@
-import logging
-import time
-
-import ray
-import torch
+from collections import OrderedDict
 
 from topologies import TOPOLOGIES
 
@@ -10,42 +6,31 @@ from .pFL import pFL, pFL_Client
 
 
 class dFL(pFL):
-    optional = {
-        "topology": "FullyConnected",
-    }
+    """Decentralized FL base: server orchestrates gossip; no global model aggregation.
 
-    compulsory = {
-        "exclude_server_model_processes": True,
-    }
+    Each round, every node trains locally, then exchanges models with its topology
+    neighbors via a server-managed gossip step. Per-client models live in
+    clients_personal_model_params; gossip is computed entirely server-side.
+    """
+
+    optional = {"topology": "FullyConnected"}
+    compulsory = {"exclude_server_model_processes": True}
 
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--topology", type=str, default=None, choices=TOPOLOGIES)
 
     def __init__(self, configs, times):
+        # set_configs first so self.topology (string) is available for get_topology()
+        # get_topology() writes configs.neighbors so Trainer can pass it to clients
+        # super().__init__() re-runs set_configs, resetting self.topology to the string —
+        # so we save the neighbors dict and restore it after.
         self.set_configs(configs=configs, times=times)
-        self.mkdir()
-
-        device_ids = [d for d in self.device_id.split(",") if d]
-        self.num_gpus = len(device_ids) if self.device == "cuda" else 0
-        configs.parallel = True if self.num_gpus > 0 and self.num_workers > 0 else False
-        self.parallel = configs.parallel
-        ray.init(
-            num_gpus=self.num_gpus,
-            ignore_reinit_error=True,
-            logging_level=logging.ERROR,
-            log_to_driver=False,
-        )
-
-        self.metrics = {
-            "time_per_iter": [],
-            "personal_avg_train_loss": [],
-            "personal_avg_test_loss": [],
-        }
-        self.name = "  ORCHES  "
-        self.make_logger(name=self.name, path=self.log_path)
         self.get_topology()
-        self.initialize_clients()
+        _neighbors = self.topology
+        super().__init__(configs=configs, times=times)
+        self.topology = _neighbors
+        self.name = "  ORCHES  "
 
     def get_topology(self):
         self.topology = getattr(__import__("topologies"), self.topology)(
@@ -53,76 +38,38 @@ class dFL(pFL):
         ).neighbors
         self.configs.__dict__["neighbors"] = self.topology
 
-    def initialize_model(self, *args, **kwargs):
-        pass
+    def select_clients(self) -> None:
+        self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
 
-    def initialize_optimizer(self, *args, **kwargs):
-        pass
+    def package(self, client_id: int) -> dict:
+        result = super().package(client_id)
+        personal = self.clients_personal_model_params[client_id]
+        if personal:
+            result["regular_model_params"] = dict(personal)
+        return result
 
-    def initialize_scheduler(self, *args, **kwargs):
-        pass
+    def _gossip_once(self) -> None:
+        snap = {
+            cid: dict(self.clients_personal_model_params[cid])
+            for cid in range(self.num_clients)
+        }
+        for cid in range(self.num_clients):
+            if not snap[cid]:
+                continue
+            peers = [cid] + [j for j in self.topology[cid] if snap[j]]
+            w = 1.0 / len(peers)
+            agg = OrderedDict(
+                (k, sum(snap[j][k] * w for j in peers))
+                for k in snap[cid]
+            )
+            self.clients_personal_model_params[cid].update(agg)
 
-    def initialize_loss(self, *args, **kwargs):
-        pass
-
-    def select_clients(self, *args, **kwargs):
-        self.selected_clients = [c for c in self.clients if not c.is_new]
-
-    def receive_from_clients(self):
-        for node in self.clients:
-            time.time()
-            receive_mb = 0
-            all_to_be_received = {}
-
-            for key, value in node.variables_to_be_sent().items():
-                all_to_be_received[key] = [value]
-
-            for neighbor in node.neighbors:
-                neighbor_node = self.clients[neighbor]
-                to_be_received = neighbor_node.variables_to_be_sent()
-                for key, value in to_be_received.items():
-                    if isinstance(value, list) and len(value) == len(self.clients):
-                        value = value[node.id]
-                    receive_mb += self.get_size(value)
-                    all_to_be_received[key].append(value)
-
-            node.metrics["receive_mb"].append(receive_mb)
-            node.receive_from_server(all_to_be_received)
-
-    def send_to_clients(self, *args, **kwargs):
-        pass
-
-    def variables_to_be_sent(self, *args, **kwargs):
-        pass
-
-    def calculate_aggregation_weights(self, *args, **kwargs):
-        for node in self.clients:
-            node.calculate_aggregation_weights()
-
-    def aggregate_models(self, *args, **kwargs):
-        for node in self.clients:
-            node.aggregate_models()
+    def aggregate_client_updates(self, packages) -> None:
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
+        self._gossip_once()
 
 
 class dFL_Client(pFL_Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.neighbors = kwargs["configs"].neighbors[self.id]
-        self.logger.info(f"Neighbors: {self.neighbors}")
-        self.metrics["receive_mb"] = []
-
-    def receive_from_server(self, data):
-        self.scores = data["score"]
-        self.models = data["model"]
-
-    def calculate_aggregation_weights(self):
-        self.weights = torch.tensor(self.scores).to(self.device) / sum(self.scores)
-
-    def aggregate_models(self):
-        model = self.reset_model(self.model).to(self.device)
-        for client, weight in zip(self.models, self.weights):
-            for global_param, local_param in zip(
-                model.parameters(), client.to(self.device).parameters()
-            ):
-                global_param.data.add_(local_param.data, alpha=weight)
-        self.update_model_params(old=self.model, new=model)
+    """Stateless DFL client — gossip aggregation is done server-side."""
+    pass

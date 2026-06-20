@@ -71,12 +71,10 @@ class DFedProx(dFL):
 
 
 class DFedProx_Client(dFL_Client):
-    def aggregate_models(self):
-        super().aggregate_models()
+    def set_parameters(self, package):
+        super().set_parameters(package)
+        # Snapshot the gossip-aggregated model received from server as the prox center.
         self.snapshot = copy.deepcopy(self.model).to("cpu")
 
     def train_one_epoch(self, *args, **kwargs):
-        if not hasattr(self, "snapshot"):
-            model = args[0] if args else kwargs["model"]
-            self.snapshot = copy.deepcopy(model).to("cpu")
         return FedProx_Client.train_one_epoch(self, *args, **kwargs)

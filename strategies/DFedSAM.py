@@ -32,26 +32,19 @@ class DFedSAM(dFL):
             help="Number of gossip/consensus steps when --use_mgs is enabled (>=1)",
         )
 
-    def aggregate_models(self, *args, **kwargs):
+    def aggregate_client_updates(self, packages) -> None:
         """One gossip step (DFedSAM) or Q gossip steps (DFedSAM-MGS).
 
-        Each gossip step = receive neighbor models + weighted average.
-        DFedSAM: Q = 1 (single aggregation pass).
-        DFedSAM-MGS: Q >= 2 (repeat receive + aggregate Q times).
+        DFedSAM: Q = 1 (single gossip pass after local training).
+        DFedSAM-MGS: Q >= 2 (repeat gossip Q times; each pass uses the
+        post-previous-gossip params, increasing model consensus).
         """
-        q = 1
-        if self.use_mgs:
-            q = max(1, int(self.mgs_steps))
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
-        # First gossip step.
-        super().aggregate_models(*args, **kwargs)
-
-        # Additional gossip steps for MGS:
-        # re-exchange current models among neighbors and re-average.
-        for _ in range(q - 1):
-            self.receive_from_clients()
-            self.calculate_aggregation_weights()
-            super().aggregate_models(*args, **kwargs)
+        q = max(1, int(self.mgs_steps)) if self.use_mgs else 1
+        for _ in range(q):
+            self._gossip_once()
 
 
 class DFedSAM_Client(dFL_Client):
