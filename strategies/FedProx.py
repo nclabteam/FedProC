@@ -1,4 +1,5 @@
 import copy
+from typing import Any, Dict
 
 from .dFL import dFL, dFL_Client
 from .tFL import tFL, tFL_Client
@@ -15,9 +16,13 @@ class FedProx(tFL):
 
 
 class FedProx_Client(tFL_Client):
-    def receive_from_server(self, data):
-        self.snapshot = copy.deepcopy(data["model"]).to("cpu")
-        self.update_model_params(old=self.model, new=data["model"])
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        # Build ordered list of global param tensors (CPU) matching model.parameters() order
+        self._global_params = [
+            p.detach().cpu().clone()
+            for p in package["regular_model_params"].values()
+        ]
 
     def train_one_epoch(
         self,
@@ -31,7 +36,7 @@ class FedProx_Client(tFL_Client):
     ):
         model.to(device)
         self._move_optimizer_state_to_param_devices(optimizer)
-        global_params = copy.deepcopy(list(self.snapshot.to(device).parameters()))
+        global_params = [p.to(device) for p in self._global_params]
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()

@@ -1,6 +1,6 @@
 import copy
-import time
 from argparse import Namespace
+from collections import OrderedDict
 from typing import Any, Dict, List
 
 import torch
@@ -53,30 +53,32 @@ class SCAFFOLD(tFL):
             torch.zeros_like(p, device="cpu") for p in self.model.parameters()
         ]
 
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        self._round_snapshot = copy.deepcopy(self.model)
-        return {"model": self.model, "global_c": self.global_c}
+    def package(self, client_id: int) -> Dict[str, Any]:
+        pkg = super().package(client_id)
+        pkg["global_c"] = copy.deepcopy(self.global_c)
+        return pkg
 
-    def aggregate_models(self) -> None:
-        K = len(self.client_data)
-        snapshot_params = list(self._round_snapshot.parameters())
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        K = len(packages)
+        # Snapshot of global params at the moment clients received them
+        snapshot = copy.deepcopy(self.public_model_params)
 
         # Global model update: theta += server_lr / K * sum(theta_local - theta_global)
-        for i, param in enumerate(self.model.parameters()):
+        new_params = OrderedDict()
+        for name, snap_val in snapshot.items():
             delta_sum = sum(
-                list(cd["model"].parameters())[i].data.to(param.device)
-                - snapshot_params[i].data
-                for cd in self.client_data
+                pkg["regular_model_params"][name].to(snap_val.device) - snap_val
+                for pkg in packages.values()
             )
-            param.data.add_(delta_sum / K, alpha=self.server_lr)
+            new_params[name] = snap_val + self.server_lr * delta_sum / K
 
         # Control variate update: c += (1/N) * sum(delta_c)
         N = self.num_clients
         for i, gc in enumerate(self.global_c):
-            delta_sum = sum(cd["delta_c"][i].to(gc.device) for cd in self.client_data)
+            delta_sum = sum(pkg["delta_c"][i].to(gc.device) for pkg in packages.values())
             gc.data.add_(delta_sum / N)
 
-        del self._round_snapshot
+        self._commit_global(new_params)
 
 
 class SCAFFOLD_Client(tFL_Client):
@@ -85,28 +87,24 @@ class SCAFFOLD_Client(tFL_Client):
     variates c_i. Returns updated model + delta_c after each round.
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
-        self.client_c: List[torch.Tensor] = [
-            torch.zeros_like(p, device="cpu") for p in self.model.parameters()
-        ]
-        self._global_c: List[torch.Tensor] = [
-            torch.zeros_like(p, device="cpu") for p in self.model.parameters()
-        ]
-        self._global_snapshot: List[torch.Tensor] = []
-        self.delta_c: List[torch.Tensor] = []
+    client_c = None  # initialized lazily in set_parameters on first round
 
-    def receive_from_server(self, data: dict) -> None:
-        if "global_c" in data:
-            self._global_c = [c.clone().cpu() for c in data["global_c"]]
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        client_c = package["personal_model_params"].get("client_c", None)
+        if client_c is None:
+            self.client_c = [
+                torch.zeros_like(p, device="cpu") for p in self.model.parameters()
+            ]
+        else:
+            self.client_c = client_c
+        self.global_c = package["global_c"]
         self._global_snapshot = [
-            p.data.clone().cpu() for p in data["model"].parameters()
+            v.clone().cpu() for v in package["regular_model_params"].values()
         ]
-        self.update_model_params(old=self.model, new=data["model"])
 
-    def train(self):
+    def fit(self) -> None:
         train_loader = self.load_train_data()
-        start_time = time.time()
 
         scaffold_optim = SCAFFOLDOptimizer(
             self.model.parameters(), lr=self.learning_rate
@@ -125,7 +123,7 @@ class SCAFFOLD_Client(tFL_Client):
                 outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = self.loss(outputs, batch_y)
                 loss.backward()
-                scaffold_optim.step(self._global_c, self.client_c)
+                scaffold_optim.step(self.global_c, self.client_c)
                 num_steps += 1
 
         # Compute delta_c and update client_c
@@ -134,7 +132,7 @@ class SCAFFOLD_Client(tFL_Client):
         new_client_c = []
         inv_lr_steps = 1.0 / (num_steps * self.learning_rate) if num_steps > 0 else 0.0
         for gc, cc, g_snap, lp in zip(
-            self._global_c,
+            self.global_c,
             self.client_c,
             self._global_snapshot,
             self.model.parameters(),
@@ -143,20 +141,12 @@ class SCAFFOLD_Client(tFL_Client):
             delta_c.append(dc)
             new_client_c.append(cc + dc)
 
-        self.delta_c = delta_c
         self.client_c = new_client_c
+        self._delta_c = delta_c
         self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
 
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        return {
-            "model": self.model,
-            "delta_c": self.delta_c,
-            "score": self.train_samples,
-        }
-
-    def send_to_server(self) -> Dict[str, Any]:
-        to_be_sent = self.variables_to_be_sent()
-        model_size = self.get_size(to_be_sent["model"])
-        self.metrics["send_mb"].append(model_size)
-        return to_be_sent
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["personal_model_params"]["client_c"] = self.client_c
+        result["delta_c"] = self._delta_c
+        return result

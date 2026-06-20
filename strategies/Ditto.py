@@ -1,6 +1,5 @@
 import copy
-import time
-from argparse import Namespace
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -25,54 +24,10 @@ class Ditto(pFL):
         "plocal_epochs": 1,
     }
 
-    def __init__(self, configs: Namespace, times: int) -> None:
-        super().__init__(configs=configs, times=times)
-        # Ditto trains two models per client; disable Ray parallelism
-        self.parallel = False
-
     @classmethod
     def args_update(cls, parser):
         parser.add_argument("--mu", type=float, default=None)
         parser.add_argument("--plocal_epochs", type=int, default=None)
-
-    def save_models(self, save_type: str) -> None:
-        if save_type not in ["last", "best"]:
-            raise ValueError("save_type must be 'last' or 'best'")
-
-        should_save = True
-        if save_type == "best":
-            metric_key = "personal_avg_test_loss"
-            if metric_key not in self.metrics or not self.metrics[metric_key]:
-                should_save = False
-            else:
-                vals = self.metrics[metric_key]
-                if vals[-1] != min(vals):
-                    should_save = False
-
-        if not should_save:
-            return
-
-        if not self.exclude_server_model_processes:
-            self.save_model(
-                model=self.model,
-                path=self.model_path,
-                name=self.name,
-                postfix=save_type,
-                configs=self.configs,
-                metadata={"save_type": save_type, "owner": "server"},
-                verbose=self.logger,
-            )
-
-        for client in self.clients:
-            client.save_model(
-                model=client.model_per,
-                path=client.model_path,
-                name=client.name,
-                postfix=save_type,
-                configs=client.configs,
-                metadata={"save_type": save_type, "owner": client.name},
-                verbose=client.logger,
-            )
 
 
 class Ditto_Client(pFL_Client):
@@ -80,29 +35,36 @@ class Ditto_Client(pFL_Client):
     Client for Ditto. Maintains two models:
     - model: global model trained with standard FedAvg objective
     - model_per: personalized model trained with proximal regularization to model
+
+    Per-client persistent state stored in personal_model_params:
+    - "model_per": state dict of the personalized model
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
+    def __init__(self, configs, times, device):
+        super().__init__(configs, times, device)
         self.model_per = copy.deepcopy(self.model)
-        self._global_snapshot = None
+        self._global_params = []
 
-    def receive_from_server(self, data: dict) -> None:
-        self._global_snapshot = copy.deepcopy(data["model"]).to("cpu")
-        self.update_model_params(old=self.model, new=data["model"])
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        if "model_per" in package["personal_model_params"]:
+            self.model_per.load_state_dict(
+                package["personal_model_params"]["model_per"]
+            )
+        # Capture global model params for proximal term used in fit()
+        self._global_params = [p.data.clone() for p in self.model.parameters()]
 
-    def train(self):
-        train_loader = self.load_train_data()
-        start_time = time.time()
-
-        # Step 1: train personalized model with proximal regularization to global model
-        global_params = list(self._global_snapshot.to(self.device).parameters())
+    def fit(self) -> None:
+        # Step 1: train model_per with proximal regularization anchored to global model
+        self._set_worker_seed(self._loader_seed("train"))
+        loader = self.load_train_data()
+        global_params = [g.to(self.device) for g in self._global_params]
         self.model_per.to(self.device)
         self.model_per.train()
         per_optim = torch.optim.SGD(self.model_per.parameters(), lr=self.learning_rate)
         offload_per = self.efficiency == "low"
         for _ in range(self.plocal_epochs):
-            for batch_x, batch_y, x_mark, y_mark in train_loader:
+            for batch_x, batch_y, x_mark, y_mark in loader:
                 per_optim.zero_grad()
                 batch_x = batch_x.to(device=self.device, dtype=torch.float32)
                 batch_y = batch_y.to(device=self.device, dtype=torch.float32)
@@ -120,43 +82,38 @@ class Ditto_Client(pFL_Client):
         del global_params
 
         # Step 2: train global model with standard objective
-        offload_after = self.efficiency == "low"
-        for _ in range(self.epochs):
-            self.train_one_epoch(
-                model=self.model,
-                dataloader=train_loader,
-                optimizer=self.optimizer,
-                criterion=self.loss,
-                scheduler=self.scheduler,
-                device=self.device,
-                offload_after=offload_after,
-            )
+        super().fit()
+
         if self.efficiency == "med":
-            self.model.to("cpu")
             self.model_per.to("cpu")
 
-        self.metrics["train_time"].append(time.time() - start_time)
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["personal_model_params"]["model_per"] = {
+            k: v.detach().cpu().clone()
+            for k, v in self.model_per.state_dict().items()
+        }
+        return result
 
-    def get_train_loss(self) -> float:
+    def evaluate_personalized(
+        self, client_id, global_params, personal_params, dataset_type, current_iter
+    ) -> float:
+        self.id = client_id
+        self.current_iter = current_iter
+        self._load_private(client_id)
+        self.model.load_state_dict(global_params, strict=False)
+        if "model_per" in personal_params:
+            self.model.load_state_dict(personal_params["model_per"], strict=False)
+        loader = (
+            self.load_test_data()
+            if dataset_type == "test"
+            else self.load_train_data()
+        )
         losses = self.calculate_loss(
-            model=self.model_per,
-            dataloader=self.load_train_data(),
+            model=self.model,
+            dataloader=loader,
             criterion=self.loss,
             device=self.device,
             offload_after=self.efficiency != "high",
         )
-        loss = float(np.mean(losses))
-        self.metrics["train_loss"].append(loss)
-        return loss
-
-    def get_test_loss(self) -> float:
-        losses = self.calculate_loss(
-            model=self.model_per,
-            dataloader=self.load_test_data(),
-            criterion=self.loss,
-            device=self.device,
-            offload_after=self.efficiency != "high",
-        )
-        loss = float(np.mean(losses))
-        self.metrics["test_loss"].append(loss)
-        return loss
+        return float(np.mean(losses))

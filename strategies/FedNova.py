@@ -1,5 +1,5 @@
-import time
 from argparse import Namespace
+from collections import OrderedDict
 from typing import Any, Dict, List
 
 import torch
@@ -130,22 +130,22 @@ class FedNova(tFL):
         self.parallel = False
         self._global_momentum_buffer: List[torch.Tensor] = []
 
-    def aggregate_models(self) -> None:
-        total_score = sum(cd["score"] for cd in self.client_data)
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        total_score = sum(pkg["score"] for pkg in packages.values())
 
         # τ_eff = weighted_avg(tau_i)
         tau_eff = sum(
-            cd["tau"] * (cd["score"] / total_score) for cd in self.client_data
+            pkg["tau"] * (pkg["score"] / total_score) for pkg in packages.values()
         )
 
         # weighted_avg(d_i) where d_i = cum_grad_i / a_i
-        avg_d: List[torch.Tensor] = []
-        for i, param in enumerate(self.model.parameters()):
-            d = sum(
-                cd["nova_grad"][i].to(param.device) * (cd["score"] / total_score)
-                for cd in self.client_data
+        avg_d: List[torch.Tensor] = [
+            sum(
+                pkg["nova_grad"][i] * (pkg["score"] / total_score)
+                for pkg in packages.values()
             )
-            avg_d.append(d)
+            for i in range(len(self.public_model_params))
+        ]
 
         # Global momentum
         if self.gmf != 0.0:
@@ -160,9 +160,11 @@ class FedNova(tFL):
         else:
             update = [tau_eff * d for d in avg_d]
 
-        with torch.no_grad():
-            for param, upd in zip(self.model.parameters(), update):
-                param.data.sub_(upd.to(param.device))
+        new_params = OrderedDict(
+            (name, param - upd.to(param.device))
+            for (name, param), upd in zip(self.public_model_params.items(), update)
+        )
+        self._commit_global(new_params)
 
 
 class FedNova_Client(tFL_Client):
@@ -171,9 +173,10 @@ class FedNova_Client(tFL_Client):
     updates and returns nova_grad = cum_grad / local_normalizing_vec and tau.
     """
 
-    def train(self):
+    personal_params_name: List[str] = []
+
+    def fit(self) -> None:
         train_loader = self.load_train_data()
-        start_time = time.time()
 
         nova_opt = NovaOptimizer(
             self.model.parameters(),
@@ -214,11 +217,9 @@ class FedNova_Client(tFL_Client):
         self._nova_grad = nova_grad
         self._tau = nova_opt.local_normalizing_vec
         self.model.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
 
-    def variables_to_be_sent(self) -> Dict[str, Any]:
-        return {
-            "nova_grad": self._nova_grad,
-            "tau": self._tau,
-            "score": self.train_samples,
-        }
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["nova_grad"] = self._nova_grad
+        result["tau"] = self._tau
+        return result

@@ -1,4 +1,5 @@
 import copy
+from typing import Any, Dict
 
 import torch
 import torch.nn.functional as F
@@ -19,12 +20,36 @@ class MOON(tFL):
 
 
 class MOON_Client(tFL_Client):
-    def receive_from_server(self, data):
-        # [§Method] — save w_i^{t-1} (previous local model) before overwriting
-        self.prev_model = copy.deepcopy(self.model).to("cpu")
-        # [§Method] — save w^t (global model) as positive reference
-        self.global_model = copy.deepcopy(data["model"]).to("cpu")
-        self.update_model_params(old=self.model, new=data["model"])
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        self.id = package["client_id"]
+        self.current_iter = package["current_iter"]
+        self._load_private(self.id)
+        # Load global model as the starting point for local training (w^t)
+        self.model.load_state_dict(package["regular_model_params"], strict=False)
+        if package["optimizer_state"]:
+            self.optimizer.load_state_dict(package["optimizer_state"])
+        else:
+            self.optimizer.load_state_dict(self.init_optimizer_state)
+        if package["scheduler_state"]:
+            self.scheduler.load_state_dict(package["scheduler_state"])
+        else:
+            self.scheduler.load_state_dict(self.init_scheduler_state)
+        # [§Method] — save w^t (global model) as positive contrastive reference
+        self._global_model_params = copy.deepcopy(package["regular_model_params"])
+        # [§Method] — restore w_i^{t-1} (previous local model); on first round fall back to global
+        personal = package["personal_model_params"]
+        self._prev_model_params = personal.get(
+            "prev_model_state",
+            copy.deepcopy(package["regular_model_params"]),
+        )
+
+    def package(self, train_time: float) -> Dict[str, Any]:
+        out = super().package(train_time)
+        # Persist current post-training model as prev_model for next round (w_i^t → w_i^{t-1})
+        out["personal_model_params"]["prev_model_state"] = {
+            k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()
+        }
+        return out
 
     def train_one_epoch(
         self,
@@ -40,10 +65,13 @@ class MOON_Client(tFL_Client):
         self._move_optimizer_state_to_param_devices(optimizer)
 
         # [§Method] — frozen reference models for contrastive loss
-        global_model = copy.deepcopy(self.global_model).to(device)
-        prev_model = copy.deepcopy(self.prev_model).to(device)
-        global_model.eval()
-        prev_model.eval()
+        global_model = copy.deepcopy(model)
+        global_model.load_state_dict(self._global_model_params, strict=False)
+        global_model.to(device).eval()
+
+        prev_model = copy.deepcopy(model)
+        prev_model.load_state_dict(self._prev_model_params, strict=False)
+        prev_model.to(device).eval()
 
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:

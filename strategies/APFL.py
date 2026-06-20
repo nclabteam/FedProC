@@ -1,6 +1,5 @@
 import copy
-import time
-from argparse import Namespace
+from typing import Any, Dict
 
 import numpy as np
 import torch
@@ -28,90 +27,55 @@ class APFL(pFL):
     def args_update(cls, parser):
         parser.add_argument("--alpha", type=float, default=None)
 
-    def __init__(self, configs: Namespace, times: int) -> None:
-        super().__init__(configs=configs, times=times)
-        self.parallel = False
-
-    def save_models(self, save_type: str) -> None:
-        if save_type not in ["last", "best"]:
-            raise ValueError("save_type must be 'last' or 'best'")
-
-        should_save = True
-        if save_type == "best":
-            metric_key = "personal_avg_test_loss"
-            if metric_key not in self.metrics or not self.metrics[metric_key]:
-                should_save = False
-            else:
-                vals = self.metrics[metric_key]
-                if vals[-1] != min(vals):
-                    should_save = False
-
-        if not should_save:
-            return
-
-        if not self.exclude_server_model_processes:
-            self.save_model(
-                model=self.model,
-                path=self.model_path,
-                name=self.name,
-                postfix=save_type,
-                configs=self.configs,
-                metadata={"save_type": save_type, "owner": "server"},
-                verbose=self.logger,
-            )
-
-        for client in self.clients:
-            client.save_model(
-                model=client.model_per,
-                path=client.model_path,
-                name=client.name,
-                postfix=save_type,
-                configs=client.configs,
-                metadata={"save_type": save_type, "owner": client.name},
-                verbose=client.logger,
-            )
-
 
 class APFL_Client(pFL_Client):
     """
     Client for APFL. Trains global model w (sent to server) and personalized
     model v_i (kept local) simultaneously, updating mixing coefficient α_i
     adaptively each batch.
+
+    Per-client persistent state stored in personal_model_params:
+    - "model_per": state dict of the personalized model v_i
+    - "alpha": per-client mixing coefficient α_i
     """
 
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
+    def __init__(self, configs, times, device):
+        super().__init__(configs, times, device)
         self.model_per = copy.deepcopy(self.model)
-        self.alpha: float = self.alpha  # per-client mixing coefficient
 
-    def receive_from_server(self, data: dict) -> None:
-        self.update_model_params(old=self.model, new=data["model"])
+    def set_parameters(self, package: Dict[str, Any]) -> None:
+        super().set_parameters(package)
+        if "model_per" in package["personal_model_params"]:
+            self.model_per.load_state_dict(
+                package["personal_model_params"]["model_per"]
+            )
+        if "alpha" in package["personal_model_params"]:
+            self.alpha = package["personal_model_params"]["alpha"]
 
-    def train(self):
-        train_loader = self.load_train_data()
-        start_time = time.time()
-
-        optim_g = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+    def fit(self) -> None:
+        self._set_worker_seed(self._loader_seed("train"))
+        loader = self.load_train_data()
         optim_p = torch.optim.SGD(self.model_per.parameters(), lr=self.learning_rate)
 
         self.model.to(self.device)
+        self._move_optimizer_state_to_param_devices(self.optimizer)
         self.model_per.to(self.device)
         self.model.train()
         self.model_per.train()
 
         for _ in range(self.epochs):
-            for batch_x, batch_y, x_mark, y_mark in train_loader:
+            for batch_x, batch_y, x_mark, y_mark in loader:
                 batch_x = batch_x.to(device=self.device, dtype=torch.float32)
                 batch_y = batch_y.to(device=self.device, dtype=torch.float32)
                 x_mark = x_mark.to(device=self.device, dtype=torch.float32)
                 y_mark = y_mark.to(device=self.device, dtype=torch.float32)
 
                 # Train global model
-                optim_g.zero_grad()
+                self.optimizer.zero_grad()
                 out_g = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss_g = self.loss(out_g, batch_y)
                 loss_g.backward()
-                optim_g.step()
+                self.optimizer.step()
 
                 # Train personalized model
                 optim_p.zero_grad()
@@ -123,13 +87,14 @@ class APFL_Client(pFL_Client):
                 # Adaptive alpha update
                 self._update_alpha()
 
+            self.scheduler.step()
+
         # Mix: v_i = (1-α)*w + α*v_i
         for lp, gp in zip(self.model_per.parameters(), self.model.parameters()):
             lp.data = (1.0 - self.alpha) * gp.data + self.alpha * lp.data
 
         self.model.to("cpu")
         self.model_per.to("cpu")
-        self.metrics["train_time"].append(time.time() - start_time)
 
     def _update_alpha(self) -> None:
         grad_alpha = 0.0
@@ -146,26 +111,34 @@ class APFL_Client(pFL_Client):
             np.clip(self.alpha - self.learning_rate * grad_alpha, 0.0, 1.0)
         )
 
-    def get_train_loss(self) -> float:
-        losses = self.calculate_loss(
-            model=self.model_per,
-            dataloader=self.load_train_data(),
-            criterion=self.loss,
-            device=self.device,
-            offload_after=self.efficiency != "high",
-        )
-        loss = float(np.mean(losses))
-        self.metrics["train_loss"].append(loss)
-        return loss
+    def package(self, train_time: float) -> Dict[str, Any]:
+        result = super().package(train_time)
+        result["personal_model_params"]["model_per"] = {
+            k: v.detach().cpu().clone()
+            for k, v in self.model_per.state_dict().items()
+        }
+        result["personal_model_params"]["alpha"] = self.alpha
+        return result
 
-    def get_test_loss(self) -> float:
+    def evaluate_personalized(
+        self, client_id, global_params, personal_params, dataset_type, current_iter
+    ) -> float:
+        self.id = client_id
+        self.current_iter = current_iter
+        self._load_private(client_id)
+        self.model.load_state_dict(global_params, strict=False)
+        if "model_per" in personal_params:
+            self.model.load_state_dict(personal_params["model_per"], strict=False)
+        loader = (
+            self.load_test_data()
+            if dataset_type == "test"
+            else self.load_train_data()
+        )
         losses = self.calculate_loss(
-            model=self.model_per,
-            dataloader=self.load_test_data(),
+            model=self.model,
+            dataloader=loader,
             criterion=self.loss,
             device=self.device,
             offload_after=self.efficiency != "high",
         )
-        loss = float(np.mean(losses))
-        self.metrics["test_loss"].append(loss)
-        return loss
+        return float(np.mean(losses))
