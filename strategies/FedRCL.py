@@ -1,10 +1,10 @@
 import torch
 import torch.nn.functional as F
 
-from ._core import StatelessClient, StatelessServer
+from .tFL import tFL, tFL_Client
 
 
-class FedRCL(StatelessServer):
+class FedRCL(tFL):
     """
     [methodology.tex, Algorithm 1] — Server side: standard FedAvg aggregation.
     No server-side changes needed.
@@ -27,7 +27,7 @@ class FedRCL(StatelessServer):
         parser.add_argument("--rcl_num_classes", type=int, default=None)
 
 
-class FedRCL_Client(StatelessClient):
+class FedRCL_Client(tFL_Client):
     """
     [methodology.tex, Algorithm 1] — Client side: L = L_task + rcl_weight * L_RCL.
     Overrides train_one_epoch to add the relaxed contrastive loss.

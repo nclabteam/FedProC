@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from ._core import StatelessServer
+from .tFL import tFL
 
 
-class FedYogi(StatelessServer):
+class FedYogi(tFL):
 
     optional = {
         "beta1_server": 0.9,

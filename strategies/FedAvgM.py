@@ -1,9 +1,9 @@
 from collections import OrderedDict
 
-from ._core import StatelessServer
+from .tFL import tFL
 
 
-class FedAvgM(StatelessServer):
+class FedAvgM(tFL):
 
     optional = {"server_momentum": 0.9, "server_learning_rate": 0.01}
 

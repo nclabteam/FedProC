@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from ._core import StatelessClient, StatelessServer
+from .tFL import tFL, tFL_Client
 
 
-class FedMedian(StatelessServer):
+class FedMedian(tFL):
     """Coordinate-wise median aggregation (Byzantine-robust)."""
 
     def aggregate_client_updates(self, packages):
@@ -18,5 +18,5 @@ class FedMedian(StatelessServer):
         self._commit_global(new_params)
 
 
-class FedMedian_Client(StatelessClient):
+class FedMedian_Client(tFL_Client):
     pass

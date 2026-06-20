@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from ._core import StatelessClient, StatelessServer
+from .tFL import tFL, tFL_Client
 
 
-class FedTrimmedAvg(StatelessServer):
+class FedTrimmedAvg(tFL):
     """Coordinate-wise trimmed-mean aggregation (Byzantine-robust)."""
 
     optional = {
@@ -39,5 +39,5 @@ class FedTrimmedAvg(StatelessServer):
         self._commit_global(new_params)
 
 
-class FedTrimmedAvg_Client(StatelessClient):
+class FedTrimmedAvg_Client(tFL_Client):
     pass

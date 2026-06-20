@@ -3,7 +3,7 @@ from typing import List, Set
 
 import torch
 
-from ._core import StatelessClient, StatelessServer
+from .tFL import tFL, tFL_Client
 
 
 def _global_param_names(names: List[str], num_global_layers: int) -> Set[str]:
@@ -17,7 +17,7 @@ def _global_param_names(names: List[str], num_global_layers: int) -> Set[str]:
     return {name for name in names if name.split(".")[0] in global_prefixes}
 
 
-class LGFedAvg(StatelessServer):
+class LGFedAvg(tFL):
     """
     LG-FedAvg: shared global body (first ``num_global_layers`` module groups)
     aggregated across clients; personal head stays local. Matches the legacy
@@ -53,7 +53,7 @@ class LGFedAvg(StatelessServer):
         self._commit_global(new_params)
 
 
-class LGFedAvg_Client(StatelessClient):
+class LGFedAvg_Client(tFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         global_names = _global_param_names(

@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from ._core import StatelessClient, StatelessServer
+from .tFL import tFL, tFL_Client
 
 
-class Krum(StatelessServer):
+class Krum(tFL):
 
     optional = {
         "num_malicious_clients": 0,
@@ -75,5 +75,5 @@ class Krum(StatelessServer):
         return distance_matrix
 
 
-class Krum_Client(StatelessClient):
+class Krum_Client(tFL_Client):
     pass

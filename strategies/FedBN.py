@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from ._core import StatelessClient, StatelessPFLServer
+from .pFL import pFL, pFL_Client
 
 
-class FedBN(StatelessPFLServer):
+class FedBN(pFL):
     """
     FedBN: Federated Learning on Non-IID Features via Local Batch Normalization.
 
@@ -32,7 +32,7 @@ class FedBN(StatelessPFLServer):
         self._commit_global(new_params)
 
 
-class FedBN_Client(StatelessClient):
+class FedBN_Client(pFL_Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.personal_params_name = [
