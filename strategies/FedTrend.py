@@ -10,6 +10,21 @@ from .tFL import tFL, tFL_Client
 
 
 class FedTrend(tFL):
+    """Fed-TREND: Federated Time Series Forecasting with Synthetic Data (Bai et al., 2025).
+
+    Generates two types of synthetic data on the server to address heterogeneity:
+    - D_ct: derived from per-client model-update trajectory pairs; distributed to clients
+      for local training augmentation to reduce cross-client heterogeneity.
+    - D_gt: derived from the global model trajectory; used server-side to refine the
+      aggregated global model and correct for model drift.
+
+    Both datasets are updated every L_ct / L_gt rounds via bi-level optimization (MTT
+    data condensation: Adam on synthetic (X, Y) pairs, inner SGD for trajectory replay).
+
+    Default hyperparameters (from paper §5.4): L_ct=L_gt=10, synthetic_epochs=300,
+    synthetic_lr=3e-4. Effective D_ct/D_gt sizes explored in paper: 5–40 samples.
+    Reference: arXiv:2411.15716.
+    """
 
     optional = {
         "L_ct": 10,

@@ -4,6 +4,14 @@ from .tFL import tFL
 
 
 class FedAvgM(tFL):
+    """FedAvgM: FedAvg with server-side SGD momentum (Hsieh et al., 2020).
+
+    After each FedAvg step the server computes a pseudo-gradient Δ = w_prev - FedAvg(w_k),
+    updates a momentum buffer v = β * v + Δ, then applies the server update
+    w_new = w_prev - η_s * v.  Reduces client-drift oscillations on non-IID data.
+
+    Reference: arXiv:1909.06335.
+    """
 
     optional = {"server_momentum": 0.9, "server_learning_rate": 0.01}
 
