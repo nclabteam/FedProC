@@ -4,6 +4,19 @@ from .tFL import tFL, tFL_Client
 
 
 class FedPAQ(tFL):
+    """FedPAQ: Federated Learning with Periodic Averaging and Quantization (Reisizadeh et al., 2020).
+
+    Reduces uplink communication by stochastically quantizing client model updates
+    to s levels before upload. Quantizer (low-precision, QSGD-style):
+      Q_s(v)_i = ||v|| * sign(v_i) * ξ_i / s
+    where ξ_i ~ Bernoulli(|v_i|/||v|| * s - floor(|v_i|/||v|| * s)) + floor(|v_i|/||v|| * s).
+
+    Note: original FedPAQ quantizes the *update* (x_τ - x_0) not the full model.
+    This implementation quantizes full model params for compatibility with FedAvg aggregation.
+
+    Reference: arXiv:1909.13014.
+    """
+
     optional = {
         "s": 8,
     }

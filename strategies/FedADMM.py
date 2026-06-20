@@ -9,20 +9,21 @@ from .tFL import tFL, tFL_Client
 
 
 class FedADMM(tFL):
-    """
-    FedADMM: Federated Learning via Alternating Direction Method of Multipliers.
+    """FedADMM: Federated Learning via ADMM (Elgabli et al., ICDE 2022).
 
-    Server maintains theta (consensus variable, one tensor per model parameter).
-    Each round:
-      1. Server sends global model + theta to each client.
-      2. Client trains with ADMM proximal loss:
-           L(w) + (rho/2) * ||w - theta - alpha||^2
-      3. Client updates dual variable: alpha += w - theta.
-      4. Server aggregates:
-           theta_new[p] = weighted_mean(w_i[p] - alpha_i[p])
-           global[p]    = weighted_mean(w_i[p])
+    Solves the consensus problem: minimize Σ f_i(w_i) s.t. w_i = θ via ADMM
+    in scaled-dual form with per-client variable α_i = -u_i (scaled dual):
 
-    Reference: fl-bench FedADMM implementation.
+      Client proximal loss: f_i(w) + (ρ/2)||w - θ - α_i||²
+      Dual update:          α_i ← α_i - (w_i - θ)
+      Theta update:         θ  ← weighted_mean(w_i - α_i)    [= mean(w + u)]
+      Global update:        θ_global ← weighted_mean(w_i)
+
+    Note: the paper uses a tracking mechanism for the θ-update; this implementation
+    uses the standard ADMM consensus update (simpler, correct for partial participation).
+
+    Default hyperparameters (from paper): ρ = 0.01.
+    Reference: arXiv:2204.03529. ICDE 2022.
     """
 
     optional = {
@@ -40,6 +41,14 @@ class FedADMM(tFL):
             name: p.data.clone().cpu()
             for name, p in self.model.named_parameters()
         }
+        zeros = {
+            name: torch.zeros_like(p.data).cpu()
+            for name, p in self.model.named_parameters()
+        }
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["alpha"] = {
+                name: v.clone() for name, v in zeros.items()
+            }
 
     def package(self, client_id: int) -> Dict[str, Any]:
         out = super().package(client_id)
@@ -51,7 +60,6 @@ class FedADMM(tFL):
         total = float(sum(scores))
         weights = [s / total for s in scores]
 
-        # New global params: weighted mean of client model weights
         new_global = OrderedDict()
         for name in self.public_model_params:
             stacked = torch.stack(
@@ -60,7 +68,6 @@ class FedADMM(tFL):
             w_t = torch.tensor(weights, dtype=stacked.dtype)
             new_global[name] = (stacked * w_t).sum(dim=-1)
 
-        # Update theta: theta[p] = weighted_mean(w_i[p] - alpha_i[p])
         new_theta: Dict[str, torch.Tensor] = {}
         for name in self.theta:
             diffs = []
@@ -77,24 +84,18 @@ class FedADMM(tFL):
 
 
 class FedADMM_Client(tFL_Client):
-    """
-    Client for FedADMM.
+    """Client for FedADMM.
 
-    Maintains per-parameter dual variable alpha (stored in
-    clients_personal_model_params under key "alpha").  Each round, trains with
-    the ADMM proximal loss and returns the updated alpha.
+    Maintains per-parameter scaled dual variable α_i (server initializes to zeros,
+    stored in personal_model_params["alpha"]). Each round, trains with the ADMM
+    proximal loss and returns the updated α.
     """
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        alpha_data = package["personal_model_params"].get("alpha", None)
-        if alpha_data is None:
-            self._alpha: Dict[str, torch.Tensor] = {
-                name: torch.zeros_like(p.data).cpu()
-                for name, p in self.model.named_parameters()
-            }
-        else:
-            self._alpha = {name: t.clone() for name, t in alpha_data.items()}
+        self._alpha: Dict[str, torch.Tensor] = {
+            name: t.clone() for name, t in package["personal_model_params"]["alpha"].items()
+        }
         self._theta: Dict[str, torch.Tensor] = {
             name: t.clone() for name, t in package["theta"].items()
         }
@@ -117,7 +118,7 @@ class FedADMM_Client(tFL_Client):
                 outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss = self.loss(outputs, batch_y)
 
-                # ADMM proximal term: (rho/2) * ||w - theta - alpha||^2
+                # ADMM proximal term: (ρ/2)||w - θ - α||²
                 for name, param in self.model.named_parameters():
                     theta_i = self._theta[name].to(self.device)
                     alpha_i = self._alpha[name].to(self.device)
@@ -135,12 +136,12 @@ class FedADMM_Client(tFL_Client):
     def package(self, train_time: float) -> Dict[str, Any]:
         out = super().package(train_time)
 
-        # Update alpha: alpha_i += w_i - theta_i
+        # Dual update: α_i ← α_i - (w_i - θ)  [scaled-form ADMM consensus]
         updated_alpha: Dict[str, torch.Tensor] = {}
         with torch.no_grad():
             for name, param in self.model.named_parameters():
                 w_i = param.data.cpu()
-                updated_alpha[name] = self._alpha[name] + w_i - self._theta[name]
+                updated_alpha[name] = self._alpha[name] - w_i + self._theta[name]
 
         out["personal_model_params"]["alpha"] = updated_alpha
         return out
