@@ -16,7 +16,11 @@ def _discover_strategy_map() -> Dict[str, str]:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     result: Dict[str, str] = {}
     for filename in sorted(os.listdir(current_dir)):
-        if not filename.endswith(".py") or filename == "__init__.py":
+        if (
+            not filename.endswith(".py")
+            or filename == "__init__.py"
+            or filename.startswith("_")
+        ):
             continue
         stem = filename[:-3]
         filepath = os.path.join(current_dir, filename)
