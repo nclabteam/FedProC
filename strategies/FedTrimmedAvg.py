@@ -1,9 +1,12 @@
+from collections import OrderedDict
+
 import torch
 
-from .tFL import tFL, tFL_Client
+from ._core import StatelessClient, StatelessServer
 
 
-class FedTrimmedAvg(tFL):
+class FedTrimmedAvg(StatelessServer):
+    """Coordinate-wise trimmed-mean aggregation (Byzantine-robust)."""
 
     optional = {
         "beta": 0.2,
@@ -18,30 +21,23 @@ class FedTrimmedAvg(tFL):
             help="Fraction to cut off of both tails of the distribution",
         )
 
-    def calculate_aggregation_weights(self):
-        pass
-
-    def aggregate_models(self):
-        self.model = self.reset_model(self.model)
-
-        lowercut = int(self.beta * len(self.client_data))
-        uppercut = len(self.client_data) - lowercut
+    def aggregate_client_updates(self, packages):
+        n = len(packages)
+        lowercut = int(self.beta * n)
+        uppercut = n - lowercut
         if lowercut > uppercut:
             raise ValueError(
                 "The fraction to cut off of both tails of the distribution is too large"
             )
-
-        for name, param in self.model.named_parameters():
-            layers = torch.stack(
-                [client["model"].state_dict()[name] for client in self.client_data]
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()]
             )
-            # Sort along client axis (axis=0)
-            sorted_layers, _ = torch.sort(layers, dim=0)
-
-            # Compute mean excluding trimmed values
-            param.data = torch.mean(sorted_layers[lowercut:uppercut], dim=0)
+            sorted_layers, _ = torch.sort(stacked, dim=0)
+            new_params[name] = torch.mean(sorted_layers[lowercut:uppercut], dim=0)
+        self._commit_global(new_params)
 
 
-class FedTrimmedAvg_Client(tFL_Client):
-    def variables_to_be_sent(self):
-        return {"model": self.model}
+class FedTrimmedAvg_Client(StatelessClient):
+    pass

@@ -1,12 +1,12 @@
+from ._core import StatelessClient, StatelessServer
 from .dFL import dFL, dFL_Client
-from .tFL import tFL, tFL_Client
 
 
-class FedAvg(tFL):
+class FedAvg(StatelessServer):
     pass
 
 
-class FedAvg_Client(tFL_Client):
+class FedAvg_Client(StatelessClient):
     pass
 
 

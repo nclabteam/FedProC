@@ -1,9 +1,11 @@
+from collections import OrderedDict
+
 import torch
 
-from .tFL import tFL, tFL_Client
+from ._core import StatelessClient, StatelessServer
 
 
-class Krum(tFL):
+class Krum(StatelessServer):
 
     optional = {
         "num_malicious_clients": 0,
@@ -22,32 +24,19 @@ class Krum(tFL):
             "--num_clients_to_keep",
             type=int,
             default=None,
-            help="Number of clients to keep before averaging (MultiKrum). Defaults to 0, inthat case classical Krum is applied.",
+            help="Number of clients to keep before averaging (MultiKrum). Defaults to 0, in that case classical Krum is applied.",
         )
 
-    def calculate_aggregation_weights(self):
-        pass
-
-    def aggregate_models(self):
-        self.model = self.reset_model(self.model)
-
-        # Create a list of weights
-        client_weights = [client["model"].state_dict() for client in self.client_data]
-
-        # Compute distances between vectors
+    def aggregate_client_updates(self, packages):
+        client_weights = [p["regular_model_params"] for p in packages.values()]
         distance_matrix = self.compute_distances(client_weights)
 
-        # For each client, take the n-f-2 closest parameters vectors
         num_clients = len(client_weights)
         num_closest = max(1, num_clients - self.num_malicious_clients - 2)
-
-        # Sort distances and take the indices of the closest clients (excluding self)
         closest_indices = [
             torch.argsort(distance)[1 : num_closest + 1].tolist()
             for distance in distance_matrix
         ]
-
-        # Compute the score for each client, that is the sum of the distances of the n-f-2 closest parameters vectors
         scores = torch.tensor(
             [
                 torch.sum(distance_matrix[i, closest_indices[i]])
@@ -57,51 +46,34 @@ class Krum(tFL):
         )
 
         if self.num_clients_to_keep > 0:
-            # Choose to_keep clients and return their average (MultiKrum)
             best_indices = torch.argsort(scores, descending=True)[
                 -self.num_clients_to_keep :
             ]
-            best_clients = [self.client_data[i]["model"] for i in best_indices]
-
-            for name, param in self.model.named_parameters():
-                layers = torch.stack(
-                    [client.state_dict()[name] for client in best_clients]
-                )
-                param.data = torch.mean(layers, dim=0).clone()
+            best_clients = [client_weights[i] for i in best_indices]
+            new_params = OrderedDict()
+            for name in self.public_model_params:
+                layers = torch.stack([client[name] for client in best_clients])
+                new_params[name] = torch.mean(layers, dim=0).clone()
+            self._commit_global(new_params)
         else:
-            # Index with lowest score
-            best_index = torch.argmin(scores)
-            for global_param, param in zip(
-                self.model.parameters(), client_weights[best_index].values()
-            ):
-                global_param.data = param.clone()
+            best_index = int(torch.argmin(scores))
+            self._commit_global(client_weights[best_index])
 
     def compute_distances(self, weights: list[dict[str, torch.Tensor]]) -> torch.Tensor:
-        """Compute distances between model weight vectors.
-
-        Input: weights - list of model state dicts (each representing a client's model)
-        Output: distance_matrix - matrix of squared distances between the models
-        """
-        # Flatten and concatenate all layers for each model into a single vector
+        """Compute the matrix of squared L2 distances between client weight vectors."""
         flat_w = torch.stack(
             [
                 torch.cat([w.flatten() for w in model_weights.values()])
                 for model_weights in weights
             ]
         )
-
         num_models = len(flat_w)
         distance_matrix = torch.zeros((num_models, num_models), device=flat_w.device)
-
         for i, flat_w_i in enumerate(flat_w):
             for j, flat_w_j in enumerate(flat_w):
-                delta = flat_w_i - flat_w_j
-                norm = torch.norm(delta, p=2)
-                distance_matrix[i, j] = norm**2  # Squared Euclidean distance
-
+                distance_matrix[i, j] = torch.norm(flat_w_i - flat_w_j, p=2) ** 2
         return distance_matrix
 
 
-class Krum_Client(tFL_Client):
-    def variables_to_be_sent(self):
-        return {"model": self.model}
+class Krum_Client(StatelessClient):
+    pass

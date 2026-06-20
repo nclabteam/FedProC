@@ -390,6 +390,11 @@ class StatelessServer(SharedMethods):
             "scheduler_state": self.client_scheduler_states[client_id],
         }
 
+    def _commit_global(self, new_params) -> None:
+        """Set the global model params and load them into ``self.model``."""
+        self.public_model_params = OrderedDict(new_params)
+        self.model.load_state_dict(self.public_model_params, strict=False)
+
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
         scores = [p["score"] for p in packages.values()]
         total = float(sum(scores))
@@ -400,8 +405,11 @@ class StatelessServer(SharedMethods):
                 [p["regular_model_params"][name] for p in packages.values()], dim=-1
             )
             new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
-        self.public_model_params = new_params
-        self.model.load_state_dict(new_params, strict=False)
+        self._commit_global(new_params)
+
+    def _pre_eval_hook(self, dataset_type: str) -> None:
+        """Hook run before each round's local training. No-op for tFL-style
+        strategies; pFL-style servers override it to evaluate personalization."""
 
     def evaluate_generalization(self, dataset_type: str) -> None:
         incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
@@ -434,6 +442,11 @@ class StatelessServer(SharedMethods):
             )
             self.select_clients()
             self.metrics["send_mb"].append(self._send_mb_per_round)
+            if i % self.eval_gap == 0:
+                for dataset_type in ["train", "test"]:
+                    if dataset_type == "train" and self.skip_eval_train:
+                        continue
+                    self._pre_eval_hook(dataset_type)
             packages = self.trainer.train(self.selected_clients)
             self.aggregate_client_updates(packages)
             if i % self.eval_gap == 0:
@@ -443,7 +456,7 @@ class StatelessServer(SharedMethods):
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
             self.metrics["time_per_iter"].append(time.time() - round_start)
-            self.fix_results()
+            self.fix_results(default=self.default_value)
             if self.early_stopping():
                 break
         self.save_results()

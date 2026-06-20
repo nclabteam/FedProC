@@ -88,46 +88,58 @@ class TestStrategies(unittest.TestCase):
         self.assertFalse(server.parallel)
         self.assertEqual(server.num_gpus, 0)
 
-    def test_fedavg_uses_strategy_specific_client_class(self):
-        from strategies.FedAvg import FedAvg
-        from strategies.FedAvg import FedAvg_Client as CurrentClient
+    def test_fedavg_is_stateless_core(self):
+        # FedAvg is migrated onto the stateless core; verify the class hierarchy
+        # and that the server resolves its strategy-specific client class.
+        from strategies._core import StatelessClient, StatelessServer
+        from strategies.FedAvg import FedAvg, FedAvg_Client
 
-        server = self.build_server(FedAvg)
-        self.assertTrue(
-            all(isinstance(client, CurrentClient) for client in server.clients)
-        )
-        self.assertFalse(server.parallel)
-        self.assertEqual(server.num_gpus, 0)
-
-    def test_fedavg_one_round_smoke(self):
-        from strategies.FedAvg import FedAvg
-        from strategies.tFL import tFL
+        self.assertTrue(issubclass(FedAvg, StatelessServer))
+        self.assertTrue(issubclass(FedAvg_Client, StatelessClient))
 
         server = object.__new__(FedAvg)
+        self.assertIs(server._client_cls(), FedAvg_Client)
+
+    def test_stateless_select_clients(self):
+        # select_clients draws current_num_join_clients incumbents (non-new).
+        from strategies._core import StatelessServer
+        from strategies.FedAvg import FedAvg
+
+        server = object.__new__(FedAvg)
+        server.num_clients = 3
+        server.is_new = {0: False, 1: False, 2: False}
         server.random_join_ratio = False
         server.num_join_clients = 2
-        server.current_num_join_clients = 2
-        server.num_clients = 3
-        server.clients = [DummyClient(0), DummyClient(1), DummyClient(2)]
-        server.model = "model"
-        server.current_iter = 0
-        server.metrics = {"send_mb": []}
-        server.logger = None
-        server.selected_clients = []
-        server.get_size = lambda _: 1.5
 
-        tFL.select_clients(server)
+        StatelessServer.select_clients(server)
         self.assertEqual(len(server.selected_clients), 2)
+        self.assertTrue(all(isinstance(c, int) for c in server.selected_clients))
+        self.assertTrue(set(server.selected_clients) <= {0, 1, 2})
 
-        tFL.send_to_clients(server)
-        self.assertEqual(server.metrics["send_mb"], [4.5])
-        self.assertTrue(all(client.received for client in server.clients))
+    def test_stateless_aggregate_weighted_average(self):
+        # aggregate_client_updates is a sample-weighted average of regular params.
+        from collections import OrderedDict
 
-        tFL.receive_from_clients(server)
-        self.assertEqual(len(server.client_data), 2)
-        self.assertEqual(
-            sorted(item["client_id"] for item in server.client_data),
-            sorted(client.id for client in server.selected_clients),
+        import torch
+
+        from strategies.FedAvg import FedAvg
+
+        server = object.__new__(FedAvg)
+        server.model = torch.nn.Linear(2, 1, bias=False)
+        server.public_model_params = OrderedDict(
+            (k, v.detach().clone()) for k, v in server.model.named_parameters()
+        )
+        name = next(iter(server.public_model_params))
+        packages = OrderedDict(
+            {
+                0: {"score": 1, "regular_model_params": {name: torch.zeros(1, 2)}},
+                1: {"score": 3, "regular_model_params": {name: torch.ones(1, 2)}},
+            }
+        )
+        server.aggregate_client_updates(packages)
+        # weighted mean = (1*0 + 3*1) / 4 = 0.75
+        self.assertTrue(
+            torch.allclose(server.public_model_params[name], torch.full((1, 2), 0.75))
         )
 
     def test_fedcross_sends_slot_model_to_each_selected_client(self):

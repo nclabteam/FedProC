@@ -1,10 +1,10 @@
 import copy
 
 from .dFL import dFL, dFL_Client
-from .pFL import pFL, pFL_Client
+from .tFL import tFL, tFL_Client
 
 
-class FedProx(pFL):
+class FedProx(tFL):
     optional = {
         "mu": 0.01,
     }
@@ -14,7 +14,7 @@ class FedProx(pFL):
         parser.add_argument("--mu", type=float, default=None)
 
 
-class FedProx_Client(pFL_Client):
+class FedProx_Client(tFL_Client):
     def receive_from_server(self, data):
         self.snapshot = copy.deepcopy(data["model"]).to("cpu")
         self.update_model_params(old=self.model, new=data["model"])

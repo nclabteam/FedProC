@@ -1,22 +1,22 @@
+from collections import OrderedDict
+
 import torch
 
-from .tFL import tFL, tFL_Client
+from ._core import StatelessClient, StatelessServer
 
 
-class FedMedian(tFL):
+class FedMedian(StatelessServer):
+    """Coordinate-wise median aggregation (Byzantine-robust)."""
 
-    def calculate_aggregation_weights(self):
-        pass
-
-    def aggregate_models(self):
-        self.model = self.reset_model(self.model)
-        for name, param in self.model.named_parameters():
-            layers = torch.stack(
-                [client["model"].state_dict()[name] for client in self.client_data]
+    def aggregate_client_updates(self, packages):
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()]
             )
-            param.data = torch.median(layers, dim=0).values.clone()
+            new_params[name] = torch.median(stacked, dim=0).values.clone()
+        self._commit_global(new_params)
 
 
-class FedMedian_Client(tFL_Client):
-    def variables_to_be_sent(self):
-        return {"model": self.model}
+class FedMedian_Client(StatelessClient):
+    pass
