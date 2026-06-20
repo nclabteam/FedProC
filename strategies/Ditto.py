@@ -8,15 +8,17 @@ from .pFL import pFL, pFL_Client
 
 
 class Ditto(pFL):
-    """
-    Ditto: Fair and Robust Personalized Federated Learning.
+    """Ditto: Fair and Robust Personalized Federated Learning (Li et al., ICML 2021).
 
     Each client maintains a global model (updated via FedAvg) and a separate
     personalized model trained with a proximal regularization term anchored to
     the global model. Evaluation and saving use the personalized model.
 
-    Reference: Li et al., "Ditto: Fair and Robust Federated Learning Through
-    Personalization", ICML 2021. arXiv 2012.04235.
+    Objective: min_v F_k(v) + (λ/2)||v - w*||² where w* is the optimal global model.
+    Solved by alternating between local personalised SGD and global FedAvg.
+
+    Default hyperparameters (paper explores): λ ∈ {0.1, 1, 5}; plocal_epochs=1.
+    Reference: arXiv:2012.04221. ICML 2021.
     """
 
     optional = {
@@ -29,10 +31,17 @@ class Ditto(pFL):
         parser.add_argument("--mu", type=float, default=None)
         parser.add_argument("--plocal_epochs", type=int, default=None)
 
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["model_per"] = {
+                k: v.clone() for k, v in init_state.items()
+            }
+
 
 class Ditto_Client(pFL_Client):
-    """
-    Client for Ditto. Maintains two models:
+    """Client for Ditto. Maintains two models:
     - model: global model trained with standard FedAvg objective
     - model_per: personalized model trained with proximal regularization to model
 
@@ -47,11 +56,7 @@ class Ditto_Client(pFL_Client):
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        if "model_per" in package["personal_model_params"]:
-            self.model_per.load_state_dict(
-                package["personal_model_params"]["model_per"]
-            )
-        # Capture global model params for proximal term used in fit()
+        self.model_per.load_state_dict(package["personal_model_params"]["model_per"])
         self._global_params = [p.data.clone() for p in self.model.parameters()]
 
     def fit(self) -> None:
@@ -102,8 +107,7 @@ class Ditto_Client(pFL_Client):
         self.current_iter = current_iter
         self._load_private(client_id)
         self.model.load_state_dict(global_params, strict=False)
-        if "model_per" in personal_params:
-            self.model.load_state_dict(personal_params["model_per"], strict=False)
+        self.model.load_state_dict(personal_params["model_per"], strict=False)
         loader = (
             self.load_test_data()
             if dataset_type == "test"

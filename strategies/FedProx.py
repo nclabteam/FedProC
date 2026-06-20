@@ -6,6 +6,16 @@ from .tFL import tFL, tFL_Client
 
 
 class FedProx(tFL):
+    """FedProx: Federated Optimization with Proximal Term (Li et al., MLSys 2020).
+
+    Adds a proximal regularization term (μ/2)||w - w_0||² to the client's local
+    objective, applied via gradient accumulation: grad += μ * (w - w_0). This
+    constrains local updates to stay close to the global model, improving stability
+    under systems and statistical heterogeneity.
+
+    Default μ explored in paper: {0.001, 0.01, 0.1, 1}. Reference: arXiv:1812.06127.
+    """
+
     optional = {
         "mu": 0.01,
     }
