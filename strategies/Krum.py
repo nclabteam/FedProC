@@ -6,6 +6,15 @@ from .tFL import tFL, tFL_Client
 
 
 class Krum(tFL):
+    """Krum and Multi-Krum Byzantine-robust aggregation (Blanchard et al., NeurIPS 2017).
+
+    For each client i, compute the sum of squared L2 distances to its
+    (n - f - 2) nearest neighbors. Select the client with the lowest score
+    (Krum), or average the top-k lowest-score clients (Multi-Krum).
+
+    Set ``num_malicious_clients`` to the known (or upper-bound) number of
+    Byzantine workers f. Set ``num_clients_to_keep > 0`` to use Multi-Krum.
+    """
 
     optional = {
         "num_malicious_clients": 0,
@@ -46,9 +55,7 @@ class Krum(tFL):
         )
 
         if self.num_clients_to_keep > 0:
-            best_indices = torch.argsort(scores, descending=True)[
-                -self.num_clients_to_keep :
-            ]
+            best_indices = torch.argsort(scores)[: self.num_clients_to_keep]
             best_clients = [client_weights[i] for i in best_indices]
             new_params = OrderedDict()
             for name in self.public_model_params:

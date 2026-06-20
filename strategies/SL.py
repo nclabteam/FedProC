@@ -152,6 +152,9 @@ class SL(pFL):
         for cid, pkg in packages.items():
             self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
+    def evaluate_generalization(self, *args, **kwargs) -> None:
+        pass  # no shared global model in SL; only personalised evaluation is meaningful
+
 
 # ---------------------------------------------------------------------------
 # Client
