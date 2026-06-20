@@ -1,9 +1,63 @@
+import copy
 import json
 import os
+from collections import OrderedDict
 
 import numpy as np
 
 from .pFL import pFL, pFL_Client
+
+
+class hFL_Trainer:
+    """Per-client worker pool for heterogeneous-architecture FL.
+
+    Unlike the standard Trainer (one reusable worker), hFL needs one worker per
+    client because each client has a fixed model architecture that cannot be
+    hot-swapped on a single worker. Workers are created once at __init__ with
+    configs already patched to the correct model architecture.
+    """
+
+    def __init__(self, server, client_cls, configs, times) -> None:
+        self.server = server
+        self.workers: dict = {}
+        for entry in server.model_map:
+            cid = entry["client"]
+            client_cfg = copy.deepcopy(configs)
+            client_cfg.model = entry["model"]
+            for k, v in entry.get("params", {}).items():
+                setattr(client_cfg, k, v)
+            self.workers[cid] = client_cls(
+                configs=client_cfg, times=times, device=client_cfg.device
+            )
+
+    def train(self, selected) -> OrderedDict:
+        packages: OrderedDict = OrderedDict()
+        for cid in selected:
+            out = self.workers[cid].train(self.server.package(cid))
+            self._write_back(cid, out)
+            packages[cid] = out
+        return packages
+
+    def evaluate(self, ids, global_params, dataset_type, current_iter):
+        return [
+            self.workers[cid].evaluate_global(
+                cid, global_params, dataset_type, current_iter
+            )
+            for cid in ids
+        ]
+
+    def evaluate_personalized(self, ids, global_params, personal_map, dataset_type, current_iter):
+        return [
+            self.workers[cid].evaluate_personalized(
+                cid, global_params, personal_map[cid], dataset_type, current_iter
+            )
+            for cid in ids
+        ]
+
+    def _write_back(self, cid, out) -> None:
+        self.server.client_optimizer_states[cid] = out["optimizer_state"]
+        self.server.client_scheduler_states[cid] = out["scheduler_state"]
+        self.server.clients_personal_model_params[cid].update(out["personal_model_params"])
 
 
 class hFL(pFL):
@@ -13,6 +67,9 @@ class hFL(pFL):
     Clients can use different model architectures. Model assignment
     supports round-robin, wrap-around, and random modes with optional
     ratio specification.
+
+    No global aggregation — each client trains its own model independently
+    (nFL-style per-client storage).
     """
 
     optional = {
@@ -37,13 +94,13 @@ class hFL(pFL):
         self.model_map = self._build_model_map(configs)
         configs._hfl_model_map = self.model_map
         super().__init__(configs, times)
+        # Replace standard single-worker Trainer with per-client-worker Trainer.
+        # super().__init__() created a Trainer with one worker (wrong architecture for
+        # non-default clients); we discard it here and rebuild with per-client configs.
+        self.trainer = hFL_Trainer(self, self._client_cls(), configs, times)
         self._export_model_config()
 
     def _parse_models_str(self, models_str):
-        """Parse 'DLinear:3,PatchTST:2,CMoS:1' -> {'DLinear': 3, 'PatchTST': 2, 'CMoS': 1}
-
-        If no ratios given ('DLinear,PatchTST,CMoS'), each gets ratio 1.
-        """
         result = {}
         for part in models_str.split(","):
             part = part.strip()
@@ -55,7 +112,6 @@ class hFL(pFL):
         return result
 
     def _build_model_map(self, configs):
-        """Build per-client model assignment. Returns list of dicts with 'client', 'model', 'params'."""
         if self.model_config:
             with open(self.model_config, encoding="utf-8") as f:
                 return json.load(f)
@@ -84,80 +140,81 @@ class hFL(pFL):
         return result
 
     def _export_model_config(self):
-        """Save resolved model_config.json for reproducibility."""
         path = os.path.join(self.save_path, "model_config.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.model_map, f, indent=2)
 
+    def package(self, client_id: int) -> dict:
+        result = super().package(client_id)
+        personal = self.clients_personal_model_params[client_id]
+        if personal:
+            # Send client's own trained params; global model irrelevant (wrong arch)
+            result["regular_model_params"] = dict(personal)
+        else:
+            # First round: send empty dict so worker uses its own random-initialized weights
+            result["regular_model_params"] = {}
+        return result
+
     def aggregate_client_updates(self, packages) -> None:
-        """No aggregation — heterogeneous models cannot be averaged."""
+        # nFL-style: store each client's trained params; no cross-client aggregation
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
     def evaluate_generalization(self, *args, **kwargs) -> None:
-        """No generalization eval — no shared server model."""
+        """No generalization eval — no shared server model in hFL."""
 
     def save_models(self, save_type: str) -> None:
-        """Only save client models (no server model in hFL)."""
         if save_type not in ["last", "best"]:
             raise ValueError("save_type must be 'last' or 'best'")
 
-        should_save = True
         if save_type == "best":
             metric_key = "personal_avg_test_loss"
-            if metric_key not in self.metrics or not self.metrics[metric_key]:
-                should_save = False
-            else:
-                metric_values = self.metrics[metric_key]
-                if metric_values[-1] != min(metric_values):
-                    should_save = False
+            vals = self.metrics.get(metric_key, [])
+            if not vals or vals[-1] != min(vals):
+                return
 
-        if not should_save:
-            return
-
-        for client in self.clients:
-            client.save_model(
-                model=client.model,
-                path=client.model_path,
-                name=client.name,
+        for cid, worker in self.trainer.workers.items():
+            personal = self.clients_personal_model_params[cid]
+            if not personal:
+                continue
+            worker.model.load_state_dict(personal, strict=False)
+            self.save_model(
+                model=worker.model,
+                path=self.model_path,
+                name=f"client_{cid}_{worker.model.__class__.__name__}",
                 postfix=save_type,
-                configs=client.configs,
-                metadata={"save_type": save_type, "owner": client.name},
-                verbose=client.logger,
+                configs=worker.configs,
+                metadata={"save_type": save_type, "owner": f"client_{cid}"},
+                verbose=self.logger,
             )
 
     def early_stopping(self) -> bool:
         metric = self.metrics["personal_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:
             return False
-        best_so_far = min(metric)
-        if best_so_far not in metric[-self.patience :]:
+        if min(metric) not in metric[-self.patience:]:
             self.logger.info("Early stopping activated.")
             return True
         return False
 
     def get_model_info(self):
-        import gc
-
-        import torch.nn as nn
-
         super().get_model_info()
-        for client in self.clients:
-            if isinstance(client.model, nn.Module):
-                dl = client.load_train_data()
-                client.summarize_model(dataloader=dl)
-                del dl
-                gc.collect()
+        seen_archs = set()
+        for cid, worker in self.trainer.workers.items():
+            arch = worker.model.__class__.__name__
+            if arch in seen_archs:
+                continue
+            seen_archs.add(arch)
+            worker.id = cid
+            worker._load_private(cid)
+            dl = worker.load_train_data()
+            worker.summarize_model(dataloader=dl)
 
 
 class hFL_Client(pFL_Client):
-    """Client that reads its model assignment from the hFL model map."""
+    """Client pre-configured with its assigned model architecture.
 
-    def __init__(self, *args, **kwargs):
-        configs = kwargs.get("configs", args[1] if len(args) > 1 else None)
-        client_id = kwargs.get("id", args[2] if len(args) > 2 else None)
-        if hasattr(configs, "_hfl_model_map") and client_id is not None:
-            client_cfg = configs._hfl_model_map[client_id]
-            configs.model = client_cfg.get("model", configs.model)
-            for k, v in client_cfg.get("params", {}).items():
-                setattr(configs, k, v)
-        super().__init__(*args, **kwargs)
-        self.model_name = self.model.__class__.__name__
+    Architecture is injected via configs.model in hFL_Trainer before
+    worker construction — no per-client logic needed here.
+    """
+    pass
