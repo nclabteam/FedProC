@@ -7,6 +7,21 @@ from .pFL import pFL, pFL_Client
 
 
 class FedCAC(pFL):
+    """FedCAC: Federated Learning with Critical-parameter-Aware Collaboration (Wu et al., ICCV 2023).
+
+    Identifies per-client critical parameters (sensitivity-based) each round,
+    then selects each client's collaboration set based on overlap similarity
+    of critical parameter masks. Non-critical parameters use FedAvg; critical
+    parameters are averaged only among collaborating clients.
+
+    Collaboration threshold increases over rounds (controlled by β):
+      Ω^t = avg(O) + (t+1)/β * (max(O) - avg(O))
+    where O_{i,j} = 1 - ||M_i - M_j||_1 / (2n) (1 = identical, 0 = disjoint).
+
+    Default τ=0.5 (critical-param fraction), β=170 (threshold growth rate).
+    Reference: arXiv:2309.11103. ICCV 2023.
+    """
+
     optional = {"tau": 0.5, "beta": 170}
 
     @classmethod
@@ -14,19 +29,33 @@ class FedCAC(pFL):
         parser.add_argument("--tau", type=float, default=None)
         parser.add_argument("--beta", type=int, default=None)
 
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        total_numel = sum(p.numel() for p in self.model.parameters())
+        cp_init = torch.zeros(total_numel, dtype=torch.int32)
+        mask_init = [
+            torch.zeros(p.shape, dtype=torch.int32)
+            for p in self.model.parameters()
+        ]
+        global_model_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid].update({
+                "critical_parameter": cp_init.clone(),
+                "local_mask": [m.clone() for m in mask_init],
+                "global_mask": [m.clone() for m in mask_init],
+                "customized_model_state": {k: v.clone() for k, v in global_model_state.items()},
+            })
+
     def aggregate_client_updates(self, packages) -> None:
         # Standard FedAvg of regular_model_params
         super().aggregate_client_updates(packages)
 
         cids = list(packages.keys())
-
-        # Skip customization if any client lacks critical_parameter (first round)
-        for cid in cids:
-            if "critical_parameter" not in self.clients_personal_model_params[cid]:
-                return
-
         num_clients = len(cids)
         overlap_buffer = [[] for _ in range(num_clients)]
+        total_params = float(
+            self.clients_personal_model_params[cids[0]]["critical_parameter"].numel()
+        )
 
         for i in range(num_clients):
             for j in range(num_clients):
@@ -34,10 +63,8 @@ class FedCAC(pFL):
                     continue
                 cp_i = self.clients_personal_model_params[cids[i]]["critical_parameter"].to(self.device)
                 cp_j = self.clients_personal_model_params[cids[j]]["critical_parameter"].to(self.device)
-                overlap_rate = 1 - torch.sum(torch.abs(cp_i - cp_j)) / float(
-                    torch.sum(cp_i).cpu() * 2
-                )
-                overlap_buffer[i].append(overlap_rate.item())
+                overlap_rate = 1.0 - torch.sum(torch.abs(cp_i - cp_j)).item() / (total_params * 2.0)
+                overlap_buffer[i].append(overlap_rate)
 
         overlap_buffer_tensor = torch.tensor(overlap_buffer)
         overlap_sum = overlap_buffer_tensor.sum()
@@ -78,16 +105,9 @@ class FedCAC_Client(pFL_Client):
         self.id = package["client_id"]
         self.current_iter = package["current_iter"]
         self._load_private(self.id)
-        self.model.load_state_dict(package["regular_model_params"])
-
-        personal = package["personal_model_params"]
-        if personal:
-            if personal.get("local_mask") is not None and "customized_model_state" in personal:
-                # Replicate original FedCAC behavior: load customized model
-                self.model.load_state_dict(personal["customized_model_state"])
-            else:
-                self.model.load_state_dict(personal, strict=False)
-
+        self.model.load_state_dict(
+            package["personal_model_params"]["customized_model_state"]
+        )
         if package["optimizer_state"]:
             self.optimizer.load_state_dict(package["optimizer_state"])
             self._move_optimizer_state_to_param_devices(self.optimizer)

@@ -11,16 +11,17 @@ _logger = logging.getLogger(__name__)
 
 
 class FedALA(pFL):
-    """Federated Adaptive Local Aggregation.
+    """FedALA: Federated Adaptive Local Aggregation (Huang et al., AAAI 2023).
 
-    Each client learns per-layer blending weights that mix the received global
-    model with its own previously trained model before each round's local
-    training.  Server aggregation is standard FedAvg (inherited from pFL/tFL).
+    Each client learns element-wise blending weights W_i that interpolate
+    between the global model Θ and its own previous local model Θ_i:
+      Θ̂_i = Θ_i + (Θ - Θ_i) ⊙ W_i   (W_i ∈ [0,1])
+    Weights are learned via gradient descent on a local random subset before
+    each round's local training. Only the top-p higher layers use ALA
+    (controlled by layer_idx); lower layers use standard FedAvg weights.
 
-    References
-    ----------
-    Yutao Huang et al., "FedALA: Adaptive Local Aggregation for Personalized
-    Federated Learning," AAAI 2023.
+    Default hyperparameters: η=1.0, sample_ratio=0.8, layer_idx=2,
+    threshold=0.1, local_patience=10. Reference: arXiv:2212.01197. AAAI 2023.
     """
 
     optional = {
@@ -39,6 +40,13 @@ class FedALA(pFL):
         parser.add_argument("--threshold", type=float, default=None)
         parser.add_argument("--local_patience", type=int, default=None)
 
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["ala_weights"] = None
+            self.clients_personal_model_params[cid]["ala_start_phase"] = True
+            self.clients_personal_model_params[cid]["prev_local_params"] = None
+
 
 class FedALA_Client(pFL_Client):
     """Client for FedALA.
@@ -55,11 +63,9 @@ class FedALA_Client(pFL_Client):
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)  # loads global model into self.model
         pm = package["personal_model_params"]
-        self._ala_weights: Optional[List[torch.Tensor]] = pm.get("ala_weights", None)
-        self._ala_start_phase: bool = pm.get("ala_start_phase", True)
-        self._prev_local_params: Optional[List[torch.Tensor]] = pm.get(
-            "prev_local_params", None
-        )
+        self._ala_weights: Optional[List[torch.Tensor]] = pm["ala_weights"]
+        self._ala_start_phase: bool = pm["ala_start_phase"]
+        self._prev_local_params: Optional[List[torch.Tensor]] = pm["prev_local_params"]
 
     def fit(self) -> None:
         # Run ALA interpolation before local training if we have a previous

@@ -8,15 +8,14 @@ from .pFL import pFL, pFL_Client
 
 
 class APFL(pFL):
-    """
-    APFL: Adaptive Personalized Federated Learning.
+    """APFL: Adaptive Personalized Federated Learning (Deng et al., 2020).
 
     Each client maintains a global model w (aggregated via FedAvg) and a
     personalized model v_i.  Per round, both models are trained simultaneously
     and their outputs mixed with a per-client adaptive coefficient α_i.
+    α_i is updated via gradient descent on the mixed objective each batch.
 
-    Reference: Deng et al., "Adaptive Personalized Federated Learning",
-    arXiv 2003.13461.
+    Default α=0.5 (initial mixing coefficient). Reference: arXiv:2003.13461.
     """
 
     optional = {
@@ -27,16 +26,22 @@ class APFL(pFL):
     def args_update(cls, parser):
         parser.add_argument("--alpha", type=float, default=None)
 
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["model_per"] = {
+                k: v.clone() for k, v in init_state.items()
+            }
+            self.clients_personal_model_params[cid]["alpha"] = self.alpha
+
 
 class APFL_Client(pFL_Client):
-    """
-    Client for APFL. Trains global model w (sent to server) and personalized
-    model v_i (kept local) simultaneously, updating mixing coefficient α_i
-    adaptively each batch.
+    """Client for APFL.
 
-    Per-client persistent state stored in personal_model_params:
-    - "model_per": state dict of the personalized model v_i
-    - "alpha": per-client mixing coefficient α_i
+    Trains global model w (sent to server) and personalized model v_i (kept local)
+    simultaneously, updating mixing coefficient α_i adaptively each batch.
+    Per-client persistent state: "model_per" (state dict of v_i), "alpha" (α_i).
     """
 
     def __init__(self, configs, times, device):
@@ -45,12 +50,8 @@ class APFL_Client(pFL_Client):
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        if "model_per" in package["personal_model_params"]:
-            self.model_per.load_state_dict(
-                package["personal_model_params"]["model_per"]
-            )
-        if "alpha" in package["personal_model_params"]:
-            self.alpha = package["personal_model_params"]["alpha"]
+        self.model_per.load_state_dict(package["personal_model_params"]["model_per"])
+        self.alpha = package["personal_model_params"]["alpha"]
 
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
@@ -127,8 +128,7 @@ class APFL_Client(pFL_Client):
         self.current_iter = current_iter
         self._load_private(client_id)
         self.model.load_state_dict(global_params, strict=False)
-        if "model_per" in personal_params:
-            self.model.load_state_dict(personal_params["model_per"], strict=False)
+        self.model.load_state_dict(personal_params["model_per"], strict=False)
         loader = (
             self.load_test_data()
             if dataset_type == "test"
