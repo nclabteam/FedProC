@@ -206,6 +206,35 @@ class StatelessClient(SharedMethods):
         )
         return float(np.mean(losses))
 
+    def evaluate_personalized(
+        self,
+        client_id: int,
+        global_params: "OrderedDict[str, torch.Tensor]",
+        personal_params: Dict[str, torch.Tensor],
+        dataset_type: str,
+        current_iter: int,
+    ) -> float:
+        """Evaluate the per-client model (global overlaid with personal params)."""
+        self.id = client_id
+        self.current_iter = current_iter
+        self._load_private(client_id)
+        self.model.load_state_dict(global_params, strict=False)
+        if personal_params:
+            self.model.load_state_dict(personal_params, strict=False)
+        loader = (
+            self.load_test_data()
+            if dataset_type == "test"
+            else self.load_train_data()
+        )
+        losses = self.calculate_loss(
+            model=self.model,
+            dataloader=loader,
+            criterion=self.loss,
+            device=self.device,
+            offload_after=self.efficiency != "high",
+        )
+        return float(np.mean(losses))
+
 
 class Trainer:
     """Drives per-client work serially or across a Ray actor pool."""
@@ -275,6 +304,25 @@ class Trainer:
         futures = [
             self.workers[k % self.num_workers].evaluate_global.remote(
                 cid, gp, dataset_type, current_iter
+            )
+            for k, cid in enumerate(ids)
+        ]
+        return list(ray.get(futures))
+
+    def evaluate_personalized(
+        self, ids: List[int], global_params, personal_map, dataset_type, current_iter
+    ) -> List[float]:
+        if not self.parallel:
+            return [
+                self.worker.evaluate_personalized(
+                    cid, global_params, personal_map[cid], dataset_type, current_iter
+                )
+                for cid in ids
+            ]
+        gp = ray.put(global_params)
+        futures = [
+            self.workers[k % self.num_workers].evaluate_personalized.remote(
+                cid, gp, personal_map[cid], dataset_type, current_iter
             )
             for k, cid in enumerate(ids)
         ]
@@ -468,3 +516,30 @@ class StatelessServer(SharedMethods):
             ray.shutdown()
         except Exception:
             pass
+
+
+class StatelessPFLServer(StatelessServer):
+    """Personalized-FL server.
+
+    Adds a personalization evaluation before each round's local training: each
+    client's model (the global model overlaid with its stored personal params)
+    is evaluated on its own data. The personal-params round-trip itself is
+    handled by the base ``StatelessServer``/``Trainer`` (any client that sets
+    ``personal_params_name`` gets those params persisted per client).
+    """
+
+    def _pre_eval_hook(self, dataset_type: str) -> None:
+        incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
+        losses = self.trainer.evaluate_personalized(
+            incumbent,
+            self.public_model_params,
+            self.clients_personal_model_params,
+            dataset_type,
+            self.current_iter,
+        )
+        metric = f"personal_avg_{dataset_type}_loss"
+        self.metrics[metric].append(float(np.mean(losses)))
+        self.logger.info(
+            f"Personalization {dataset_type.capitalize()} Loss: "
+            f"{self.metrics[metric][-1]:.4f}"
+        )

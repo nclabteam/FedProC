@@ -1,37 +1,40 @@
-from .pFL import pFL, pFL_Client
+from collections import OrderedDict
+
+import torch
+
+from ._core import StatelessClient, StatelessPFLServer
 
 
-class FedBN(pFL):
+class FedBN(StatelessPFLServer):
     """
     FedBN: Federated Learning on Non-IID Features via Local Batch Normalization.
 
-    Identical to FedAvg except that Batch Normalization parameters (matched
-    by 'bn' in the parameter name) are excluded from aggregation and kept
-    local.  For models without BN layers this degenerates to standard FedAvg.
+    Identical to FedAvg except Batch Normalization parameters (matched by 'bn'
+    in the name) are excluded from aggregation and kept local (personal). For
+    models without BN layers this degenerates to standard FedAvg.
 
-    Reference: Li et al., "FedBN: Federated Learning on Non-IID Features via
-    Local Batch Normalization", ICLR 2021. arXiv 2102.07623.
+    Reference: Li et al., ICLR 2021. arXiv 2102.07623.
     """
 
-    def aggregate_models(self) -> None:
-        self.model = self.reset_model(self.model)
-        for client, weight in zip(self.client_data, self.weights):
-            for (name, global_param), local_param in zip(
-                self.model.named_parameters(),
-                client["model"].parameters(),
-            ):
-                if "bn" in name.lower():
-                    continue
-                global_param.data.add_(
-                    local_param.data.to(global_param.device), alpha=weight
-                )
+    def aggregate_client_updates(self, packages):
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            if "bn" in name.lower():
+                new_params[name] = self.public_model_params[name]
+                continue
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()], dim=-1
+            )
+            new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
+        self._commit_global(new_params)
 
 
-class FedBN_Client(pFL_Client):
-    def receive_from_server(self, data: dict) -> None:
-        for (name, old_param), new_param in zip(
-            self.model.named_parameters(),
-            data["model"].parameters(),
-        ):
-            if "bn" not in name.lower():
-                old_param.data.copy_(new_param.data)
+class FedBN_Client(StatelessClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.personal_params_name = [
+            name for name in self.regular_params_name if "bn" in name.lower()
+        ]
