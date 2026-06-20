@@ -63,8 +63,19 @@ class _pFedLANet(nn.Module):
 
 
 class pFedLA(pFL):
+    """pFedLA: Layer-Wised Model Aggregation for Personalized Federated Learning (Ma et al., CVPR 2022).
+
+    Each client has a dedicated hypernetwork (HN) on the server. The HN maps a
+    client embedding → per-layer aggregation weights α over all clients' stored params.
+    Per round: clients train locally and return Δθ; server backpropagates -Δθ through
+    the HN (via torch.autograd.grad) to update the HN. Updated HN generates new
+    per-layer personalized model for next round.
+
+    HeurpFedLA (pfedla_K > 0): top-K layers by self-weight keep one-hot weights
+    (no mixing for those layers).
+
+    Reference: arXiv:2205.03993. CVPR 2022.
     """
-    pFedLA: Layer-Wise Personalized Federated Learning (Ma et al. NeurIPS 2022).
 
     Per-client hypernetwork weights generate per-layer aggregation coefficients
     over all clients' stored model params. Clients train K inner steps and return
@@ -92,6 +103,11 @@ class pFedLA(pFL):
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
+        init_params = {k: v.cpu().clone() for k, v in self.public_model_params.items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid].update(
+                {k: v.clone() for k, v in init_params.items()}
+            )
 
         layer_num = len(list(self.model.named_parameters()))
         self._hnet = _pFedLANet(
@@ -135,8 +151,7 @@ class pFedLA(pFL):
         for i, name in enumerate(param_names):
             stacked = torch.stack(
                 [
-                    self.clients_personal_model_params[j]
-                    .get(name, self.public_model_params[name])
+                    self.clients_personal_model_params[j][name]
                     .to(self.device)
                     .float()
                     for j in range(self.num_clients)
@@ -185,18 +200,14 @@ class pFedLA(pFL):
             # Save updated HN snapshot for this client
             self._client_hnet_params[client_id] = deepcopy(self._hnet.state_dict())
 
-            # Store trained params in personal_model_params (nFL-style)
-            trained = pkg["regular_model_params"]
-            if not trained:
-                # reconstruct from diff: trained = initial - diff
-                sent = self.package.__func__  # avoid re-running; use diff directly
-                diff = pkg["model_params_diff"]
-                trained = OrderedDict(
-                    (k, self.clients_personal_model_params[client_id].get(
-                        k, self.public_model_params[k]
-                    ) - diff[k])
-                    for k in diff
-                )
+            # Store trained params in personal_model_params (nFL-style).
+            # return_diff=True so pkg["regular_model_params"] is empty;
+            # reconstruct: trained = initial - diff.
+            diff = pkg["model_params_diff"]
+            trained = OrderedDict(
+                (k, self.clients_personal_model_params[client_id][k] - diff[k])
+                for k in diff
+            )
             self.clients_personal_model_params[client_id].update(trained)
 
             self.trainer._write_back(client_id, pkg)

@@ -11,10 +11,7 @@ from .pFL import pFL, pFL_Client
 
 
 class pFedMeOptimizer(Optimizer):
-    """
-    Inner optimizer for pFedMe: minimizes the Moreau envelope surrogate
-    f(θ) + λ/2 * ||θ - w||² w.r.t. θ (holding local params w fixed).
-    """
+    """Inner optimizer for pFedMe: gradient step on f(θ) + λ/2||θ - w||² w.r.t. θ."""
 
     def __init__(self, params, lr: float = 0.01, lamda: float = 0.1) -> None:
         super().__init__(params, dict(lr=lr, lamda=lamda))
@@ -32,16 +29,15 @@ class pFedMeOptimizer(Optimizer):
 
 
 class pFedMe(pFL):
-    """
-    pFedMe: Personalized Federated Learning with Moreau Envelopes.
+    """pFedMe: Personalized Federated Learning with Moreau Envelopes (Dinh et al., NeurIPS 2020).
 
-    Each client finds a personalized model θ*_i that minimizes the Moreau
-    envelope objective, then updates a local model w_i via gradient descent
-    on the envelope.  The server aggregates local models (w_i) and does a
-    β-weighted blend with the previous global model.
+    Each client finds a personalized model θ* that minimizes the Moreau envelope
+    F_i(w) = min_θ { f_i(θ) + λ/2||θ - w||² }, via K inner gradient steps.
+    The outer update moves w toward θ*: w -= η*λ*(w - θ*).
+    Server aggregates w_i with β-weighted blend: global = (1-β)*prev + β*FedAvg(w_i).
 
-    Reference: Dinh et al., "Personalized Federated Learning with Moreau
-    Envelopes", NeurIPS 2020. arXiv 2006.08848.
+    Default hyperparameters: λ=15 (paper: dataset-dependent), K=5, β=1.0.
+    Reference: arXiv:2006.08848. NeurIPS 2020.
     """
 
     optional = {
@@ -61,6 +57,11 @@ class pFedMe(pFL):
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
         self.parallel = False
+        init_pp = [p.data.cpu().clone() for p in self.model.parameters()]
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["personalized_params"] = [
+                t.clone() for t in init_pp
+            ]
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
         prev_global = copy.deepcopy(self.public_model_params)
@@ -75,7 +76,6 @@ class pFedMe(pFL):
             )
             new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
 
-        # β-blend: global = (1-β)*prev + β*aggregated
         if self.beta < 1.0:
             for name in new_params:
                 new_params[name] = (
@@ -87,25 +87,20 @@ class pFedMe(pFL):
 
 
 class pFedMe_Client(pFL_Client):
-    """
-    Client for pFedMe.
+    """Client for pFedMe.
 
-    Maintains personalized params θ*_i (stored in clients_personal_model_params
-    under key "personalized_params").  Per round:
+    Maintains personalized params θ*_i (stored in personal_model_params["personalized_params"]).
+    Per round:
       - K inner SGD steps per batch to find θ*_i (Moreau envelope minimizer)
-      - Outer update: w_i -= λ*lr*(w_i - θ*_i) (gradient of envelope w.r.t. w)
+      - Outer update: w_i -= λ*η*(w_i - θ*_i) (gradient of envelope w.r.t. w)
       - Send w_i to server (model reset to w_i for aggregation)
     """
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        pp_list = package["personal_model_params"].get("personalized_params", None)
-        if pp_list is None:
-            self._personalized_params: List[torch.Tensor] = [
-                p.data.clone().cpu() for p in self.model.parameters()
-            ]
-        else:
-            self._personalized_params = [pp.clone() for pp in pp_list]
+        self._personalized_params: List[torch.Tensor] = [
+            pp.clone() for pp in package["personal_model_params"]["personalized_params"]
+        ]
 
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
@@ -117,7 +112,6 @@ class pFedMe_Client(pFL_Client):
         inner_optim = pFedMeOptimizer(
             self.model.parameters(), lr=self.p_lr, lamda=self.lamda
         )
-        # w: local params evolving via outer update (start = server global)
         local_dev = [p.data.clone() for p in self.model.parameters()]
 
         for _ in range(self.epochs):
@@ -127,8 +121,6 @@ class pFedMe_Client(pFL_Client):
                 x_mark = x_mark.to(device=self.device, dtype=torch.float32)
                 y_mark = y_mark.to(device=self.device, dtype=torch.float32)
 
-                # K inner steps: update model params (θ) toward Moreau minimizer
-                # minimizes L(θ) + λ/2 * ||θ - w||²
                 for _ in range(self.K):
                     inner_optim.zero_grad()
                     outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
@@ -136,16 +128,13 @@ class pFedMe_Client(pFL_Client):
                     loss.backward()
                     inner_optim.step(local_dev, self.device)
 
-                # Outer update: w -= λ*p_lr*(w - θ*)
                 for lp, param in zip(local_dev, self.model.parameters()):
                     lp.data = lp.data - self.lamda * self.p_lr * (lp.data - param.data)
 
-        # θ* = model params after last inner optimization; save before reset
         self._personalized_params = [
             p.data.clone().cpu() for p in self.model.parameters()
         ]
 
-        # Reset model to w (what the server aggregates)
         for param, lp in zip(self.model.parameters(), local_dev):
             param.data.copy_(lp)
 
@@ -169,11 +158,9 @@ class pFedMe_Client(pFL_Client):
         self.current_iter = current_iter
         self._load_private(client_id)
         self.model.load_state_dict(global_params, strict=False)
-        pp_list = personal_params.get("personalized_params", None) if personal_params else None
-        if pp_list is not None:
-            with torch.no_grad():
-                for param, pp in zip(self.model.parameters(), pp_list):
-                    param.data.copy_(pp)
+        with torch.no_grad():
+            for param, pp in zip(self.model.parameters(), personal_params["personalized_params"]):
+                param.data.copy_(pp)
         loader = (
             self.load_test_data()
             if dataset_type == "test"
