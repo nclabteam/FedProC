@@ -1,39 +1,29 @@
-from argparse import Namespace
-from typing import Set
+from collections import OrderedDict
+from typing import List, Set
 
-from .tFL import tFL, tFL_Client
+import torch
+
+from ._core import StatelessClient, StatelessServer
 
 
-def _global_param_names(model, num_global_layers: int) -> Set[str]:
-    """Return the set of parameter names that belong to the first `num_global_layers`
-    unique top-level module groups (identified by the first dot-separated prefix)."""
-    # Collect unique top-level layer names in order of first appearance
-    seen_layers: list = []
-    for name, _ in model.named_parameters():
+def _global_param_names(names: List[str], num_global_layers: int) -> Set[str]:
+    """Names belonging to the first ``num_global_layers`` top-level module groups."""
+    seen: list = []
+    for name in names:
         prefix = name.split(".")[0]
-        if prefix not in seen_layers:
-            seen_layers.append(prefix)
-
-    global_prefixes = set(seen_layers[:num_global_layers])
-
-    return {
-        name
-        for name, _ in model.named_parameters()
-        if name.split(".")[0] in global_prefixes
-    }
+        if prefix not in seen:
+            seen.append(prefix)
+    global_prefixes = set(seen[:num_global_layers])
+    return {name for name in names if name.split(".")[0] in global_prefixes}
 
 
-class LGFedAvg(tFL):
+class LGFedAvg(StatelessServer):
     """
-    LG-FedAvg: Think Locally, Act Globally.
+    LG-FedAvg: shared global body (first ``num_global_layers`` module groups)
+    aggregated across clients; personal head stays local. Matches the legacy
+    behaviour where non-global params are zeroed in the global model.
 
-    Splits the model into a shared global body (first `num_global_layers`
-    top-level module groups) and a personal head (remaining layers).
-    Only the global body is aggregated across clients; the personal head
-    stays on the device and is never sent to the server.
-
-    Reference: Liang et al., "Think Locally, Act Globally: Federated Learning
-    with Local and Global Representations", ArXiv 2020. arXiv 2001.01523.
+    Reference: Liang et al., arXiv 2001.01523.
     """
 
     optional = {
@@ -44,40 +34,31 @@ class LGFedAvg(tFL):
     def args_update(cls, parser):
         parser.add_argument("--num_global_layers", type=int, default=None)
 
-    def _global_names(self) -> Set[str]:
-        return _global_param_names(self.model, self.num_global_layers)
+    def aggregate_client_updates(self, packages):
+        global_names = _global_param_names(
+            list(self.public_model_params.keys()), self.num_global_layers
+        )
+        scores = [p["score"] for p in packages.values()]
+        total = float(sum(scores))
+        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            if name not in global_names:
+                new_params[name] = torch.zeros_like(self.public_model_params[name])
+                continue
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()], dim=-1
+            )
+            new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
+        self._commit_global(new_params)
 
-    def aggregate_models(self) -> None:
-        global_names = self._global_names()
-        self.model = self.reset_model(self.model)
-        for client, weight in zip(self.client_data, self.weights):
-            for (name, global_param), local_param in zip(
-                self.model.named_parameters(),
-                client["model"].parameters(),
-            ):
-                if name not in global_names:
-                    continue
-                global_param.data.add_(
-                    local_param.data.to(global_param.device), alpha=weight
-                )
 
-
-class LGFedAvg_Client(tFL_Client):
-    """
-    Client for LG-FedAvg. Receives the updated global layers from the server
-    and applies them, while keeping personal layers unchanged.
-    """
-
-    def __init__(self, configs: Namespace, id: int, times: int) -> None:
-        super().__init__(configs=configs, id=id, times=times)
-        self._global_names: Set[str] = set()
-
-    def receive_from_server(self, data: dict) -> None:
-        global_names = _global_param_names(data["model"], self.num_global_layers)
-        self._global_names = global_names
-        for (name, old_param), new_param in zip(
-            self.model.named_parameters(),
-            data["model"].parameters(),
-        ):
-            if name in global_names:
-                old_param.data.copy_(new_param.data)
+class LGFedAvg_Client(StatelessClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        global_names = _global_param_names(
+            self.regular_params_name, self.num_global_layers
+        )
+        self.personal_params_name = [
+            name for name in self.regular_params_name if name not in global_names
+        ]

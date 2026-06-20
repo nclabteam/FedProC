@@ -45,14 +45,9 @@ class StatelessClient(SharedMethods):
     """
 
     def __init__(self, configs: Namespace, times: int, device: str) -> None:
-        self.configs = configs
-        self.times = times
-        self.seed = configs.seed
-        self.batch_size = configs.batch_size
-        self.epochs = configs.epochs
-        self.efficiency = configs.efficiency
-        self.sample_ratio = configs.sample_ratio
-        self.path_info = configs.path_info
+        # Copy every config onto the worker so strategy-specific hyper-parameters
+        # (mu, num_global_layers, ...) are available, then override the device.
+        self.set_configs(configs=configs, times=times)
         self.device = device
         self.id: Optional[int] = None
         self.current_iter = 0
