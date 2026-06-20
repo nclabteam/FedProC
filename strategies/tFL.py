@@ -24,6 +24,12 @@ class tFL(SharedMethods):
     those belong in pFL.
     """
 
+    # Runtime-optional metrics, set only when new clients are evaluated. Declared
+    # at class level so they exist even on construction paths that don't run
+    # tFL.__init__ (e.g. dFL), avoiding a getattr guard in save_results.
+    new_client_gen_test_loss: Optional[float] = None
+    new_client_pers_test_loss: Optional[float] = None
+
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__()
         self.set_configs(configs=configs, times=times)
@@ -585,6 +591,11 @@ class tFL(SharedMethods):
 
 
 class tFL_Client(SharedMethods):
+    # The framework strips None-valued args (Options._clean_none_args), so a
+    # None-default optional (e.g. --adapt_T) never lands on the instance. This
+    # class-level default provides the fallback without a getattr guard.
+    adapt_T = None
+
     def __init__(self, configs: Namespace, id: int, times: int) -> None:
         super().__init__()
         self.set_configs(configs=configs, id=id, times=times)

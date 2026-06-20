@@ -163,9 +163,16 @@ class SL(nFL):
 class SL_Client(nFL_Client):
     """Client-side Selective Learning logic."""
 
+    # Class-level defaults for the ``optional`` hyper-parameters. The framework
+    # strips None-valued args (Options._clean_none_args), so optionals whose
+    # default is None never land on the instance; these class attributes provide
+    # the fallback without a getattr guard.
+    r_u: Optional[float] = None
+    r_a: Optional[float] = None
+    estimator_epochs: int = 5
+
     def train(self) -> Dict[str, Any]:
-        seed = self._loader_seed("train") if hasattr(self, "_loader_seed") else None
-        self._set_worker_seed(seed)
+        self._set_worker_seed(self._loader_seed("train"))
 
         train_loader = self.load_train_data()
         start_time = time.time()
