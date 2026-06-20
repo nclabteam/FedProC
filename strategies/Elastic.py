@@ -6,6 +6,25 @@ from .tFL import tFL, tFL_Client
 
 
 class Elastic(tFL):
+    """Elastic aggregation for federated learning (Liu et al., CVPR 2023).
+
+    Aggregates client updates with per-parameter adaptive coefficients ζ^i based
+    on parameter sensitivity. Sensitive parameters (large Ω^i) get ζ^i < 1 (restricted
+    update), insensitive parameters get ζ^i > 1 (boosted update).
+
+    Aggregation (Eq. 6-7):
+        Ω^i  = Σ_k w_k * Ω_k^i                 (weighted sensitivity)
+        ζ^i  = 1 + τ - Ω^i / max(Ω)
+        θ_new = θ + ζ^i * (FedAvg(θ_k) - θ)   (elastic update)
+
+    Sensitivity (Eq. 5): exponentially-decayed EMA of gradient norms per parameter.
+    TSF adaptation: uses supervised-loss gradient instead of ||F(θ;x)||₂ gradient
+    (unlabelled-data variant from the paper) since TSF outputs are numeric predictions
+    rather than class logits.
+
+    Default hyperparameters: τ = 0.5, μ = 0.95 (from the paper).
+    Reference: arXiv:2301.01798. arXiv ID may differ; venue: CVPR 2023.
+    """
 
     optional = {
         "tau": 0.5,
@@ -25,15 +44,16 @@ class Elastic(tFL):
         total = float(sum(scores))
         weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
 
-        # Per-layer sensitivity: weighted mean across clients
+        # Per-parameter sensitivity: weighted mean across clients (Ω^i in Eq. 7)
         sensitivities = torch.stack(
             [packages[cid]["sensitivity"] for cid in cids], dim=-1
         )
         agg_sensitivity = torch.sum(sensitivities * weights, dim=-1)
         max_sensitivity = sensitivities.max(dim=-1)[0]
+        # Adaptive coefficient ζ^i = 1 + τ - Ω^i / max(Ω)  (Eq. 7)
         zeta = 1 + self.tau - agg_sensitivity / max_sensitivity.clamp(min=1e-12)
 
-        # Elastic aggregation: new_global[i] = old[i] - zeta[i] * sum(w * (trained[i] - old[i]))
+        # Elastic update: θ_new = θ + ζ^i * (FedAvg(θ_k) - θ)  (Eq. 6)
         new_global = OrderedDict()
         for k, (name, server_p) in enumerate(self.public_model_params.items()):
             trained_stacked = torch.stack(
@@ -45,7 +65,7 @@ class Elastic(tFL):
             )
             coef = zeta[k] if k < len(zeta) else torch.tensor(1.0)
             new_global[name] = (
-                server_p.float() - coef * (agg_trained - server_p.float())
+                server_p.float() + coef * (agg_trained - server_p.float())
             ).to(server_p.dtype)
 
         self._commit_global(new_global)
@@ -57,7 +77,7 @@ class Elastic_Client(tFL_Client):
     mu: float = 0.95
 
     def fit(self) -> None:
-        # Compute per-layer sensitivity on a sample of training data before training
+        # Compute per-parameter sensitivity on a sample of training data before training
         self.model.to(self.device)
         self.model.eval()
         sensitivity = torch.zeros(
@@ -88,7 +108,7 @@ class Elastic_Client(tFL_Client):
                 else:
                     sensitivity[i] = 1.0
         self._sensitivity = sensitivity.cpu()
-        # Standard training
+        # Standard local training
         super().fit()
 
     def package(self, train_time: float) -> dict:

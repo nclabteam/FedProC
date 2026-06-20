@@ -174,28 +174,18 @@ class FedRolex_Client(tFL_Client):
     capacity: float = 1.0
 
     def set_parameters(self, package: dict) -> None:
+        # Sub-model shapes change each round; skip model/optimizer loading into self.model.
+        # The optimizer is freshly created in fit() for the current sub-model.
         self.id = package["client_id"]
         self.current_iter = package["current_iter"]
         self._load_private(self.id)
-        # Load optimizer and scheduler states (sub-model optimizer may mismatch shape)
-        if package["optimizer_state"]:
-            try:
-                self.optimizer.load_state_dict(package["optimizer_state"])
-            except Exception:
-                self.optimizer.load_state_dict(self.init_optimizer_state)
-        else:
-            self.optimizer.load_state_dict(self.init_optimizer_state)
         if package["scheduler_state"]:
-            try:
-                self.scheduler.load_state_dict(package["scheduler_state"])
-            except Exception:
-                self.scheduler.load_state_dict(self.init_scheduler_state)
+            self.scheduler.load_state_dict(package["scheduler_state"])
         else:
             self.scheduler.load_state_dict(self.init_scheduler_state)
-        # Store sub-state for fit() — don't load into self.model (wrong shapes)
         self._sub_state = {k: v.clone() for k, v in package["regular_model_params"].items()}
-        self._active_indices = package.get("active_indices", {})
-        self.capacity = package.get("capacity", 1.0)
+        self._active_indices = package["active_indices"]
+        self.capacity = package["capacity"]
 
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
