@@ -100,8 +100,10 @@ class FDCR(pFL):
         parser.add_argument("--fisher_epochs", type=int, default=None)
 
     def __init__(self, configs, times):
-        self.prev_global_params = None
         super().__init__(configs, times)
+        self.prev_global_params = OrderedDict(
+            (k, v.clone()) for k, v in self.public_model_params.items()
+        )
 
     def aggregate_client_updates(self, packages) -> None:
         cids = list(packages.keys())
@@ -109,11 +111,6 @@ class FDCR(pFL):
         total = float(sum(scores))
         freq = torch.tensor([s / total for s in scores])
         lr = self.learning_rate
-
-        if self.prev_global_params is None:
-            self.prev_global_params = OrderedDict(
-                (k, v.clone()) for k, v in self.public_model_params.items()
-            )
 
         prev_vec = torch.cat(
             [p.view(-1) for p in self.prev_global_params.values()]
@@ -129,7 +126,7 @@ class FDCR(pFL):
             grad = (prev_vec - client_vec) / lr
             grad_list.append(grad)
 
-            fish = packages[cid].get("fisher_info", torch.ones_like(grad))
+            fish = packages[cid]["fisher_info"]
             norm_fish = (fish - fish.min()) / (fish.max() - fish.min() + 1e-10)
             weight_grad_list.append(grad * norm_fish)
 
@@ -165,7 +162,7 @@ class FDCR(pFL):
             for i in benign_idx:
                 cid = cids[i]
                 client_params = packages[cid]["regular_model_params"]
-                fish = packages[cid].get("fisher_info", torch.ones_like(grad_list[0]))
+                fish = packages[cid]["fisher_info"]
                 norm_fish = (fish - fish.min()) / (fish.max() - fish.min() + 1e-10)
                 offset = 0
                 for name, prev_param in self.prev_global_params.items():
@@ -211,11 +208,13 @@ class FDCR_Client(pFL_Client):
         }
         loader = self.load_train_data()
         n_batches = 0
-        for batch_x, batch_y, _x_mark, _y_mark in loader:
+        for batch_x, batch_y, x_mark, y_mark in loader:
             batch_x = batch_x.to(self.device, non_blocking=True)
             batch_y = batch_y.to(self.device, non_blocking=True)
+            x_mark = x_mark.to(self.device, non_blocking=True)
+            y_mark = y_mark.to(self.device, non_blocking=True)
             self.model.zero_grad()
-            output = self.model(batch_x)
+            output = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
             loss = self.loss(output, batch_y)
             loss.backward()
             for name, param in self.model.named_parameters():
@@ -232,6 +231,5 @@ class FDCR_Client(pFL_Client):
 
     def package(self, train_time: float) -> dict:
         result = super().package(train_time)
-        if hasattr(self, "_fisher_info"):
-            result["fisher_info"] = self._fisher_info
+        result["fisher_info"] = self._fisher_info
         return result

@@ -120,6 +120,18 @@ class FedITShared(SharedMethods):
 
 
 class FedIT(pFL, FedITShared):
+    """FedIT: Federated Instruction Tuning (Zhang et al., 2023).
+
+    Applies LoRA (Low-Rank Adaptation) to selected model layers, then
+    aggregates only the LoRA A and B matrices via FedAvg each round. Base
+    model weights are frozen; only LoRA parameters are communicated.
+
+    Note: FedAvg of A and B separately introduces aggregation bias
+    (B̄·Ā ≠ mean(B_k·A_k)). Use FFA_LoRA to eliminate this bias.
+
+    Default: r=8, α=32, dropout=0.1, target_modules=["Linear"].
+    Reference: arXiv:2305.05644.
+    """
 
     optional = {
         "lora_r": 8,
