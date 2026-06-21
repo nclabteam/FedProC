@@ -1,6 +1,7 @@
 import copy
 
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
 
 from schedulers.BaseScheduler import BaseScheduler
 
@@ -134,21 +135,29 @@ class DFedHPO_Client(dFL_Client):
         return sorted(self.hpo_candidates, key=lambda item: item[1])[0][0]
 
     def _fusion_aggregator(self):
-        sorted_candidates = sorted(self.hpo_candidates, key=lambda item: item[1])
-        top_k = sorted_candidates[: self.top_k]
-        return {"lr": float(np.mean([candidate[0]["lr"] for candidate in top_k]))}
+        # Paper Alg. 3 Step 5: re-evaluate all collected HPs on local D_i before selecting top-k
+        initial_state = copy.deepcopy(self.model.state_dict())
+        revalidated = []
+        for config, _ in self.hpo_candidates:
+            local_loss = self._evaluate_config(config, initial_state)
+            revalidated.append((config, local_loss))
+        self.model.load_state_dict(initial_state)
+        top_k = sorted(revalidated, key=lambda item: item[1])[: self.top_k]
+        return {"lr": float(np.mean([c[0]["lr"] for c in top_k]))}
 
     def _metaregress_aggregator(self):
         if len(self.hpo_candidates) < 3:
             return self._fusion_aggregator()
 
-        x = np.array([np.log(candidate[0]["lr"]) for candidate in self.hpo_candidates])
-        y = np.array([candidate[1] for candidate in self.hpo_candidates])
-        degree = min(2, len(x) - 1)
-        poly = np.poly1d(np.polyfit(x, y, deg=degree))
+        # Paper §3.2.1: RF regression model on (HP, loss) pairs
+        x = np.array([[np.log(c[0]["lr"])] for c in self.hpo_candidates])
+        y = np.array([c[1] for c in self.hpo_candidates])
+        rf = RandomForestRegressor(n_estimators=50, random_state=0)
+        rf.fit(x, y)
 
         lr_grid = np.linspace(np.log(self.lr_min), np.log(self.lr_max), 200)
-        top_k_idx = np.argsort(poly(lr_grid))[: self.top_k]
+        preds = rf.predict(lr_grid.reshape(-1, 1))
+        top_k_idx = np.argsort(preds)[: self.top_k]
         top_k_lrs = np.exp(lr_grid[top_k_idx])
 
         initial_state = copy.deepcopy(self.model.state_dict())
