@@ -6,15 +6,26 @@ from .FedIT import FedIT, FedIT_Client
 
 
 class FedSA_LoRA(FedIT):
-    """
-    FedSA-LoRA Server: Only aggregates A matrices, B stays local.
+    """FedSA-LoRA: Selective Aggregation for Low-Rank Adaptation (Su et al., ICLR 2025).
 
-    Aggregation:
-        1) Receive only A_k from each client (via regular_model_params)
-        2) Compute weighted average: Ā = Σ p_k A_k
-        3) Broadcast Ā back to all clients (as part of public_model_params)
-        4) Clients compute: W_i = W_0 + B_i Ā (local B, global A)
+    Only aggregates A matrices server-side; B stays local per client.
+    Per round: clients train both A and B, send only A to server (Ā = FedAvg(A_k)),
+    receive Ā back; each client computes ΔW_i = B_i · Ā (local B, global A).
+
+    Reference: arXiv:2410.01463. ICLR 2025.
     """
+
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        lora_B_init = {
+            name: param.data.cpu().clone()
+            for name, param in self.model.named_parameters()
+            if "lora_B" in name
+        }
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid].update(
+                {name: t.clone() for name, t in lora_B_init.items()}
+            )
 
     def aggregate_client_updates(self, packages) -> None:
         """Aggregate only A matrices; B stays per-client in personal_model_params."""
@@ -45,18 +56,23 @@ class FedSA_LoRA(FedIT):
 
 
 class FedSA_LoRA_Client(FedIT_Client):
-    """
-    FedSA-LoRA Client: Only sends A, keeps B local across all rounds.
+    """FedSA-LoRA Client: trains both A and B, sends only A, keeps B local.
 
-    Local training:
-        - Both A and B are trainable
-        - After training, only A is sent to server (B goes to personal_model_params)
-        - B remains local (personalized component)
-
-    Receive from server:
-        - Only updates local A with aggregated Ā (via regular_model_params)
-        - Local B is preserved across rounds (via personal_model_params)
+    On each round: set_parameters restores personal lora_B (overriding the global
+    placeholder B in regular_model_params), then client trains both A and B.
+    package() moves lora_B to personal_model_params so the server stores but
+    does not aggregate it.
     """
+
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        lora_B = {
+            name: tensor
+            for name, tensor in package["personal_model_params"].items()
+            if "lora_B" in name
+        }
+        if lora_B:
+            self.update_lora_params(self.model, lora_B)
 
     def package(self, train_time: float) -> dict:
         result = super().package(train_time)

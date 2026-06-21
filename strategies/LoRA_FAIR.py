@@ -7,6 +7,15 @@ from .FedIT import FedIT, FedIT_Client
 
 
 class LoRA_FAIR(FedIT):
+    """LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement (Bian et al., ICCV 2025).
+
+    Corrects FedAvg LoRA aggregation bias by solving for a ΔB per layer that
+    minimizes S(Ā·(B̄+ΔB), W_target) + λ||ΔB||² where W_target = Σ p_k(A_k·B_k).
+    S is cosine or L2 similarity. Optimization via SGD on delta_B only.
+
+    Default: r=8, α=32, dropout=0.1, delta_steps=1000, delta_lr=1e-2,
+    delta_reg=1e-2, sim_metric="cosine". Reference: arXiv:2411.14961.
+    """
 
     optional = {
         "lora_r": 8,

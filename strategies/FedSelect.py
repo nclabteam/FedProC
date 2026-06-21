@@ -46,19 +46,24 @@ class FedSelect(pFL):
         super().__init__(configs=configs, times=times)
         self.parallel = False
         self._round = 0
-        # Transient per-round: global params sent to each client (for delta)
         self._pending_sent_params: Dict[int, Dict[str, torch.Tensor]] = {}
         self._pending_masks: Dict[int, Dict[str, torch.Tensor]] = {}
+        init_mask = {
+            name: torch.zeros_like(p.cpu(), dtype=torch.float32)
+            for name, p in self.public_model_params.items()
+        }
+        init_local_state = {name: p.cpu().clone() for name, p in self.model.named_parameters()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["mask"] = {
+                name: t.clone() for name, t in init_mask.items()
+            }
+            self.clients_personal_model_params[cid]["local_model_state"] = {
+                name: t.clone() for name, t in init_local_state.items()
+            }
 
     def package(self, client_id: int) -> dict:
         pkg = super().package(client_id)
         pm = self.clients_personal_model_params[client_id]
-        # Lazy mask init for new clients
-        if "mask" not in pm:
-            pm["mask"] = {
-                name: torch.zeros_like(p.cpu(), dtype=torch.float32)
-                for name, p in self.public_model_params.items()
-            }
         current_mask = copy.deepcopy(pm["mask"])
         self._pending_masks[client_id] = current_mask
         self._pending_sent_params[client_id] = {
@@ -73,10 +78,8 @@ class FedSelect(pFL):
         # Update masks if delta interval
         if self._round % self.delta_interval == 0:
             for cid, pkg in packages.items():
-                sent = self._pending_sent_params.get(cid, {})
-                self._update_mask(cid, pkg["regular_model_params"], sent)
+                self._update_mask(cid, pkg["regular_model_params"], self._pending_sent_params[cid])
 
-        # Per-element weighted average for global (mask=0) positions
         scores = [p["score"] for p in packages.values()]
         total = float(sum(scores))
         cids = list(packages.keys())
@@ -87,9 +90,7 @@ class FedSelect(pFL):
             sum_count = torch.zeros_like(server_p.float())
             for cid, pkg in packages.items():
                 weight = packages[cid]["score"] / total
-                mask = self._pending_masks.get(cid, {}).get(
-                    name, torch.zeros_like(server_p)
-                )
+                mask = self._pending_masks[cid][name]
                 global_w = 1.0 - mask
                 trained = pkg["regular_model_params"][name].float()
                 sum_val.add_(trained * global_w, alpha=weight)
@@ -140,9 +141,7 @@ class FedSelect(pFL):
             if name not in mask or promoted >= remaining_budget:
                 break
             global_m = mask[name] == 0
-            delta = (
-                trained_p.float() - sent_params.get(name, torch.zeros_like(trained_p)).float()
-            ).abs()
+            delta = (trained_p.float() - sent_params[name].float()).abs()
             to_promote = global_m & (delta >= threshold)
             can_promote = min(int(to_promote.sum().item()), remaining_budget - promoted)
             if can_promote <= 0:
@@ -173,25 +172,18 @@ class FedSelect_Client(pFL_Client):
     """
 
     def set_parameters(self, package: dict) -> None:
-        # super() loads global model into self.model; personal_model_params
-        # keys "mask" and "local_model_state" are ignored by load_state_dict
-        # (strict=False silently skips non-matching keys).
         super().set_parameters(package)
         pm = package["personal_model_params"]
-        self._mask = pm.get("mask", None)
-        if self._mask:
-            local_state = pm.get("local_model_state", None)
-            if local_state:
-                # Apply mask merge: global for mask=0, local for mask=1
-                with torch.no_grad():
-                    for name, param in self.model.named_parameters():
-                        if name not in self._mask or name not in local_state:
-                            continue
-                        lw = self._mask[name].to(param.device)
-                        param.data = (
-                            (1 - lw) * param.data
-                            + lw * local_state[name].to(param.device)
-                        )
+        self._mask = pm["mask"]
+        local_state = pm["local_model_state"]
+        with torch.no_grad():
+            for name, param in self.model.named_parameters():
+                if name not in self._mask:
+                    continue
+                lw = self._mask[name].to(param.device)
+                param.data = (
+                    (1 - lw) * param.data + lw * local_state[name].to(param.device)
+                )
 
     def package(self, train_time: float) -> dict:
         out = super().package(train_time)
@@ -213,19 +205,16 @@ class FedSelect_Client(pFL_Client):
         self.current_iter = current_iter
         self._load_private(client_id)
         self.model.load_state_dict(global_params, strict=False)
-        if personal_params:
-            mask = personal_params.get("mask", {})
-            local_state = personal_params.get("local_model_state", None)
-            if mask and local_state:
-                with torch.no_grad():
-                    for name, param in self.model.named_parameters():
-                        if name not in mask or name not in local_state:
-                            continue
-                        lw = mask[name].to(param.device)
-                        param.data = (
-                            (1 - lw) * param.data
-                            + lw * local_state[name].to(param.device)
-                        )
+        mask = personal_params["mask"]
+        local_state = personal_params["local_model_state"]
+        with torch.no_grad():
+            for name, param in self.model.named_parameters():
+                if name not in mask:
+                    continue
+                lw = mask[name].to(param.device)
+                param.data = (
+                    (1 - lw) * param.data + lw * local_state[name].to(param.device)
+                )
         loader = (
             self.load_test_data()
             if dataset_type == "test"

@@ -101,7 +101,7 @@ class FedMD(hFL):
     @torch.no_grad()
     def _score_client(self, client_id: int) -> list:
         """Run client's personal model on public batches, return list of prediction tensors."""
-        personal = self.clients_personal_model_params.get(client_id, {})
+        personal = self.clients_personal_model_params[client_id]
         if not personal:
             return [torch.zeros_like(x) for x in self.public_data]
         self.model.load_state_dict(self.public_model_params, strict=False)

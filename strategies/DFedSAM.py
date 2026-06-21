@@ -19,18 +19,9 @@ class DFedSAM(dFL):
     @classmethod
     def args_update(cls, parser):
         super().args_update(parser)
-        parser.add_argument("--rho", type=float, default=0.05, help="SAM radius")
-        parser.add_argument(
-            "--use_mgs",
-            action="store_true",
-            help="Enable Multiple Gossip Steps (MGS) during aggregation",
-        )
-        parser.add_argument(
-            "--mgs_steps",
-            type=int,
-            default=2,
-            help="Number of gossip/consensus steps when --use_mgs is enabled (>=1)",
-        )
+        parser.add_argument("--rho", type=float, default=None)
+        parser.add_argument("--use_mgs", type=lambda x: x.lower() != "false", default=None)
+        parser.add_argument("--mgs_steps", type=int, default=None)
 
     def aggregate_client_updates(self, packages) -> None:
         """One gossip step (DFedSAM) or Q gossip steps (DFedSAM-MGS).
