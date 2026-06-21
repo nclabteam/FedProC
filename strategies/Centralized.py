@@ -7,6 +7,13 @@ from .tFL import tFL, tFL_Client
 
 
 class Centralized(tFL):
+    """Centralized baseline: server trains directly on all clients' data each round.
+
+    Clients send their data loaders; the server runs gradient steps on them
+    sequentially (or in parallel via Ray). No federation — this measures the
+    upper-bound performance of a central aggregator with full data access.
+    """
+
     compulsory = {"exclude_server_model_processes": False}
 
     def __init__(self, *args, **kwargs):
@@ -54,8 +61,8 @@ class Centralized(tFL):
             )
         )
 
-    def evaluate_personalization_loss(self, *args, **kwargs):
-        pass
+    def evaluate_generalization(self, *args, **kwargs):
+        pass  # no personalization in centralized training
 
 
 class Centralized_Client(tFL_Client):
