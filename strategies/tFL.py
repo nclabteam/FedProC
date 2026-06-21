@@ -1,6 +1,6 @@
 """Stateless-client / server-owned-state execution core (v2.0).
 
-FL-bench-style architecture: clients are reusable stateless workers; ALL
+Stateless-client architecture: clients are reusable stateless workers; ALL
 per-client persistent state (model params, optimizer/scheduler state, personal
 params) lives on the server and is threaded in/out each round via packages.
 
