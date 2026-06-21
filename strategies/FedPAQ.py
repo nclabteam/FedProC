@@ -6,13 +6,14 @@ from .tFL import tFL, tFL_Client
 class FedPAQ(tFL):
     """FedPAQ: Federated Learning with Periodic Averaging and Quantization (Reisizadeh et al., 2020).
 
-    Reduces uplink communication by stochastically quantizing client model updates
-    to s levels before upload. Quantizer (low-precision, QSGD-style):
+    Reduces uplink communication by stochastically quantizing client update vectors
+    before upload (paper §III-C). Quantizer (low-precision, QSGD-style):
       Q_s(v)_i = ||v|| * sign(v_i) * ξ_i / s
     where ξ_i ~ Bernoulli(|v_i|/||v|| * s - floor(|v_i|/||v|| * s)) + floor(|v_i|/||v|| * s).
 
-    Note: original FedPAQ quantizes the *update* (x_τ - x_0) not the full model.
-    This implementation quantizes full model params for compatibility with FedAvg aggregation.
+    Client computes delta = x_τ - x_0, uploads Q(delta). Server aggregates
+    x_{k+1} = x_k + Σ_i w_i · Q(delta_i), implemented by sending x_0 + Q(delta)
+    so the existing FedAvg aggregation remains correct.
 
     Reference: arXiv:1909.13014.
     """
@@ -37,13 +38,25 @@ class FedPAQ(tFL):
 class FedPAQ_Client(tFL_Client):
     s: int = 8
 
+    def set_parameters(self, package: dict) -> None:
+        super().set_parameters(package)
+        # Snapshot x_0 (params received from server before local training)
+        self._init_params = {
+            name: param.data.clone().cpu()
+            for name, param in self.model.named_parameters()
+        }
+
     def package(self, train_time: float) -> dict:
         result = super().package(train_time)
         if self.s > 0:
-            result["regular_model_params"] = {
-                name: self.quantize_tensor(tensor, self.s)
-                for name, tensor in result["regular_model_params"].items()
-            }
+            # Quantize the update vector delta = x_τ - x_0, then send x_0 + Q(delta).
+            # Server FedAvg then gives x_0 + Σ w_i·Q(delta_i) as required by paper.
+            quantized = {}
+            for name, x_tau in result["regular_model_params"].items():
+                delta = x_tau.float() - self._init_params[name].float()
+                q_delta = self.quantize_tensor(delta, self.s)
+                quantized[name] = (self._init_params[name].float() + q_delta).to(x_tau.dtype)
+            result["regular_model_params"] = quantized
         return result
 
     @staticmethod
