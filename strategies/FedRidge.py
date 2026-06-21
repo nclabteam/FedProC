@@ -30,14 +30,12 @@ class FedRidge(_LinearWeightsMixin, tFL):
     """
     FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF.
 
-    Clients upload full Sigma_xx (L×L) and Sigma_xy (L×H). Server aggregates
-    and solves the global ridge regression exactly in one round.
+    Clients upload sufficient statistics G_k = X_k^T X_k and h_k = X_k^T Y_k.
+    Server aggregates G = Σ G_k, h = Σ h_k and solves w = (G + γI)^{-1} h
+    in one round — exact recovery of the centralised solution (paper Alg. 1).
 
-    Adaptation note: paper uses plain sum G = Σ G_k; implementation normalises
-    per-client (divides by n_k) and takes a weighted average, giving G/n_total.
-    This is algebraically equivalent with gamma_impl = gamma_paper / n_total, so
-    gamma is effectively in per-sample scale here.  Multi-output target (H steps)
-    is a standard extension of the univariate paper formulation.
+    Multi-output target (H steps) is a standard extension of the univariate
+    paper formulation.
     """
 
     optional = {"gamma": 0.1}
@@ -85,15 +83,13 @@ class FedRidge(_LinearWeightsMixin, tFL):
     def aggregate_client_updates(self, packages) -> None:
         L = self.input_len
         H = self.output_len
-        cids = list(packages.keys())
-        scores = [packages[cid]["score"] for cid in cids]
-        total = float(sum(scores))
 
+        # Paper Alg. 1: G = Σ G_k, h = Σ h_k (plain sums)
         sigma_xx_g = torch.zeros(L, L)
         sigma_xy_g = torch.zeros(L, H)
-        for cid, w in zip(cids, [s / total for s in scores]):
-            sigma_xx_g.add_(packages[cid]["sigma_xx"], alpha=w)
-            sigma_xy_g.add_(packages[cid]["sigma_xy"], alpha=w)
+        for cid in packages:
+            sigma_xx_g.add_(packages[cid]["sigma_xx"])
+            sigma_xy_g.add_(packages[cid]["sigma_xy"])
 
         W = torch.linalg.solve(sigma_xx_g + self.gamma * torch.eye(L), sigma_xy_g)
         self.sigma_xx_g = sigma_xx_g
@@ -133,9 +129,8 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
             sigma_xx.add_(x.T @ x)
             sigma_xy.add_(x.T @ y)
 
-        N = self.train_samples
-        self._sigma_xx = sigma_xx / N
-        self._sigma_xy = sigma_xy / N
+        self._sigma_xx = sigma_xx
+        self._sigma_xy = sigma_xy
 
     def package(self, train_time: float) -> Dict[str, Any]:
         result = super().package(train_time)
