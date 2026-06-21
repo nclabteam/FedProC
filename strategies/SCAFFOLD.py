@@ -47,11 +47,15 @@ class SCAFFOLD(tFL):
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
-        # SCAFFOLD needs delta_c propagation from workers → disable Ray parallelism
         self.parallel = False
         self.global_c: List[torch.Tensor] = [
             torch.zeros_like(p, device="cpu") for p in self.model.parameters()
         ]
+        zero_c = [torch.zeros_like(p, device="cpu") for p in self.model.parameters()]
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["client_c"] = [
+                t.clone() for t in zero_c
+            ]
 
     def package(self, client_id: int) -> Dict[str, Any]:
         pkg = super().package(client_id)
@@ -87,17 +91,9 @@ class SCAFFOLD_Client(tFL_Client):
     variates c_i. Returns updated model + delta_c after each round.
     """
 
-    client_c = None  # initialized lazily in set_parameters on first round
-
     def set_parameters(self, package: Dict[str, Any]) -> None:
         super().set_parameters(package)
-        client_c = package["personal_model_params"].get("client_c", None)
-        if client_c is None:
-            self.client_c = [
-                torch.zeros_like(p, device="cpu") for p in self.model.parameters()
-            ]
-        else:
-            self.client_c = client_c
+        self.client_c = package["personal_model_params"]["client_c"]
         self.global_c = package["global_c"]
         self._global_snapshot = [
             v.clone().cpu() for v in package["regular_model_params"].values()

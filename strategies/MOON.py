@@ -35,16 +35,19 @@ class MOON(tFL):
         parser.add_argument("--mu", type=float, default=None)
         parser.add_argument("--temperature", type=float, default=None)
 
+    def __init__(self, configs, times):
+        super().__init__(configs=configs, times=times)
+        init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+        for cid in range(self.num_clients):
+            self.clients_personal_model_params[cid]["prev_model_state"] = {
+                k: v.clone() for k, v in init_state.items()
+            }
+
 
 class MOON_Client(tFL_Client):
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        # Save contrastive references before super() loads the global model params
         self._global_model_params = copy.deepcopy(package["regular_model_params"])
-        personal = package["personal_model_params"]
-        self._prev_model_params = personal.get(
-            "prev_model_state",
-            copy.deepcopy(package["regular_model_params"]),
-        )
+        self._prev_model_params = package["personal_model_params"]["prev_model_state"]
         super().set_parameters(package)
 
     def package(self, train_time: float) -> Dict[str, Any]:

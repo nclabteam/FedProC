@@ -33,8 +33,7 @@ class FFA_LoRAShared:
 
 
 class FFA_LoRA(FedIT, FFA_LoRAShared):
-    """
-    FFA-LoRA Server: Aggregates only B matrices.
+    """FFA-LoRA: Improving LoRA in Privacy-Preserving Federated Learning (Sun et al., ICLR 2024).
 
     A matrices are initialized once and never updated (frozen globally).
     This eliminates aggregation bias since:
@@ -42,6 +41,8 @@ class FFA_LoRA(FedIT, FFA_LoRAShared):
 
     Unlike FedIT where both A and B are aggregated:
         W̄ = W_0 + B̄*Ā ≠ W_0 + Σ p_k (B_k*A_k) ✗ (aggregation bias)
+
+    Reference: arXiv:2403.12313. ICLR 2024.
     """
 
     # Bug fix (MRO): FedITShared appears before FFA_LoRAShared in the MRO, so
