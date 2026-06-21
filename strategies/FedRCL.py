@@ -8,18 +8,15 @@ class FedRCL(tFL):
     """Federated Relaxed Contrastive Learning (Seo et al., ICLR 2024).
 
     Server: standard FedAvg aggregation.
-    Client: L = L_task + rcl_weight * L_RCL, where L_RCL is a relaxed supervised
-    contrastive loss that adds a divergence penalty on intra-class pairs that are
-    excessively similar (those in P(x) = {x' | y_{x'}=y_x, cos(x',x) > λ}).
+    Client: L = L_task + rcl_weight * L_RCL, where L_RCL is the relaxed supervised
+    contrastive loss (paper Eq. 5) that adds a per-pair divergence penalty
+    β · sim(i,j)/τ for intra-class pairs in P(x) = {x' | y_{x'}=y_x, cos(x',x) > λ}.
 
-    Implementation notes:
-    - Divergence term: the published paper (Eq. 5) uses a per-pair term
-      β * 1_{x_j ∈ P(x_i)} * sim(i,j)/τ. The implementation uses an aggregate
-      logsumexp over P(x_i) per anchor, which differs from the paper.
-    - Multi-level contrastive training (Sec. 4.4, applied to conv1–5 in paper) is
-      not implemented; only final model output is used as representation since TSF
-      models have no accessible intermediate hooks.
-    - Pseudo-labels from quantile binning of target mean are used for TSF regression.
+    TSF adaptations (cannot be avoided):
+    - Multi-level contrastive training (Sec. 4.4) is not applied; only the final
+      model output is used as representation since TSF models have no intermediate
+      feature hooks.
+    - Pseudo-labels from quantile binning of target mean replace class labels.
 
     Default hyperparameters (from paper): τ = 0.05, λ = 0.7, β = 1.0.
     Reference: OpenReview hduCLXDhS4.
@@ -51,15 +48,15 @@ class FedRCL_Client(tFL_Client):
     @staticmethod
     def compute_rcl_loss(features, pseudo_labels, tau, beta, lam):
         """
-        Relaxed Contrastive Loss adapted for TSF.
+        Relaxed Contrastive Loss (paper Eq. 5).
 
-        [methodology.tex, eq.6] — L_RCL(x_i, y_i; φ) =
+        L_RCL(x_i, y_i; φ) =
           Σ_{j≠i, y_j=y_i} {
-            -log(exp(⟨φ(x_i),φ(x_j)⟩/τ) / Σ_{k≠i} exp(⟨φ(x_i),φ(x_k)⟩/τ))
-            + β · log(Σ_{x_k∈P(x_i)} exp(⟨φ(x_i),φ(x_k)⟩/τ) + exp(1/τ))
+            -sim(i,j)/τ + log(Σ_{k≠i} exp(sim(i,k)/τ))    [SCL term]
+            + β · 1_{j∈P(x_i)} · sim(i,j)/τ                [divergence penalty]
           }
-
-        where P(x) = {x' | y_{x'}=y_x, ⟨φ(x'),φ(x)⟩ > λ}
+        where P(x_i) = {x' | y_{x'}=y_i, sim(x',x_i) > λ}.
+        Note: log(exp(sim/τ)) = sim/τ, so the divergence penalty is per-pair.
 
         Args:
             features: [B, D] flattened representations.
@@ -75,7 +72,6 @@ class FedRCL_Client(tFL_Client):
         if B < 2:
             return torch.tensor(0.0, device=features.device)
 
-        # [methodology.tex, eq.6] — cosine similarity ⟨φ(x_i), φ(x_j)⟩
         features = F.normalize(features, dim=1)
         sim = features @ features.t()  # [B, B]
 
@@ -84,39 +80,22 @@ class FedRCL_Client(tFL_Client):
         labels_eq = pseudo_labels.unsqueeze(0) == pseudo_labels.unsqueeze(1)  # [B, B]
         pos_mask = labels_eq & ~eye  # same pseudo-class, not self
 
-        num_pos_per_anchor = pos_mask.sum(dim=1)  # [B]
-        has_pos = num_pos_per_anchor > 0
-
-        if not has_pos.any():
+        if not pos_mask.any():
             return torch.tensor(0.0, device=device)
 
-        # [methodology.tex, eq.6] — scaled logits
         logits = sim / tau  # [B, B]
 
-        # Log-denominator: log(Σ_{k≠i} exp(sim(i,k)/τ))
-        logits_for_denom = logits.masked_fill(eye, float("-inf"))
-        log_denom = torch.logsumexp(logits_for_denom, dim=1)  # [B]
-
-        # [methodology.tex, eq.6] — SCL term per pair: -sim(i,j)/τ + log_denom(i)
+        # SCL term per pair: -sim(i,j)/τ + log(Σ_{k≠i} exp(sim(i,k)/τ))
+        log_denom = torch.logsumexp(logits.masked_fill(eye, float("-inf")), dim=1)  # [B]
         scl_per_pair = -logits + log_denom.unsqueeze(1)  # [B, B]
 
-        # [methodology.tex, eq.6] — Divergence term: P(x_i) = {same class, cos_sim > λ}
-        p_mask = pos_mask & (sim > lam)  # [B, B]
-        logits_p = logits.masked_fill(~p_mask, float("-inf"))  # [B, B]
-        lse_p = torch.logsumexp(logits_p, dim=1)  # [B]
-        exp_1_tau = 1.0 / tau
-        # [methodology.tex, eq.6] — log(Σ_{k∈P} exp(sim/τ) + exp(1/τ))
-        div_term = torch.logaddexp(lse_p, torch.tensor(exp_1_tau, device=device))  # [B]
-
-        # Total per positive pair: scl + β·div
-        total_per_pair = scl_per_pair + beta * div_term.unsqueeze(1)  # [B, B]
+        # Divergence term (paper Eq. 5): β · 1_{j∈P(x_i)} · sim(i,j)/τ
+        p_mask = pos_mask & (sim > lam)  # j ∈ P(x_i): same class, cos_sim > λ
+        div_per_pair = beta * p_mask.float() * logits  # [B, B]
 
         # Average over all positive pairs
-        loss = (total_per_pair * pos_mask.float()).sum()
-        num_positives = pos_mask.sum()
-        loss = loss / num_positives.clamp(min=1)
-
-        return loss
+        total_per_pair = (scl_per_pair + div_per_pair) * pos_mask.float()
+        return total_per_pair.sum() / pos_mask.sum().clamp(min=1)
 
     @staticmethod
     def assign_pseudo_labels(batch_y, num_classes):
