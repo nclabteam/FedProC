@@ -1,4 +1,5 @@
 import copy
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -117,3 +118,8 @@ class FedDF(hFL):
 
         self.model.to("cpu")
         del temp_model
+        self._commit_global(
+            OrderedDict(
+                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            )
+        )

@@ -18,6 +18,12 @@ class FML(pFL):
       L_i = α * task_loss(model_i) + (1-α) * KL(log_σ(model_i) ‖ σ(model_g))
       L_g = β * task_loss(model_g) + (1-β) * KL(log_σ(model_g) ‖ σ(model_i))
 
+    TSF adaptation: paper applies softmax to classification logits; here softmax is
+    applied over the time dimension (dim=1) of the regression outputs [B, T, C],
+    converting each channel's time series into a "time-step distribution". The KL
+    then measures distributional divergence along the time axis between the two
+    models rather than across classes.
+
     Default hyperparameters: α=0.9 (personal task weight), β=0.1 (global task weight).
     Reference: arXiv:2006.16765.
     """
