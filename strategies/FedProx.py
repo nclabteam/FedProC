@@ -1,4 +1,3 @@
-import copy
 from typing import Any, Dict
 
 from .dFL import dFL, dFL_Client
@@ -83,8 +82,7 @@ class DFedProx(dFL):
 class DFedProx_Client(dFL_Client):
     def set_parameters(self, package):
         super().set_parameters(package)
-        # Snapshot the gossip-aggregated model received from server as the prox center.
-        self.snapshot = copy.deepcopy(self.model).to("cpu")
+        self._global_params = [p.detach().cpu().clone() for p in self.model.parameters()]
 
     def train_one_epoch(self, *args, **kwargs):
         return FedProx_Client.train_one_epoch(self, *args, **kwargs)
