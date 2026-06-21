@@ -506,7 +506,9 @@ class tFL(SharedMethods):
                         continue
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
-            self.metrics["time_per_iter"].append(time.time() - round_start)
+            iter_time = time.time() - round_start
+            self.metrics["time_per_iter"].append(iter_time)
+            self.logger.info(f"Round {str(i).zfill(4)} time: {iter_time:.2f}s")
             self.fix_results(default=self.default_value)
             if self.early_stopping():
                 break
