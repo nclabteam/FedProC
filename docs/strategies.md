@@ -2,6 +2,8 @@
 
 ## nFL — No Federated Learning
 
+Standalone baselines and non-FL pre-training methods. No model communication; each client trains independently or is evaluated in a centralized setting.
+
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
 | LocalOnly | | | Per-client local training only, no communication | | |
@@ -12,6 +14,8 @@
 | SL | NeurIPS | 2025 | Dual-mask selective loss (uncertainty + anomaly) for deep TSF | Selective Learning for Deep Time Series Forecasting | [OpenReview](https://openreview.net/forum?id=kgzRy6nD6D) - [GitHub](https://github.com/GestaltCogTeam/selective-learning) |
 
 ## tFL — Traditional Federated Learning
+
+Central-server FL where a server aggregates client updates each round and broadcasts a single global model. All clients converge toward one shared solution.
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
@@ -38,6 +42,8 @@
 | FedDLSA | JCGS | 2021 | Federated weighted least-squares via precision-matrix aggregation | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
 
 ## pFL — Personalized Federated Learning
+
+Each client maintains its own model or model component alongside the global model. Aggregation is designed to produce client-specific outputs rather than a single shared solution.
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
@@ -67,12 +73,16 @@
 
 ## hFL — Heterogeneous Federated Learning
 
+Clients have architecturally different models. Knowledge is transferred via a shared public dataset or distillation rather than direct parameter averaging.
+
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
 | FedMD | NeurIPS-W | 2019 | Knowledge distillation via public dataset for heterogeneous model architectures | FedMD: Heterogenous Federated Learning via Model Distillation | [Arxiv](https://arxiv.org/abs/1910.03581) |
 | FedDF* | NeurIPS | 2020 | Ensemble distillation on public data refines server model post-aggregation | Ensemble Distillation for Robust Model Fusion in Federated Learning | [Arxiv](https://arxiv.org/abs/2006.07242) |
 
 ## dFL — Decentralized Federated Learning
+
+No central server; clients communicate directly with neighbors in a peer-to-peer topology. Each node aggregates only from its local neighborhood.
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
