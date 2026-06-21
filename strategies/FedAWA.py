@@ -2,24 +2,21 @@ from collections import OrderedDict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .dFL import dFL, dFL_Client
 from .tFL import tFL as Server
 
 
 class FedAWA(Server):
-    """Federated learning with Adaptive Weight Aggregation (Ren et al., arXiv 2025).
+    """Federated learning with Adaptive Weight Aggregation (Ren et al., CVPR 2025).
 
     Adaptively learns per-client aggregation weights on the server side without
-    requiring a proxy dataset. Defines a client vector τ_k = θ_k - θ_g.
-    Optimizes softmax-weighted aggregation (Eq. loss in paper):
+    requiring a proxy dataset. Defines client vector τ_k = θ_k - θ_g.
+    Optimizes softmax-weighted aggregation (paper Eq. 3):
       min_λ  Σ_k λ_k ||τ_k - τ_g||₂ + d(Σ_k λ_k θ_k, θ_g)
-    where τ_g = Σ_k λ_k τ_k is the merged global vector.
-
-    Adaptation note: paper's reg term is d(Σ_k λ_k θ_k, θ_g) — distance of the
-    aggregated model from the current global model.  Implementation approximates
-    this as Σ_k λ_k d(θ_k, θ_g) (weighted sum of individual distances), which
-    is computationally simpler but not identical.
+    where τ_g = Σ_k λ_k τ_k is the merged global vector and
+    d(·,·) = 1 - cosine_similarity (default).
 
     Default hyperparameters: server_epochs=1, server_lr=0.01, reg_distance=cos.
     Reference: arXiv:2503.15842.
@@ -126,12 +123,14 @@ class FedAWA(Server):
 
             probability_train = torch.nn.functional.softmax(self.awa_weights, dim=0)
 
-            C = self._cost_matrix(
-                x=global_flat.unsqueeze(0),
-                y=client_flats,
-                dis=self.reg_distance,
-            )
-            reg_loss = torch.sum(probability_train * C.squeeze(0))
+            # paper Eq. 3: reg = d(Σ_k λ_k θ_k, θ_g)
+            agg_flat = torch.sum(client_flats * probability_train.unsqueeze(1), dim=0)
+            if self.reg_distance == "cos":
+                reg_loss = 1.0 - F.cosine_similarity(
+                    agg_flat.unsqueeze(0), global_flat.unsqueeze(0)
+                ).squeeze()
+            else:  # euc
+                reg_loss = torch.mean(torch.abs(agg_flat - global_flat) ** 2)
 
             client_updates = client_flats - global_flat
             weighted_avg_update = torch.sum(
