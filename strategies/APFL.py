@@ -107,7 +107,6 @@ class APFL_Client(pFL_Client):
                 -1
             )
             grad_alpha += float(dif.dot(grad))
-        grad_alpha += 0.02 * self.alpha
         self.alpha = float(
             np.clip(self.alpha - self.learning_rate * grad_alpha, 0.0, 1.0)
         )
