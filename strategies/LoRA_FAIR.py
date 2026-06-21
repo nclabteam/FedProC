@@ -123,24 +123,26 @@ class LoRA_FAIR(FedIT):
             if A_name not in A_bar or B_name not in B_bar:
                 continue
 
-            A_t = A_bar[A_name]  # [in, r]
-            B_t = B_bar[B_name]  # [r, out]
+            A_t = A_bar[A_name]  # [in, r] = paper's B̄ (left factor)
+            B_t = B_bar[B_name]  # [r, out] = paper's Ā (right factor)
             W_tgt = W_target[layer]  # [in, out]
 
-            delta_B = torch.zeros_like(B_t, device=device, requires_grad=True)
-            optimizer = torch.optim.SGD([delta_B], lr=self.lora_delta_lr)
+            # Paper Eq.: min_ΔB S(ΔW, (B̄+ΔB)·Ā) + λ||ΔB||²
+            # B̄ = lora_A_bar (left factor, paper's B), so ΔB applies to lora_A
+            delta_A = torch.zeros_like(A_t, device=device, requires_grad=True)
+            optimizer = torch.optim.SGD([delta_A], lr=self.lora_delta_lr)
 
             for _ in range(max(1, self.lora_delta_steps)):
                 optimizer.zero_grad()
-                pred = A_t @ (B_t + delta_B)  # [in, out]
+                pred = (A_t + delta_A) @ B_t  # [in, out]
                 loss_sim = self._similarity_loss(pred, W_tgt)
-                loss_reg = self.lora_delta_reg * (delta_B.pow(2).sum())
+                loss_reg = self.lora_delta_reg * (delta_A.pow(2).sum())
                 loss = loss_sim + loss_reg
                 loss.backward()
                 optimizer.step()
 
-            aggregated_lora[A_name] = A_t.detach().cpu().clone()
-            aggregated_lora[B_name] = (B_t + delta_B.detach()).cpu().clone()
+            aggregated_lora[A_name] = (A_t + delta_A.detach()).cpu().clone()
+            aggregated_lora[B_name] = B_t.detach().cpu().clone()
 
         self.update_lora_params(self.model, aggregated_lora)
         self._commit_global(
