@@ -8,6 +8,18 @@ from .dFL import dFL, dFL_Client
 
 
 class DFedHPO(dFL):
+    """DFedHPO: Decentralized Federated Learning with Distributed Hyperparameter Optimization.
+
+    Before the main FL training, each client independently samples `trials` learning-rate
+    configs, evaluates each on local data for `eval_epochs` epochs, then aggregates
+    candidates with neighbors using one of three strategies:
+      CA (consensus): pick the single best candidate globally.
+      FA (fusion): average the top-k LR values.
+      MA (meta-regression): fit a degree-2 polynomial in log-lr space, pick top-k.
+
+    Note: run_hpo() accesses self.clients directly and has not yet been migrated to
+    the v1.12 stateless-client architecture.
+    """
 
     optional = {
         "trials": 10,

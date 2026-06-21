@@ -4,10 +4,13 @@ from .dFL import dFL, dFL_Client
 
 
 class DFedSAM(dFL):
-    """DFedSAM / DFedSAM-MGS server orchestrator.
+    """DFedSAM / DFedSAM-MGS: Decentralized Federated Learning with Sharpness-Aware Minimization (Sun et al., ICML 2023).
 
-    Inherits DFL topology-based communication. Overrides aggregate_models
-    to support Q gossip steps (MGS variant) for improved model consistency.
+    DFedSAM: clients apply SAM perturbation (δ = ρ·g/‖g‖₂) per batch then
+    gossip-average flat models once. DFedSAM-MGS repeats the gossip Q times
+    for improved consistency at the cost of Q× communication per round.
+
+    Default: rho=0.05, use_mgs=True, mgs_steps=2. Reference: arXiv:2302.04083.
     """
 
     optional = {
