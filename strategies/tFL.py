@@ -323,6 +323,10 @@ class Trainer:
         ]
         return list(ray.get(futures))
 
+    def dispatch_one(self, cid: int, wid: int) -> Any:
+        """Dispatch a single client to a specific Ray worker. Returns a future."""
+        return self.workers[wid].train.remote(self.server.package(cid))
+
     def _write_back(self, cid: int, out: Dict[str, Any]) -> None:
         self.server.client_optimizer_states[cid] = out["optimizer_state"]
         self.server.client_scheduler_states[cid] = out["scheduler_state"]
