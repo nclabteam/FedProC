@@ -20,8 +20,8 @@ class FedCross(tFL):
     In the first ``first_stage_bound`` rounds all local models are synced to global
     (warm-up stage).
 
-    Reference: FedCross (CVPR 2023). Note: metadata ID 04490 maps to a different
-    paper; paper faithfulness check skipped.
+    Default hyperparameters: cross_alpha=0.99, lowest-similarity selection (strategy=1).
+    Reference: arXiv:2210.08285. CVPR 2023.
     """
 
     optional = {
@@ -92,17 +92,12 @@ class FedCross(tFL):
         for k in range(n):
             for j in range(k):
                 s = 0.0
-                dict_a = torch.Tensor(0)
-                dict_b = torch.Tensor(0)
                 cnt = 0
                 sub_a = sub_b = None
 
                 for p in w_locals[k]:
                     a = w_locals[k][p].float().view(-1)
                     b = w_locals[j][p].float().view(-1)
-
-                    dict_a = a if cnt == 0 else torch.cat((dict_a, a), dim=0)
-                    dict_b = b if cnt == 0 else torch.cat((dict_b, b), dim=0)
 
                     if cnt % 2 == 0:
                         sub_a = a

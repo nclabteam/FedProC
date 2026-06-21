@@ -44,14 +44,15 @@ class Elastic(tFL):
         total = float(sum(scores))
         weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
 
-        # Per-parameter sensitivity: weighted mean across clients (Ω^i in Eq. 7)
+        # Per-parameter sensitivity: weighted mean across clients (Ω in Eq. 7)
         sensitivities = torch.stack(
             [packages[cid]["sensitivity"] for cid in cids], dim=-1
         )
         agg_sensitivity = torch.sum(sensitivities * weights, dim=-1)
-        max_sensitivity = sensitivities.max(dim=-1)[0]
-        # Adaptive coefficient ζ^i = 1 + τ - Ω^i / max(Ω)  (Eq. 7)
-        zeta = 1 + self.tau - agg_sensitivity / max_sensitivity.clamp(min=1e-12)
+        # Ω' = max(Ω) — global max across all layers (Eq. 7)
+        max_sensitivity = agg_sensitivity.max().clamp(min=1e-12)
+        # Adaptive coefficient ζ^i = 1 + τ - Ω^i / Ω'  (Eq. 7)
+        zeta = 1 + self.tau - agg_sensitivity / max_sensitivity
 
         # Elastic update: θ_new = θ + ζ^i * (FedAvg(θ_k) - θ)  (Eq. 6)
         new_global = OrderedDict()
