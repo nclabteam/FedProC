@@ -63,7 +63,7 @@
 | FedSelect | CVPR | 2024 | Sparse parameter selection masks for efficient personalized fine-tuning | FedSelect: Personalized Federated Learning with Customized Selection of Parameters for Fine-Tuning | [Arxiv](https://arxiv.org/abs/2404.02478) - [GitHub](https://github.com/lapisrocks/fedselect) |
 | FedSA_LoRA | ICLR | 2025 | Selectively aggregates task-relevant LoRA components | Selective Aggregation for Low-Rank Adaptation in Federated Learning | [Arxiv](https://arxiv.org/abs/2410.01463) |
 | LoRA_FAIR | ICCV | 2025 | Refines LoRA aggregation weights and re-initializes A matrices | LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement | [Arxiv](https://arxiv.org/abs/2411.14961) - [GitHub](https://github.com/jmbian/LoRA-FAIR) |
-| FlexLoRA | | | Heterogeneous LoRA ranks via SVD-based redistribution at server | | |
+| FlexLoRA | NeurIPS | 2024 | Heterogeneous LoRA ranks via SVD-based redistribution at server | Federated Fine-tuning of Large Language Models under Heterogeneous Tasks and Client Resources | [Arxiv](https://arxiv.org/abs/2402.11505) |
 
 ## hFL — Heterogeneous Federated Learning
 
