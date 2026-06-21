@@ -92,6 +92,14 @@ No central server; clients communicate directly with neighbors in a peer-to-peer
 | DFedAWA** | CVPR | 2025 | Decentralized FedAWA with local adaptive aggregation weights | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
 | DFedHPO | Internet of Things | 2025 | Pre-FL distributed hyperparameter optimization with neighbor consensus | Decentralized Federated Learning with Hyperparameter Optimization | [PUB](https://doi.org/10.1016/j.iot.2024.101476) |
 
+## aFL — Asynchronous Federated Learning
+
+No synchronization barrier; clients run continuously and results are aggregated as they arrive. A server-side buffer collects K results before each aggregation step, decoupling client speed from global update frequency.
+
+| Name | Venue | Year | Description | Paper | URL |
+|------|-------|------|-------------|-------|-----|
+| FedPSA | arXiv | 2025 | Sensitivity-sketch behavioral staleness + thermometer-controlled softmax aggregation | FedPSA: Modeling Behavioral Staleness in Asynchronous Federated Learning | [Arxiv](https://arxiv.org/abs/2602.15337) |
+
 ---
 
 \* Adapted from classification to regression. Please use with caution.
