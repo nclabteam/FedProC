@@ -219,7 +219,9 @@ class SL_Client(pFL_Client):
                 residual = torch.abs(outputs - batch_y)
 
                 # --- build combined mask (True = keep, False = discard) ---
-                mask = torch.ones_like(batch_y, dtype=torch.bool)
+                # Paper Eq. 3: M = M_u ∨ M_a (OR — discard only if BOTH say discard)
+                unc_mask_batch: Optional[torch.Tensor] = None
+                ano_mask_batch: Optional[torch.Tensor] = None
 
                 # Uncertainty mask
                 if self.r_u is not None:
@@ -236,8 +238,7 @@ class SL_Client(pFL_Client):
                         expanded_idx = idx.unsqueeze(-1) + torch.arange(
                             self.output_len, device="cpu"
                         )
-                        unc_mask = uncertainty_mask[expanded_idx].to(self.device)
-                        mask = mask & unc_mask
+                        unc_mask_batch = uncertainty_mask[expanded_idx].to(self.device)
 
                 # Anomaly mask
                 if self.r_a is not None and estimator is not None:
@@ -246,8 +247,17 @@ class SL_Client(pFL_Client):
                     residual_lb = torch.abs(est_out - batch_y)
                     dist = residual - residual_lb
                     thresholds = torch.quantile(dist, self.r_a, dim=1, keepdim=True)
-                    ano_mask = dist > thresholds
-                    mask = mask & ano_mask
+                    ano_mask_batch = dist > thresholds
+
+                # Combine: OR per paper (Eq. M = M_u ∨ M_a)
+                if unc_mask_batch is not None and ano_mask_batch is not None:
+                    mask = unc_mask_batch | ano_mask_batch
+                elif unc_mask_batch is not None:
+                    mask = unc_mask_batch
+                elif ano_mask_batch is not None:
+                    mask = ano_mask_batch
+                else:
+                    mask = torch.ones_like(batch_y, dtype=torch.bool)
 
                 # Masked loss — only penalise generalizable timesteps
                 masked_outputs = outputs * mask
