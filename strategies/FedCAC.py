@@ -97,6 +97,18 @@ class FedCAC(pFL):
                     w_customized[name], float(len(collaboration_cids))
                 )
 
+            # Paper Alg. 1 step 14: ŵ_i = w̄ ⊙ (J-M_i) + u_i ⊙ M_i
+            # critical params (mask=1): collab avg; non-critical (mask=0): FedAvg
+            local_mask_list = self.clients_personal_model_params[cid]["local_mask"]
+            param_names = [name for name, _ in self.model.named_parameters()]
+            for idx, pname in enumerate(param_names):
+                if pname not in w_customized:
+                    continue
+                m = local_mask_list[idx].float()
+                w_customized[pname] = (
+                    self.public_model_params[pname].cpu() * (1.0 - m)
+                    + w_customized[pname].cpu() * m
+                )
             self.clients_personal_model_params[cid]["customized_model_state"] = w_customized
 
 
