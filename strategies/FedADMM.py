@@ -16,11 +16,16 @@ class FedADMM(tFL):
 
       Client proximal loss: f_i(w) + (ρ/2)||w - θ - α_i||²
       Dual update:          α_i ← α_i - (w_i - θ)
-      Theta update:         θ  ← weighted_mean(w_i - α_i)    [= mean(w + u)]
-      Global update:        θ_global ← weighted_mean(w_i)
+      Theta update:         θ  ← weighted_mean(w_i - α_i)
+      Global model:         weighted_mean(w_i)    [for eval/broadcast]
 
-    Note: the paper uses a tracking mechanism for the θ-update; this implementation
-    uses the standard ADMM consensus update (simpler, correct for partial participation).
+    Paper differences:
+    - θ-update: paper uses a tracking rule (θ ← θ + Σ Δ_i); here we use the
+      standard ADMM consensus update (mean(w_i - α_i)), simpler and valid for
+      partial participation.
+    - Per-client w_i: clients maintain their own persistent local model across
+      rounds (paper sends per-client w_i, not the global average), which is
+      necessary for the dual variables to work correctly.
 
     Default hyperparameters (from paper): ρ = 0.01.
     Reference: arXiv:2204.03529. ICDE 2022.
@@ -45,14 +50,23 @@ class FedADMM(tFL):
             name: torch.zeros_like(p.data).cpu()
             for name, p in self.model.named_parameters()
         }
+        init_w = {k: v.clone() for k, v in self.public_model_params.items()}
         for cid in range(self.num_clients):
             self.clients_personal_model_params[cid]["alpha"] = {
                 name: v.clone() for name, v in zeros.items()
+            }
+            # Each client keeps its own local model w_i across rounds (paper Alg. 1)
+            self.clients_personal_model_params[cid]["w_i"] = {
+                k: v.clone() for k, v in init_w.items()
             }
 
     def package(self, client_id: int) -> Dict[str, Any]:
         out = super().package(client_id)
         out["theta"] = copy.deepcopy(self.theta)
+        # Client starts from its own persistent w_i (not the global average)
+        out["regular_model_params"] = copy.deepcopy(
+            self.clients_personal_model_params[client_id]["w_i"]
+        )
         return out
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
@@ -60,6 +74,13 @@ class FedADMM(tFL):
         total = float(sum(scores))
         weights = [s / total for s in scores]
 
+        # Persist each client's updated w_i for the next round (paper Alg. 1, line 8)
+        for cid, pkg in packages.items():
+            self.clients_personal_model_params[cid]["w_i"] = {
+                k: v.clone() for k, v in pkg["regular_model_params"].items()
+            }
+
+        # Global model = weighted avg of w_i (used for evaluation and θ init)
         new_global = OrderedDict()
         for name in self.public_model_params:
             stacked = torch.stack(
@@ -68,6 +89,7 @@ class FedADMM(tFL):
             w_t = torch.tensor(weights, dtype=stacked.dtype)
             new_global[name] = (stacked * w_t).sum(dim=-1)
 
+        # θ update: weighted mean(w_i - α_i)  [consensus ADMM, not paper's tracking rule]
         new_theta: Dict[str, torch.Tensor] = {}
         for name in self.theta:
             diffs = []

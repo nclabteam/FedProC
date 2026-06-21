@@ -11,11 +11,17 @@ class FedAWA(Server):
     """Federated learning with Adaptive Weight Aggregation (Ren et al., arXiv 2025).
 
     Adaptively learns per-client aggregation weights on the server side without
-    requiring a proxy dataset. Defines a client vector τ_k = θ_k - θ_g (local model
-    minus global model). Optimizes softmax-weighted aggregation to minimize:
-      - sim_loss: deviation of each client vector from the weighted mean vector
-      - reg_loss: distance from global model to each client model (stability term)
+    requiring a proxy dataset. Defines a client vector τ_k = θ_k - θ_g.
+    Optimizes softmax-weighted aggregation (Eq. loss in paper):
+      min_λ  Σ_k λ_k ||τ_k - τ_g||₂ + d(Σ_k λ_k θ_k, θ_g)
+    where τ_g = Σ_k λ_k τ_k is the merged global vector.
 
+    Adaptation note: paper's reg term is d(Σ_k λ_k θ_k, θ_g) — distance of the
+    aggregated model from the current global model.  Implementation approximates
+    this as Σ_k λ_k d(θ_k, θ_g) (weighted sum of individual distances), which
+    is computationally simpler but not identical.
+
+    Default hyperparameters: server_epochs=1, server_lr=0.01, reg_distance=cos.
     Reference: arXiv:2503.15842.
     """
 

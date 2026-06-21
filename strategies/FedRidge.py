@@ -32,6 +32,12 @@ class FedRidge(_LinearWeightsMixin, tFL):
 
     Clients upload full Sigma_xx (L×L) and Sigma_xy (L×H). Server aggregates
     and solves the global ridge regression exactly in one round.
+
+    Adaptation note: paper uses plain sum G = Σ G_k; implementation normalises
+    per-client (divides by n_k) and takes a weighted average, giving G/n_total.
+    This is algebraically equivalent with gamma_impl = gamma_paper / n_total, so
+    gamma is effectively in per-sample scale here.  Multi-output target (H steps)
+    is a standard extension of the univariate paper formulation.
     """
 
     optional = {"gamma": 0.1}
