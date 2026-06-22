@@ -11,7 +11,6 @@ from typing import Any, Dict
 
 import torch
 
-from ._spFL_utils import apply_mask, magnitude_reprune, sparse_update_step, union_masks
 from .spFL import spFL, spFL_Client
 
 
@@ -23,9 +22,9 @@ class FedDST(spFL):
                         if "_sp_extra" in pkg and "mask_dict" in pkg["_sp_extra"]]
         if not client_masks:
             return
-        unioned = union_masks(client_masks)
-        self._sp_mask_dict = magnitude_reprune(self.model, unioned, self._sp_layer_density)
-        apply_mask(self.model, self._sp_mask_dict)
+        unioned = self.union_masks(client_masks)
+        self._sp_mask_dict = self.magnitude_reprune(self.model, unioned, self._sp_layer_density)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
 
 class FedDST_Client(spFL_Client):
@@ -38,7 +37,7 @@ class FedDST_Client(spFL_Client):
         SharedMethods._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         offload = self.efficiency == "low"
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
         total_epochs = self.epochs
         a_epochs = self.A_epochs if self.A_epochs is not None else total_epochs // 2
@@ -54,16 +53,16 @@ class FedDST_Client(spFL_Client):
                     device=self.device,
                     offload_after=offload,
                 )
-                apply_mask(self.model, self._sp_mask_dict)
+                self.apply_mask(self.model, self._sp_mask_dict)
 
         if self._sp_is_adj:
             _run_epochs(min(a_epochs, total_epochs))
             grads = self._collect_gradients()
-            self._sp_mask_dict = sparse_update_step(
+            self._sp_mask_dict = self.sparse_update_step(
                 self.model, grads, self._sp_mask_dict,
                 self._sp_t, self._sp_T_end, self._sp_alpha,
             )
-            apply_mask(self.model, self._sp_mask_dict)
+            self.apply_mask(self.model, self._sp_mask_dict)
             remaining = total_epochs - min(a_epochs, total_epochs)
             if remaining > 0:
                 _run_epochs(remaining)

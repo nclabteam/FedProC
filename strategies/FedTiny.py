@@ -10,7 +10,6 @@ from typing import Any, Dict
 
 import torch
 
-from ._spFL_utils import apply_mask, sparse_update_step
 from .spFL import spFL, spFL_Client
 
 
@@ -28,12 +27,12 @@ class FedTiny(spFL):
                 else:
                     avg_grad[name] += g.float() * w
 
-        self._sp_mask_dict = sparse_update_step(
+        self._sp_mask_dict = self.sparse_update_step(
             self.model, avg_grad,
             self._sp_mask_dict,
             self._sp_t, self.T_end, self.adjust_alpha,
         )
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
 
 class FedTiny_Client(spFL_Client):

@@ -11,7 +11,6 @@ from typing import Any, Dict
 
 import torch
 
-from ._spFL_utils import apply_mask, sparse_update_step
 from .spFL import spFL, spFL_Client
 
 
@@ -29,12 +28,12 @@ class PruneFL(spFL):
                 else:
                     avg_grad_sq[name] += gsq.float() * w
 
-        self._sp_mask_dict = sparse_update_step(
+        self._sp_mask_dict = self.sparse_update_step(
             self.model, avg_grad_sq,
             self._sp_mask_dict,
             self._sp_t, self.T_end, self.adjust_alpha,
         )
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
 
 class PruneFL_Client(spFL_Client):
@@ -45,7 +44,7 @@ class PruneFL_Client(spFL_Client):
         SharedMethods._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         offload = self.efficiency == "low"
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
         grad_sq: Dict[str, torch.Tensor] = {}
         n_steps = 0
@@ -75,7 +74,7 @@ class PruneFL_Client(spFL_Client):
                 self.optimizer.step()
                 if self.scheduler:
                     self.scheduler.step()
-            apply_mask(self.model, self._sp_mask_dict)
+            self.apply_mask(self.model, self._sp_mask_dict)
             if offload:
                 self.model.to("cpu")
 

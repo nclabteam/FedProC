@@ -103,13 +103,12 @@ No synchronization barrier; clients run continuously and results are aggregated 
 
 ---
 
-## spFL — Sparse Federated Learning
+## spFL - Sparse/Pruning Federated Learning
 
-Dynamic sparse training in FL: clients maintain a binary mask that zeroes selected weights each round. A cosine-decay schedule (`delta_T` adjustment rounds up to `T_end`) controls how aggressively the mask evolves. FedAvg serves as the dense baseline; all other spFL strategies add a mask-update policy on top.
+Dynamic sparse training in FL: clients maintain a binary mask that zeroes selected weights each round. A cosine-decay schedule (`delta_T` adjustment rounds up to `T_end`) controls how aggressively the mask evolves.
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
-| FedAvg | AISTATS | 2017 | Dense baseline (see tFL group; listed here for benchmark reference) | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedavg) |
 | PruneFL | TNNLS | 2022 | Server-guided mask: FedAvg of per-client squared gradients → prune smallest active + grow largest-grad² inactive | Model Pruning Enables Efficient Federated Learning on Edge Devices | [Arxiv](https://arxiv.org/abs/1909.12326) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/prunefl) |
 | FedDST | AAAI | 2022 | Client-local mask update (sparse_update_step after A_epochs); server reconciles via OR-union + magnitude re-prune | Federated Dynamic Sparse Training: Computing Less, Communicating Less, Yet Learning Better | [Arxiv](https://arxiv.org/abs/2112.09824) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/feddst) |
 | FedTiny | ICDCS | 2023 | Clients send post-training gradients; server FedAvg of gradients → server-side prune + grow (TinyClean variant) | Distributed Pruning Towards Tiny Neural Networks in Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01977) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedtinyclean) |

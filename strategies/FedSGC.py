@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-"""FedSGC — Gradient-Congruity Guided Federated Sparse Training.
+"""FedSGC - Gradient-Congruity Guided Federated Sparse Training.
 
 Paper: https://arxiv.org/abs/2405.01189  |  ICLRW '24
 
 Client-local mask update guided by agreement between global and local weight change directions.
 Prune weights where global/local directions conflict; grow where they agree.
-Server: OR-union of client masks → magnitude re-prune; maintains global direction map for next round.
+Server: OR-union of client masks -> magnitude re-prune; maintains global direction map for next round.
 """
 from typing import Any, Dict, Optional
 
 import torch
 
-from ._spFL_utils import apply_mask, f_decay, magnitude_reprune, union_masks
 from .spFL import spFL, spFL_Client
 
 
 class FedSGC(spFL):
-    """FedSGC server — OR-union mask + global direction map for client guidance."""
+    """FedSGC server - OR-union mask + global direction map for client guidance."""
 
     optional = {
         **spFL.optional,
@@ -37,9 +36,9 @@ class FedSGC(spFL):
                         if "_sp_extra" in pkg and "mask_dict" in pkg["_sp_extra"]]
         if not client_masks:
             return
-        unioned = union_masks(client_masks)
-        self._sp_mask_dict = magnitude_reprune(self.model, unioned, self._sp_layer_density)
-        apply_mask(self.model, self._sp_mask_dict)
+        unioned = self.union_masks(client_masks)
+        self._sp_mask_dict = self.magnitude_reprune(self.model, unioned, self._sp_layer_density)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
     def aggregate_client_updates(self, packages: Dict[int, Any]) -> None:
         cur_params = {n: p.data.cpu().clone() for n, p in self.model.named_parameters()}
@@ -51,7 +50,7 @@ class FedSGC(spFL):
 
 
 class FedSGC_Client(spFL_Client):
-    """FedSGC client — direction-coherent local mask update."""
+    """FedSGC client - direction-coherent local mask update."""
 
     optional = {
         "A_epochs": None,
@@ -68,7 +67,7 @@ class FedSGC_Client(spFL_Client):
         SharedMethods._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
         offload = self.efficiency == "low"
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
         total_epochs = self.epochs
         a_epochs = self.A_epochs if self.A_epochs is not None else total_epochs // 2 + 1
@@ -84,7 +83,7 @@ class FedSGC_Client(spFL_Client):
                     device=self.device,
                     offload_after=offload,
                 )
-                apply_mask(self.model, self._sp_mask_dict)
+                self.apply_mask(self.model, self._sp_mask_dict)
 
         if not self._sp_is_adj:
             _run_epochs(total_epochs)
@@ -111,7 +110,7 @@ class FedSGC_Client(spFL_Client):
             self._sp_t, self._sp_T_end, self._sp_alpha,
             self.lambda_param, self.beta_param,
         )
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
         remaining = total_epochs - min(a_epochs, total_epochs)
         if remaining > 0:
@@ -150,7 +149,7 @@ def _prune_grow_sgc(
         active_idx = (mask == 1).nonzero(as_tuple=False).view(-1)
         inactive_idx = (mask == 0).nonzero(as_tuple=False).view(-1)
         active_num = len(active_idx)
-        k = int(f_decay(t, alpha, T_end) * active_num)
+        k = int(spFL.f_decay(t, alpha, T_end) * active_num)
         if k <= 0:
             continue
 

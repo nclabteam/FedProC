@@ -1,24 +1,23 @@
 # -*- coding: utf-8 -*-
-"""FedRTS — Federated Robust Pruning via Combinatorial Thompson Sampling.
+"""FedRTS - Federated Robust Pruning via Combinatorial Thompson Sampling.
 
 Paper: https://arxiv.org/abs/2501.19122  |  NeurIPS '25
 Ref:   https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedrts/
 
 Server maintains per-weight Beta(alpha, beta) distributions.
 Each adj round: clients vote on which active weights are "core" (top-kappa by magnitude)
-  and which inactive weights have highest gradient → server updates Beta params and
+  and which inactive weights have highest gradient -> server updates Beta params and
   re-samples a new mask via Thompson Sampling.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
-from ._spFL_utils import apply_mask, f_decay
 from .spFL import spFL, spFL_Client
 
 
 class FedRTS(spFL):
-    """FedRTS server — Thompson Sampling mask via per-weight Beta distributions."""
+    """FedRTS server - Thompson Sampling mask via per-weight Beta distributions."""
 
     optional = {
         **spFL.optional,
@@ -33,7 +32,6 @@ class FedRTS(spFL):
 
     def _sp_init_mask(self) -> None:
         super()._sp_init_mask()
-        # initialise Beta(1,1) for each parameter
         for name, param in self.model.named_parameters():
             self._ts_alpha[name] = torch.ones_like(param.data.cpu())
             self._ts_beta[name] = torch.ones_like(param.data.cpu())
@@ -49,17 +47,15 @@ class FedRTS(spFL):
         for name in self._sp_mask_dict:
             mask = self._sp_mask_dict[name]
             K = int((mask == 1).sum().item())
-            k = int(f_decay(t, self.adjust_alpha, self.T_end) * K)
+            k = int(self.f_decay(t, self.adjust_alpha, self.T_end) * K)
             kappa = K - k  # core active count
 
             active_idx = (mask.view(-1) == 1).nonzero(as_tuple=False).view(-1)
 
-            # Global model's top-kappa active by magnitude
             _, glb_top = torch.topk(global_params[name].abs().view(-1)[active_idx], kappa, largest=True)
             glb_outcome = torch.zeros(mask.numel())
             glb_outcome[active_idx[glb_top]] = 1.0
 
-            # Weighted client votes
             client_outcome = torch.zeros(mask.numel())
             for pkg in packages.values():
                 w = pkg["train_samples"] / total
@@ -79,7 +75,7 @@ class FedRTS(spFL):
         for name in self._sp_mask_dict:
             mask = self._sp_mask_dict[name]
             K = int((mask == 1).sum().item())
-            k = int(f_decay(t, self.adjust_alpha, self.T_end) * K)
+            k = int(self.f_decay(t, self.adjust_alpha, self.T_end) * K)
             k = min(k, int((mask == 0).sum().item()))
 
             inactive_idx = (mask.view(-1) == 0).nonzero(as_tuple=False).view(-1)
@@ -99,7 +95,6 @@ class FedRTS(spFL):
             self._ts_alpha[name].view(-1)[inactive_idx] += ratio * semi
             self._ts_beta[name].view(-1)[inactive_idx] += ratio * (1 - semi)
 
-            # Thompson Sampling: sample and pick top-K
             samples = torch.distributions.Beta(
                 self._ts_alpha[name].view(-1),
                 self._ts_beta[name].view(-1),
@@ -109,11 +104,11 @@ class FedRTS(spFL):
             new_mask[top_idx] = 1.0
             self._sp_mask_dict[name] = new_mask.view(mask.shape)
 
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
 
 class FedRTS_Client(spFL_Client):
-    """FedRTS client — votes on active/inactive weights via gradient+magnitude top-k."""
+    """FedRTS client - votes on active/inactive weights via gradient+magnitude top-k."""
 
     def package(self, train_time: float) -> Dict[str, Any]:
         result = super().package(train_time)
@@ -130,7 +125,7 @@ class FedRTS_Client(spFL_Client):
                 continue
             mask = self._sp_mask_dict[name].view(-1)
             K = int((mask == 1).sum().item())
-            k = int(f_decay(t, alpha, T_end) * K)
+            k = int(self.f_decay(t, alpha, T_end) * K)
             kappa = K - k
 
             active_idx = (mask == 1).nonzero(as_tuple=False).view(-1)

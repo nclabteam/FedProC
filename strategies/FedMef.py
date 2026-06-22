@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-"""FedMef — Towards Memory-efficient Federated Dynamic Pruning.
+"""FedMef - Towards Memory-efficient Federated Dynamic Pruning.
 
 Paper: https://arxiv.org/abs/2403.14737  |  CVPR '24
 
 Extends FedTiny with BAE (Bias-Aware Estimation) regularization:
-    L_total = L_task + λ ||w_{low-mag active}||²
+    L_total = L_task + lambda ||w_{low-mag active}||^2
 Server optionally filters client gradients to top-k inactive (enable_topk_grad).
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
-from ._spFL_utils import apply_mask, f_decay, sparse_update_step
 from .spFL import spFL, spFL_Client
 
 
 class FedMef(spFL):
-    """FedMef server — FedTiny mask update with optional topk gradient filtering."""
+    """FedMef server - FedTiny mask update with optional topk gradient filtering."""
 
     optional = {
         **spFL.optional,
@@ -37,16 +36,16 @@ class FedMef(spFL):
                 else:
                     avg_grad[name] += g.float() * w
 
-        self._sp_mask_dict = sparse_update_step(
+        self._sp_mask_dict = self.sparse_update_step(
             self.model, avg_grad,
             self._sp_mask_dict,
             self._sp_t, self.T_end, self.adjust_alpha,
         )
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
 
     def _topk_inactive_filter(self, grads: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Zero-out all inactive gradients except top-k (by magnitude)."""
-        k = int(f_decay(self._sp_t, self.adjust_alpha, self.T_end) * sum(
+        k = int(self.f_decay(self._sp_t, self.adjust_alpha, self.T_end) * sum(
             (self._sp_mask_dict[n] == 1).sum().item()
             for n in self._sp_mask_dict
         ) / max(len(self._sp_mask_dict), 1))
@@ -68,7 +67,7 @@ class FedMef(spFL):
 
 
 class FedMef_Client(spFL_Client):
-    """FedMef client — BAE regularization + post-training gradient collection."""
+    """FedMef client - BAE regularization + post-training gradient collection."""
 
     optional = {
         "lambda_l2": 1e-4,
@@ -82,7 +81,7 @@ class FedMef_Client(spFL_Client):
         from .base import SharedMethods
         SharedMethods._set_worker_seed(self._loader_seed("train"))
         loader = self.load_train_data()
-        apply_mask(self.model, self._sp_mask_dict)
+        self.apply_mask(self.model, self._sp_mask_dict)
         self.model.to(self.device)
         self.model.train()
         init_lr = self.optimizer.param_groups[0]["lr"]
@@ -106,7 +105,7 @@ class FedMef_Client(spFL_Client):
                 self.optimizer.step()
                 if self.scheduler:
                     self.scheduler.step()
-            apply_mask(self.model, self._sp_mask_dict)
+            self.apply_mask(self.model, self._sp_mask_dict)
 
         if self.efficiency in ("low", "med"):
             self.model.to("cpu")
@@ -116,7 +115,7 @@ class FedMef_Client(spFL_Client):
         for name, param in self.model.named_parameters():
             if name in self._sp_mask_dict:
                 active = int((self._sp_mask_dict[name] == 1).sum().item())
-                k = int(f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
+                k = int(self.f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
                 _, idx = torch.topk(param.data.abs().flatten(), k, largest=False)
                 indices[name] = idx
         return indices
@@ -128,7 +127,7 @@ class FedMef_Client(spFL_Client):
                 continue
             if self.enable_dynamic_lowest_k:
                 active = int((self._sp_mask_dict[name] == 1).sum().item())
-                k = int(f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
+                k = int(self.f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
                 sorted_vals = param.data.abs().flatten().sort()[0]
                 if k > 0 and k < len(sorted_vals):
                     threshold = sorted_vals[k]
