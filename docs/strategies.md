@@ -113,6 +113,7 @@ Dynamic sparse training in FL: clients maintain a binary mask that zeroes select
 | PruneFL | TNNLS | 2022 | Server-guided mask: FedAvg of per-client squared gradients → prune smallest active + grow largest-grad² inactive | Model Pruning Enables Efficient Federated Learning on Edge Devices | [Arxiv](https://arxiv.org/abs/1909.12326) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/prunefl) |
 | FedDST | AAAI | 2022 | Client-local mask update (sparse_update_step after A_epochs); server reconciles via OR-union + magnitude re-prune | Federated Dynamic Sparse Training: Computing Less, Communicating Less, Yet Learning Better | [Arxiv](https://arxiv.org/abs/2112.09824) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/feddst) |
 | FedTiny | ICDCS | 2023 | Clients send post-training gradients; server FedAvg of gradients → server-side prune + grow (TinyClean variant) | Distributed Pruning Towards Tiny Neural Networks in Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01977) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedtinyclean) |
+| FedMef | CVPR | 2024 | FedTiny + BAE regularization (L2 on low-magnitude active weights) + optional topk-grad server filter | FedMef: Towards Memory-efficient Federated Dynamic Pruning | [Arxiv](https://arxiv.org/abs/2403.14737) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedmef) |
 
 ---
 
