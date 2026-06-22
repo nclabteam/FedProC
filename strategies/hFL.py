@@ -188,6 +188,12 @@ class hFL(pFL):
                 verbose=self.logger,
             )
 
+    def _save_best_hook(self) -> None:
+        self.save_models("best")
+
+    def _save_last_hook(self) -> None:
+        self.save_models("last")
+
     def early_stopping(self) -> bool:
         metric = self.metrics["personal_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:

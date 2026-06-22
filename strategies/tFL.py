@@ -488,6 +488,22 @@ class tFL(SharedMethods):
             return True
         return False
 
+    def _save_best_hook(self) -> None:
+        losses = self.metrics.get("global_avg_test_loss", [])
+        if not losses:
+            return
+        if losses[-1] == min(losses):
+            SharedMethods.save_model(
+                self.model, self.model_path, self.name.strip(), "best",
+                configs=self.configs, verbose=self.logger,
+            )
+
+    def _save_last_hook(self) -> None:
+        SharedMethods.save_model(
+            self.model, self.model_path, self.name.strip(), "last",
+            configs=self.configs, verbose=self.logger,
+        )
+
     def train(self) -> None:
         for i in range(self.iterations):
             round_start = time.time()
@@ -510,12 +526,14 @@ class tFL(SharedMethods):
                         continue
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
+                self._save_best_hook()
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"Round {str(i).zfill(4)} time: {iter_time:.2f}s")
             self.fix_results(default=self.default_value)
             if self.early_stopping():
                 break
+        self._save_last_hook()
         self.save_results()
         try:
             self.close_logger()
