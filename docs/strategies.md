@@ -115,6 +115,7 @@ Dynamic sparse training in FL: clients maintain a binary mask that zeroes select
 | FedTiny | ICDCS | 2023 | Clients send post-training gradients; server FedAvg of gradients → server-side prune + grow (TinyClean variant) | Distributed Pruning Towards Tiny Neural Networks in Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01977) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedtinyclean) |
 | FedMef | CVPR | 2024 | FedTiny + BAE regularization (L2 on low-magnitude active weights) + optional topk-grad server filter | FedMef: Towards Memory-efficient Federated Dynamic Pruning | [Arxiv](https://arxiv.org/abs/2403.14737) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedmef) |
 | FedSGC | ICLRW | 2024 | Direction-coherent local mask update: prune conflict-direction active, grow agreement-direction inactive; server OR-union + reprune + direction map | Gradient-Congruity Guided Federated Sparse Training | [Arxiv](https://arxiv.org/abs/2405.01189) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedsgc) |
+| FedRTS | NeurIPS | 2025 | Per-weight Beta(α,β) distributions; clients vote on core active (top-κ mag) and grow candidates (top-k grad); server Thompson-samples new mask | FedRTS: Federated Robust Pruning via Combinatorial Thompson Sampling | [Arxiv](https://arxiv.org/abs/2501.19122) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedrts) |
 
 ---
 
