@@ -103,6 +103,17 @@ No synchronization barrier; clients run continuously and results are aggregated 
 
 ---
 
+## spFL — Sparse Federated Learning
+
+Dynamic sparse training in FL: clients maintain a binary mask that zeroes selected weights each round. A cosine-decay schedule (`delta_T` adjustment rounds up to `T_end`) controls how aggressively the mask evolves. FedAvg serves as the dense baseline; all other spFL strategies add a mask-update policy on top.
+
+| Name | Venue | Year | Description | Paper | URL |
+|------|-------|------|-------------|-------|-----|
+| FedAvg | AISTATS | 2017 | Dense baseline (see tFL group; listed here for benchmark reference) | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedavg) |
+| PruneFL | TNNLS | 2022 | Server-guided mask: FedAvg of per-client squared gradients → prune smallest active + grow largest-grad² inactive | Model Pruning Enables Efficient Federated Learning on Edge Devices | [Arxiv](https://arxiv.org/abs/1909.12326) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/prunefl) |
+
+---
+
 \* Adapted from classification to regression. Please use with caution.
 
 \*\* Decentralized variant converted from its tFL/pFL counterpart (e.g. FedAvg → DFedAvg).
