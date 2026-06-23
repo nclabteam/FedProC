@@ -43,12 +43,17 @@ class pFL(tFL):
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _save_best_hook(self) -> None:
-        super()._save_best_hook()
         losses = self.metrics.get("personal_avg_test_loss", [])
         if not losses:
+            super()._save_best_hook()
             return
-        if losses[-1] == min(losses):
-            self._save_personal_models("best")
+        if losses[-1] != min(losses):
+            return
+        SharedMethods.save_model(
+            self.model, self.model_path, self.name.strip(), "best",
+            configs=self.configs, verbose=self.logger,
+        )
+        self._save_personal_models("best")
 
     def _save_last_hook(self) -> None:
         super()._save_last_hook()
