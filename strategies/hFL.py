@@ -103,6 +103,7 @@ class hFL(pFL):
         # non-default clients); we discard it here and rebuild with per-client configs.
         self.trainer = hFL_Trainer(self, self._client_cls(), configs, times)
         self._export_model_config()
+        self.get_model_info()
 
     def _parse_models_str(self, models_str):
         result = {}
@@ -211,8 +212,17 @@ class hFL(pFL):
             return True
         return False
 
-    def get_model_info(self):
-        super().get_model_info()
+    def get_model_info(self) -> None:
+        if not isinstance(self.trainer, hFL_Trainer):
+            return
+        if not self.exclude_server_model_processes:
+            first_cid = next(iter(self.trainer.workers))
+            w = self.trainer.workers[first_cid]
+            w._load_private(first_cid)
+            w.id = first_cid
+            w.current_iter = 0
+            dl = w.load_train_data()
+            self.summarize_model(dataloader=dl)
         seen_archs = set()
         for cid, worker in self.trainer.workers.items():
             arch = worker.model.__class__.__name__
@@ -221,6 +231,9 @@ class hFL(pFL):
             seen_archs.add(arch)
             worker.id = cid
             worker._load_private(cid)
+            worker.current_iter = 0
+            worker.name = f"client_{cid}_{arch}"
+            worker.models_info_path = self.models_info_path
             dl = worker.load_train_data()
             worker.summarize_model(dataloader=dl)
 

@@ -420,6 +420,20 @@ class tFL(SharedMethods):
             self.logger.info(f"New clients ({num_new}): {sorted(new_ids)}")
 
         self.trainer = Trainer(self, self._client_cls(), self.configs, self.times)
+        self.get_model_info()
+
+    def get_model_info(self) -> None:
+        if self.exclude_server_model_processes:
+            return
+        if not self.parallel:
+            worker = self.trainer.worker
+        else:
+            worker = self._client_cls()(configs=self.configs, times=self.times, device=self.device)
+        worker._load_private(0)
+        worker.id = 0
+        worker.current_iter = 0
+        dl = worker.load_train_data()
+        self.summarize_model(dataloader=dl)
 
     def _client_cls(self):
         module_name = self.__module__
