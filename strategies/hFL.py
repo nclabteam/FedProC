@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 import numpy as np
 
+from .base import SharedMethods
 from .pFL import pFL, pFL_Client
 
 
@@ -195,6 +196,10 @@ class hFL(pFL):
         self.save_models("best")
 
     def _save_last_hook(self) -> None:
+        SharedMethods.save_model(
+            self.model, self.model_path, self.name.strip(), "last",
+            configs=self.configs, verbose=self.logger,
+        )
         self.save_models("last")
 
     def early_stopping(self) -> bool:
