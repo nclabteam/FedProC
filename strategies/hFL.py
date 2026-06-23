@@ -33,7 +33,10 @@ class hFL_Trainer:
     def train(self, selected) -> OrderedDict:
         packages: OrderedDict = OrderedDict()
         for cid in selected:
-            out = self.workers[cid].train(self.server.package(cid))
+            pkg = self.server.package(cid)
+            self.server._downlink_sizes[cid] = self.server.get_size(pkg)
+            out = self.workers[cid].train(pkg)
+            self.server._uplink_sizes[cid] = self.server.get_size(out)
             self._write_back(cid, out)
             packages[cid] = out
         return packages

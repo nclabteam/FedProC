@@ -50,7 +50,7 @@ class aFL(tFL):
             while len(buffer) < K:
                 [done], _ = ray.wait(list(pending), num_returns=1)
                 cid, wid, v_sent = pending.pop(done)
-                out = ray.get(done)
+                out = self.trainer._receive(cid, ray.get(done))
                 self.trainer._write_back(cid, out)
                 buffer[cid] = out
                 idle.append(wid)
@@ -63,6 +63,10 @@ class aFL(tFL):
                     self._pre_eval_hook(dataset_type)
 
             self.aggregate_client_updates(buffer)
+            uplink, downlink = self._compute_send_mb(buffer)
+            self.metrics["downlink_mb"].append(downlink)
+            for cid, mb in uplink.items():
+                self._ensure_client_row(cid)["uplink_mb"][-1] = mb
             global_version += 1
             buffer.clear()
 
@@ -72,9 +76,6 @@ class aFL(tFL):
                         continue
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
-
-            uplink, downlink = self._compute_send_mb(buffer)
-            self.metrics["downlink_mb"].append(downlink)
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"Aggregation {str(agg_idx).zfill(4)} time: {iter_time:.2f}s")
@@ -89,6 +90,7 @@ class aFL(tFL):
                 pass
 
         self.save_results()
+        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:

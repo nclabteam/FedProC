@@ -60,6 +60,8 @@ class FedRidge(_LinearWeightsMixin, tFL):
         packages = self.trainer.train(self.selected_clients)
         uplink, downlink = self._compute_send_mb(packages)
         self.metrics["downlink_mb"].append(downlink)
+        for cid, mb in uplink.items():
+            self._ensure_client_row(cid)["uplink_mb"][-1] = mb
         self.aggregate_client_updates(packages)
 
         for dataset_type in ["train", "test"]:
@@ -72,6 +74,7 @@ class FedRidge(_LinearWeightsMixin, tFL):
         self.metrics["time_per_iter"].append(time.time() - round_start)
         self.fix_results(default=self.default_value)
         self.save_results()
+        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:

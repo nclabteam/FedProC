@@ -30,6 +30,8 @@ class LocalOLS(LocalOnly):
         packages = self.trainer.train(self.selected_clients)
         uplink, downlink = self._compute_send_mb(packages)
         self.metrics["downlink_mb"].append(downlink)
+        for cid, mb in uplink.items():
+            self._ensure_client_row(cid)["uplink_mb"][-1] = mb
         for cid, pkg in packages.items():
             self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
@@ -41,6 +43,7 @@ class LocalOLS(LocalOnly):
         self.metrics["time_per_iter"].append(time.time() - round_start)
         self.fix_results(default=self.default_value)
         self.save_results()
+        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:
