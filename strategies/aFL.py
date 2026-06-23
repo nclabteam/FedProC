@@ -73,7 +73,8 @@ class aFL(tFL):
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
 
-            self.metrics["send_mb"].append(self._compute_send_mb(buffer))
+            uplink, downlink = self._compute_send_mb(buffer)
+            self.metrics["downlink_mb"].append(downlink)
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"Aggregation {str(agg_idx).zfill(4)} time: {iter_time:.2f}s")

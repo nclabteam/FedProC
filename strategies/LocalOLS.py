@@ -28,7 +28,8 @@ class LocalOLS(LocalOnly):
         self.current_iter = 0
         self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
         packages = self.trainer.train(self.selected_clients)
-        self.metrics["send_mb"].append(self._compute_send_mb(packages))
+        uplink, downlink = self._compute_send_mb(packages)
+        self.metrics["downlink_mb"].append(downlink)
         for cid, pkg in packages.items():
             self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 

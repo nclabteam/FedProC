@@ -372,9 +372,9 @@ class tFL(SharedMethods):
             "personal_avg_train_loss": [],
             "global_avg_test_loss": [],
             "personal_avg_test_loss": [],
-            "send_mb": [],
+            "downlink_mb": [],
         }
-        # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...]}
+        # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...], "uplink_mb": [...]}
         self.per_client_metrics: Dict[int, Dict[str, list]] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
@@ -449,14 +449,24 @@ class tFL(SharedMethods):
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
-    def _compute_send_mb(self, packages) -> float:
-        uplink = sum(self.get_size(p) for p in packages.values())
+    def _compute_send_mb(self, packages) -> tuple:
+        uplink = {cid: self.get_size(p) for cid, p in packages.items()}
         downlink = len(self.selected_clients) * self.get_size(self.public_model_params)
-        return uplink + downlink
+        return uplink, downlink
 
     def train_one_round(self) -> None:
         packages = self.trainer.train(self.selected_clients)
-        self.metrics["send_mb"].append(self._compute_send_mb(packages))
+        uplink, downlink = self._compute_send_mb(packages)
+        self.metrics["downlink_mb"].append(downlink)
+        for cid, mb in uplink.items():
+            if cid not in self.per_client_metrics:
+                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": [], "uplink_mb": []}
+            entry = self.per_client_metrics[cid]
+            if not entry["round"] or entry["round"][-1] != self.current_iter:
+                entry["round"].append(self.current_iter)
+                entry["train_loss"].append(-1.0)
+                entry["test_loss"].append(-1.0)
+            entry["uplink_mb"].append(mb)
         self.aggregate_client_updates(packages)
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
@@ -487,14 +497,18 @@ class tFL(SharedMethods):
         )
         for cid, loss in zip(incumbent, losses):
             if cid not in self.per_client_metrics:
-                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": []}
+                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": [], "uplink_mb": []}
             entry = self.per_client_metrics[cid]
             if dataset_type == "train":
-                entry["round"].append(self.current_iter)
+                if not entry["round"] or entry["round"][-1] != self.current_iter:
+                    entry["round"].append(self.current_iter)
+                    entry["uplink_mb"].append(-1.0)
+                    entry["test_loss"].append(-1.0)
                 entry["train_loss"].append(float(loss))
             else:
                 if not entry["round"] or entry["round"][-1] != self.current_iter:
                     entry["round"].append(self.current_iter)
+                    entry["uplink_mb"].append(-1.0)
                     entry["train_loss"].append(-1.0)
                 entry["test_loss"].append(float(loss))
 
@@ -509,14 +523,11 @@ class tFL(SharedMethods):
 
     def _save_per_client_results(self) -> None:
         for cid, entry in self.per_client_metrics.items():
-            n = len(entry["round"])
-            row = {
-                "round": entry["round"],
-                "train_loss": entry.get("train_loss", [-1.0] * n),
-                "test_loss": entry.get("test_loss", [-1.0] * n),
-            }
-            # Pad to equal length in case train eval was skipped
-            max_len = max(len(v) for v in row.values())
+            keys = ["round", "uplink_mb", "train_loss", "test_loss"]
+            row = {k: entry.get(k, []) for k in keys}
+            max_len = max((len(v) for v in row.values()), default=0)
+            if max_len == 0:
+                continue
             for k in row:
                 if len(row[k]) < max_len:
                     row[k] = row[k] + [-1.0] * (max_len - len(row[k]))
