@@ -16,6 +16,8 @@ import json
 import logging
 import os
 import time
+
+import polars as pl
 from argparse import Namespace
 from collections import OrderedDict, deque
 from typing import Any, Dict, List, Optional
