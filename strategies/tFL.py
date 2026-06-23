@@ -251,11 +251,16 @@ class Trainer:
                 for _ in range(self.num_workers)
             ]
 
+    def _dispatch(self, cid: int) -> dict:
+        pkg = self.server.package(cid)
+        self.server._downlink_sizes[cid] = self.server.get_size(pkg)
+        return pkg
+
     def train(self, selected: List[int]) -> "OrderedDict[int, dict]":
         packages: "OrderedDict[int, dict]" = OrderedDict()
         if not self.parallel:
             for cid in selected:
-                out = self.worker.train(self.server.package(cid))
+                out = self.worker.train(self._dispatch(cid))
                 self._write_back(cid, out)
                 packages[cid] = out
             return packages
@@ -269,7 +274,7 @@ class Trainer:
             while i < len(selected) and idle:
                 wid = idle.popleft()
                 cid = selected[i]
-                fut = self.workers[wid].train.remote(self.server.package(cid))
+                fut = self.workers[wid].train.remote(self._dispatch(cid))
                 job_map[fut] = (cid, wid)
                 futures.append(fut)
                 i += 1
@@ -325,7 +330,7 @@ class Trainer:
 
     def dispatch_one(self, cid: int, wid: int) -> Any:
         """Dispatch a single client to a specific Ray worker. Returns a future."""
-        return self.workers[wid].train.remote(self.server.package(cid))
+        return self.workers[wid].train.remote(self._dispatch(cid))
 
     def _write_back(self, cid: int, out: Dict[str, Any]) -> None:
         self.server.client_optimizer_states[cid] = out["optimizer_state"]
@@ -376,6 +381,7 @@ class tFL(SharedMethods):
         }
         # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...], "uplink_mb": [...]}
         self.per_client_metrics: Dict[int, Dict[str, list]] = {}
+        self._downlink_sizes: Dict[int, float] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
         with open(self.path_info, "r", encoding="utf-8") as f:
@@ -451,7 +457,7 @@ class tFL(SharedMethods):
 
     def _compute_send_mb(self, packages) -> tuple:
         uplink = {cid: self.get_size(p) for cid, p in packages.items()}
-        downlink = len(self.selected_clients) * self.get_size(self.public_model_params)
+        downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
         return uplink, downlink
 
     def _ensure_client_row(self, cid: int) -> dict:
