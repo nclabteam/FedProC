@@ -43,7 +43,7 @@ class pFL(tFL):
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _save_best_hook(self) -> None:
-        losses = self.metrics.get("personal_avg_test_loss", [])
+        losses = [v for v in self.metrics.get("personal_avg_test_loss", []) if v != self.default_value]
         if not losses:
             super()._save_best_hook()
             return

@@ -551,7 +551,7 @@ class tFL(SharedMethods):
             )
 
     def _save_best_hook(self) -> None:
-        losses = self.metrics.get("global_avg_test_loss", [])
+        losses = [v for v in self.metrics.get("global_avg_test_loss", []) if v != self.default_value]
         if not losses:
             return
         if losses[-1] == min(losses):
