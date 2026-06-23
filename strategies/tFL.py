@@ -460,9 +460,9 @@ class tFL(SharedMethods):
         entry = self.per_client_metrics[cid]
         if not entry["round"] or entry["round"][-1] != self.current_iter:
             entry["round"].append(self.current_iter)
-            entry["uplink_mb"].append(-1.0)
-            entry["train_loss"].append(-1.0)
-            entry["test_loss"].append(-1.0)
+            entry["uplink_mb"].append(self.default_value)
+            entry["train_loss"].append(self.default_value)
+            entry["test_loss"].append(self.default_value)
         return entry
 
     def train_one_round(self) -> dict:
@@ -517,7 +517,7 @@ class tFL(SharedMethods):
                 continue
             for k in row:
                 if len(row[k]) < max_len:
-                    row[k] = row[k] + [-1.0] * (max_len - len(row[k]))
+                    row[k] = row[k] + [self.default_value] * (max_len - len(row[k]))
             path = os.path.join(self.result_path, f"client_{cid}.csv")
             pl.DataFrame(row).write_csv(path)
         if self.per_client_metrics:
