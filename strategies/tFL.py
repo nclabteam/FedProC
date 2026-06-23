@@ -580,7 +580,7 @@ class tFL(SharedMethods):
                 self._save_best_hook()
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
-            self.logger.info(f"Round {str(i).zfill(4)} time: {iter_time:.2f}s")
+            self.logger.info(f"{iter_time:.2f}s")
             self.fix_results(default=self.default_value)
             if self.early_stopping():
                 break

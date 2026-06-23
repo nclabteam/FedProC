@@ -78,7 +78,7 @@ class aFL(tFL):
                         self.evaluate_generalization(dataset_type)
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
-            self.logger.info(f"Aggregation {str(agg_idx).zfill(4)} time: {iter_time:.2f}s")
+            self.logger.info(f"{iter_time:.2f}s")
             self.fix_results(default=self.default_value)
             if self.early_stopping():
                 break
