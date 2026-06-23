@@ -173,8 +173,7 @@ class hFL(pFL):
             raise ValueError("save_type must be 'last' or 'best'")
 
         if save_type == "best":
-            metric_key = "personal_avg_test_loss"
-            vals = self.metrics.get(metric_key, [])
+            vals = [v for v in self.metrics.get("personal_avg_test_loss", []) if v != self.default_value]
             if not vals or vals[-1] != min(vals):
                 return
 
