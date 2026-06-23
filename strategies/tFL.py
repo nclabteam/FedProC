@@ -256,11 +256,15 @@ class Trainer:
         self.server._downlink_sizes[cid] = self.server.get_size(pkg)
         return pkg
 
+    def _receive(self, cid: int, out: dict) -> dict:
+        self.server._uplink_sizes[cid] = self.server.get_size(out)
+        return out
+
     def train(self, selected: List[int]) -> "OrderedDict[int, dict]":
         packages: "OrderedDict[int, dict]" = OrderedDict()
         if not self.parallel:
             for cid in selected:
-                out = self.worker.train(self._dispatch(cid))
+                out = self._receive(cid, self.worker.train(self._dispatch(cid)))
                 self._write_back(cid, out)
                 packages[cid] = out
             return packages
@@ -282,7 +286,7 @@ class Trainer:
                 done, futures = ray.wait(futures)
                 for fut in done:
                     cid, wid = job_map.pop(fut)
-                    out = ray.get(fut)
+                    out = self._receive(cid, ray.get(fut))
                     self._write_back(cid, out)
                     results[cid] = out
                     idle.append(wid)
@@ -382,6 +386,7 @@ class tFL(SharedMethods):
         # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...], "uplink_mb": [...]}
         self.per_client_metrics: Dict[int, Dict[str, list]] = {}
         self._downlink_sizes: Dict[int, float] = {}
+        self._uplink_sizes: Dict[int, float] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
         with open(self.path_info, "r", encoding="utf-8") as f:
@@ -456,7 +461,7 @@ class tFL(SharedMethods):
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _compute_send_mb(self, packages) -> tuple:
-        uplink = {cid: self.get_size(p) for cid, p in packages.items()}
+        uplink = {cid: self._uplink_sizes.get(cid, 0.0) for cid in packages}
         downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
         return uplink, downlink
 
