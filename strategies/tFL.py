@@ -577,6 +577,7 @@ class tFL(SharedMethods):
                         continue
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type)
+                self._save_best_hook()
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"{iter_time:.2f}s")
