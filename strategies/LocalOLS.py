@@ -42,7 +42,6 @@ class LocalOLS(LocalOnly):
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
         self.fix_results(default=self.default_value)
-        self._save_last_hook()
         self.save_results()
         self._save_per_client_results()
         try:
