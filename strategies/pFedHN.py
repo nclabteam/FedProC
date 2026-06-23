@@ -131,9 +131,10 @@ class pFedHN(pFL):
         result["regular_model_params"] = self.hnet(client_id)
         return result
 
-    def train_one_round(self) -> None:
+    def train_one_round(self) -> dict:
         # Process clients sequentially so the HN computation graph for client i
         # is still alive when we do backprop for client i.
+        all_packages = {}
         for client_id in self.selected_clients:
             # package() runs HN forward and stores graph in self.hnet.outputs
             packages = self.trainer.train([client_id])
@@ -158,6 +159,8 @@ class pFedHN(pFL):
 
             # Write back personal model params (optimizer/scheduler state)
             self.trainer._write_back(client_id, pkg)
+            all_packages[client_id] = pkg
+        return all_packages
 
     def aggregate_client_updates(self, packages) -> None:
         # All aggregation done per-client in train_one_round(); this is a no-op.

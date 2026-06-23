@@ -124,11 +124,12 @@ class FedMD(hFL):
         result["public_data"] = self.public_data
         return result
 
-    def train_one_round(self) -> None:
+    def train_one_round(self) -> dict:
         self._load_public_batches()
         self._compute_consensus()
         packages = self.trainer.train(self.selected_clients)
         self.aggregate_client_updates(packages)
+        return packages
 
     def aggregate_client_updates(self, packages) -> None:
         # Store each client's trained params (nFL-style — no global aggregation)

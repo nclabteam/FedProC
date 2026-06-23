@@ -166,7 +166,8 @@ class pFedLA(pFL):
         )
         return result
 
-    def train_one_round(self) -> None:
+    def train_one_round(self) -> dict:
+        all_packages = {}
         for client_id in self.selected_clients:
             # package() loads client HN, runs forward, stores graph in self._agg_params
             packages = self.trainer.train([client_id])
@@ -203,6 +204,8 @@ class pFedLA(pFL):
             self.clients_personal_model_params[client_id].update(trained)
 
             self.trainer._write_back(client_id, pkg)
+            all_packages[client_id] = pkg
+        return all_packages
 
     def aggregate_client_updates(self, packages) -> None:
         pass  # All done in train_one_round()

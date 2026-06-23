@@ -465,13 +465,10 @@ class tFL(SharedMethods):
             entry["test_loss"].append(-1.0)
         return entry
 
-    def train_one_round(self) -> None:
+    def train_one_round(self) -> dict:
         packages = self.trainer.train(self.selected_clients)
-        uplink, downlink = self._compute_send_mb(packages)
-        self.metrics["downlink_mb"].append(downlink)
-        for cid, mb in uplink.items():
-            self._ensure_client_row(cid)["uplink_mb"][-1] = mb
         self.aggregate_client_updates(packages)
+        return packages
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
         scores = [p["score"] for p in packages.values()]
@@ -558,7 +555,11 @@ class tFL(SharedMethods):
                     if dataset_type == "train" and self.skip_eval_train:
                         continue
                     self._pre_eval_hook(dataset_type)
-            self.train_one_round()
+            packages = self.train_one_round()
+            uplink, downlink = self._compute_send_mb(packages)
+            self.metrics["downlink_mb"].append(downlink)
+            for cid, mb in uplink.items():
+                self._ensure_client_row(cid)["uplink_mb"][-1] = mb
             if i % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
