@@ -454,19 +454,23 @@ class tFL(SharedMethods):
         downlink = len(self.selected_clients) * self.get_size(self.public_model_params)
         return uplink, downlink
 
+    def _ensure_client_row(self, cid: int) -> dict:
+        if cid not in self.per_client_metrics:
+            self.per_client_metrics[cid] = {"round": [], "uplink_mb": [], "train_loss": [], "test_loss": []}
+        entry = self.per_client_metrics[cid]
+        if not entry["round"] or entry["round"][-1] != self.current_iter:
+            entry["round"].append(self.current_iter)
+            entry["uplink_mb"].append(-1.0)
+            entry["train_loss"].append(-1.0)
+            entry["test_loss"].append(-1.0)
+        return entry
+
     def train_one_round(self) -> None:
         packages = self.trainer.train(self.selected_clients)
         uplink, downlink = self._compute_send_mb(packages)
         self.metrics["downlink_mb"].append(downlink)
         for cid, mb in uplink.items():
-            if cid not in self.per_client_metrics:
-                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": [], "uplink_mb": []}
-            entry = self.per_client_metrics[cid]
-            if not entry["round"] or entry["round"][-1] != self.current_iter:
-                entry["round"].append(self.current_iter)
-                entry["train_loss"].append(-1.0)
-                entry["test_loss"].append(-1.0)
-            entry["uplink_mb"].append(mb)
+            self._ensure_client_row(cid)["uplink_mb"][-1] = mb
         self.aggregate_client_updates(packages)
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
@@ -496,21 +500,7 @@ class tFL(SharedMethods):
             f"{self.metrics[metric][-1]:.4f}"
         )
         for cid, loss in zip(incumbent, losses):
-            if cid not in self.per_client_metrics:
-                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": [], "uplink_mb": []}
-            entry = self.per_client_metrics[cid]
-            if dataset_type == "train":
-                if not entry["round"] or entry["round"][-1] != self.current_iter:
-                    entry["round"].append(self.current_iter)
-                    entry["uplink_mb"].append(-1.0)
-                    entry["test_loss"].append(-1.0)
-                entry["train_loss"].append(float(loss))
-            else:
-                if not entry["round"] or entry["round"][-1] != self.current_iter:
-                    entry["round"].append(self.current_iter)
-                    entry["uplink_mb"].append(-1.0)
-                    entry["train_loss"].append(-1.0)
-                entry["test_loss"].append(float(loss))
+            self._ensure_client_row(cid)[f"{dataset_type}_loss"][-1] = float(loss)
 
     def early_stopping(self) -> bool:
         metric = self.metrics["global_avg_test_loss"]
