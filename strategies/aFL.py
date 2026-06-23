@@ -89,6 +89,7 @@ class aFL(tFL):
             except Exception:
                 pass
 
+        self._save_last_hook()
         self.save_results()
         self._save_per_client_results()
         try:
