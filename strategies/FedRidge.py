@@ -57,8 +57,8 @@ class FedRidge(_LinearWeightsMixin, tFL):
         round_start = time.time()
         self.current_iter = 0
         self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
-        self.metrics["send_mb"].append(self._send_mb_per_round)
         packages = self.trainer.train(self.selected_clients)
+        self.metrics["send_mb"].append(self._compute_send_mb(packages))
         self.aggregate_client_updates(packages)
 
         for dataset_type in ["train", "test"]:

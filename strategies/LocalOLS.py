@@ -27,8 +27,8 @@ class LocalOLS(LocalOnly):
         round_start = time.time()
         self.current_iter = 0
         self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
-        self.metrics["send_mb"].append(self._send_mb_per_round)
         packages = self.trainer.train(self.selected_clients)
+        self.metrics["send_mb"].append(self._compute_send_mb(packages))
         for cid, pkg in packages.items():
             self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 

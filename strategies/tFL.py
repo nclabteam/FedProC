@@ -409,7 +409,6 @@ class tFL(SharedMethods):
             self.logger.info(f"New clients ({num_new}): {sorted(new_ids)}")
 
         self.trainer = Trainer(self, self._client_cls(), self.configs, self.times)
-        self._send_mb_per_round = self.num_clients * self.get_size(self.model)
 
     def _client_cls(self):
         module_name = self.__module__
@@ -450,8 +449,14 @@ class tFL(SharedMethods):
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
+    def _compute_send_mb(self, packages) -> float:
+        uplink = sum(self.get_size(p) for p in packages.values())
+        downlink = len(self.selected_clients) * self.get_size(self.public_model_params)
+        return uplink + downlink
+
     def train_one_round(self) -> None:
         packages = self.trainer.train(self.selected_clients)
+        self.metrics["send_mb"].append(self._compute_send_mb(packages))
         self.aggregate_client_updates(packages)
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
@@ -547,7 +552,6 @@ class tFL(SharedMethods):
                 f"-------------Round number: {str(i).zfill(4)}-------------"
             )
             self.select_clients()
-            self.metrics["send_mb"].append(self._send_mb_per_round)
             if i % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
