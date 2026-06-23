@@ -374,6 +374,8 @@ class tFL(SharedMethods):
             "personal_avg_test_loss": [],
             "send_mb": [],
         }
+        # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...]}
+        self.per_client_metrics: Dict[int, Dict[str, list]] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
         with open(self.path_info, "r", encoding="utf-8") as f:
@@ -478,6 +480,18 @@ class tFL(SharedMethods):
             f"Generalization {dataset_type.capitalize()} Loss: "
             f"{self.metrics[metric][-1]:.4f}"
         )
+        for cid, loss in zip(incumbent, losses):
+            if cid not in self.per_client_metrics:
+                self.per_client_metrics[cid] = {"round": [], "train_loss": [], "test_loss": []}
+            entry = self.per_client_metrics[cid]
+            if dataset_type == "train":
+                entry["round"].append(self.current_iter)
+                entry["train_loss"].append(float(loss))
+            else:
+                if not entry["round"] or entry["round"][-1] != self.current_iter:
+                    entry["round"].append(self.current_iter)
+                    entry["train_loss"].append(-1.0)
+                entry["test_loss"].append(float(loss))
 
     def early_stopping(self) -> bool:
         metric = self.metrics["global_avg_test_loss"]
@@ -487,6 +501,26 @@ class tFL(SharedMethods):
             self.logger.info("Early stopping activated.")
             return True
         return False
+
+    def _save_per_client_results(self) -> None:
+        for cid, entry in self.per_client_metrics.items():
+            n = len(entry["round"])
+            row = {
+                "round": entry["round"],
+                "train_loss": entry.get("train_loss", [-1.0] * n),
+                "test_loss": entry.get("test_loss", [-1.0] * n),
+            }
+            # Pad to equal length in case train eval was skipped
+            max_len = max(len(v) for v in row.values())
+            for k in row:
+                if len(row[k]) < max_len:
+                    row[k] = row[k] + [-1.0] * (max_len - len(row[k]))
+            path = os.path.join(self.result_path, f"client_{cid}.csv")
+            pl.DataFrame(row).write_csv(path)
+        if self.per_client_metrics:
+            self.logger.info(
+                f"Per-client results saved to {self.result_path} ({len(self.per_client_metrics)} clients)"
+            )
 
     def _save_best_hook(self) -> None:
         losses = self.metrics.get("global_avg_test_loss", [])
@@ -535,6 +569,7 @@ class tFL(SharedMethods):
                 break
         self._save_last_hook()
         self.save_results()
+        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:
