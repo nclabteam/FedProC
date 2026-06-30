@@ -28,12 +28,10 @@ class LocalOLS(LocalOnly):
         self.current_iter = 0
         self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
         packages = self.trainer.train(self.selected_clients)
-        uplink, (downlink, downlink_real) = self._compute_send_mb(packages)
+        uplink, downlink = self._compute_send_mb(packages)
         self.metrics["downlink_mb"].append(downlink)
-        self.metrics["downlink_real_mb"].append(downlink_real)
-        for cid, (mb, mb_real) in uplink.items():
+        for cid, mb in uplink.items():
             self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
-            self._round_client_data.setdefault(cid, {})["uplink_real_mb"] = mb_real
         for cid, pkg in packages.items():
             self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
@@ -43,10 +41,9 @@ class LocalOLS(LocalOnly):
             self._pre_eval_hook(dataset_type)
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
-        self.fix_results(default=self.default_value)
         self._save_best_hook()
-        self.save_results()
-        self._save_per_client_results()
+        self._flush_round()
+        self._save_last_hook()
         try:
             self.close_logger()
         except Exception:

@@ -5,7 +5,7 @@ class LocalOnly(pFL):
     """Local-only training: each client trains independently without any aggregation."""
 
     def _compute_send_mb(self, packages) -> tuple:
-        return {}, (0.0, 0.0)
+        return {}, 0.0
 
     def aggregate_client_updates(self, packages) -> None:
         for cid, pkg in packages.items():

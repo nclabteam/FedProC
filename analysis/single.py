@@ -103,28 +103,28 @@ class ExperimentAnalysis:
         client_datas = self._read_client_csvs(run_dir)
 
         downlink_vals = []
-        if server_data and "send_mb" in server_data:
+        if server_data and "downlink_mb" in server_data:
             downlink_vals = parse_numeric_list(
-                server_data["send_mb"], exclude_zero=True
+                server_data["downlink_mb"], exclude_zero=True
             )
 
         num_rounds = 0
-        if server_data and "send_mb" in server_data:
-            num_rounds = len(server_data["send_mb"])
+        if server_data and "downlink_mb" in server_data:
+            num_rounds = len(server_data["downlink_mb"])
         for cd in client_datas:
-            if "send_mb" in cd:
-                num_rounds = max(num_rounds, len(cd["send_mb"]))
+            if "uplink_mb" in cd:
+                num_rounds = max(num_rounds, len(cd["uplink_mb"]))
 
-        # Uplink: sum of all clients' send_mb per round
+        # Uplink: sum of all clients' uplink_mb per round
         uplink_per_round = []
         for i in range(num_rounds):
             round_sum = 0.0
             has_valid = False
             for cd in client_datas:
-                if "send_mb" not in cd or i >= len(cd["send_mb"]):
+                if "uplink_mb" not in cd or i >= len(cd["uplink_mb"]):
                     continue
                 try:
-                    xv = float(cd["send_mb"][i])
+                    xv = float(cd["uplink_mb"][i])
                     if xv != DEFAULT_VALUE:
                         round_sum += xv
                         has_valid = True
@@ -135,12 +135,12 @@ class ExperimentAnalysis:
 
         # Total: downlink + uplink per round
         total_per_round = []
-        if server_data and "send_mb" in server_data:
+        if server_data and "downlink_mb" in server_data:
             for i in range(num_rounds):
                 downlink_i = None
-                if i < len(server_data["send_mb"]):
+                if i < len(server_data["downlink_mb"]):
                     try:
-                        dv = float(server_data["send_mb"][i])
+                        dv = float(server_data["downlink_mb"][i])
                         if dv != DEFAULT_VALUE and dv > 0:
                             downlink_i = dv
                     except (ValueError, TypeError):
@@ -148,10 +148,10 @@ class ExperimentAnalysis:
                 uplink_i = 0.0
                 uplink_valid = False
                 for cd in client_datas:
-                    if "send_mb" not in cd or i >= len(cd["send_mb"]):
+                    if "uplink_mb" not in cd or i >= len(cd["uplink_mb"]):
                         continue
                     try:
-                        uv = float(cd["send_mb"][i])
+                        uv = float(cd["uplink_mb"][i])
                         if uv != DEFAULT_VALUE:
                             uplink_i += uv
                             uplink_valid = True
@@ -173,7 +173,7 @@ class ExperimentAnalysis:
             return {}
 
         result = {}
-        skip_cols = {"send_mb", "run"}
+        skip_cols = {"round"}
         for col, values in data.items():
             if not isinstance(values, list) or col in skip_cols:
                 continue
