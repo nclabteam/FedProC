@@ -17,6 +17,16 @@ class pFL(tFL):
     def __init__(self, configs, times):
         super().__init__(configs, times)
         self._best_personal_loss: float = float("inf")
+        m = self.metrics
+        self.metrics = {
+            "time_per_iter": m["time_per_iter"],
+            "generalization_avg_train_loss": m["generalization_avg_train_loss"],
+            "personalization_avg_train_loss": [],
+            "generalization_avg_test_loss": m["generalization_avg_test_loss"],
+            "personalization_avg_test_loss": [],
+            "downlink_mb": m["downlink_mb"],
+            "downlink_real_mb": m["downlink_real_mb"],
+        }
 
     def package(self, client_id: int):
         pkg = super().package(client_id)

@@ -391,9 +391,7 @@ class tFL(SharedMethods):
         self.metrics = {
             "time_per_iter": [],
             "generalization_avg_train_loss": [],
-            "personalization_avg_train_loss": [],
             "generalization_avg_test_loss": [],
-            "personalization_avg_test_loss": [],
             "downlink_mb": [],
             "downlink_real_mb": [],
         }
