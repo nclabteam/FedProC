@@ -70,9 +70,9 @@ class Caesar(tFL):
     """Caesar server - staleness-aware download + importance-ranked gradient upload."""
 
     optional = {
-        "theta_d_max": 0.5,
+        "theta_d_max": 0.6,
         "theta_u_min": 0.1,
-        "theta_u_max": 0.5,
+        "theta_u_max": 0.6,
     }
 
     def __init__(self, configs, times):
