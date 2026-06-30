@@ -6,24 +6,22 @@ import torch
 from .FedRidge import FedRidge, FedRidge_Client
 
 
-class FedDLSA(FedRidge):
-    """FedDLSA: Distributed Least Squares Approximation (Zhu et al. 2021).
+class DLSA(FedRidge):
+    """DLSA: Distributed Least Squares Approximation (Zhu et al. JCGS 2021).
 
-    Applies the Gaussian-NLL specialisation to federated LTSF.  Each client
-    uploads its local OLS solution W_i and a precision matrix H_i =
-    Sigma_xx_i / sigma_i^2, where sigma_i^2 is the client's estimated noise
-    variance.  The server aggregates via the WLSE:
+    Applies the Gaussian-NLL specialisation of the paper's WLSE (Eq. 2.4) to
+    federated LTSF.  Each client uploads its local OLS solution W_i and the
+    normalised precision matrix Sigma_k^{-1} = Sigma_xx_i / (n_i * sigma_i^2).
+    The server aggregates via:
 
-        W_g = (Σ_i H_i + γI)^{-1} Σ_i H_i W_i
-
-    This down-weights noisy clients, reducing to standard FedRidge (γ=0) when
-    all sigma_i^2 are equal.
+        W_g = (Σ_k α_k Σ_k^{-1})^{-1} (Σ_k α_k Σ_k^{-1} W_k)
+            where α_k = n_k / N
 
     No personalisation — global model only.
 
     References
     ----------
-    Jun Zhu et al., "Least-Square Approximation for a Distributed System,"
+    Zhu et al., "Least-Square Approximation for a Distributed System,"
     JCGS 2021. https://doi.org/10.1080/10618600.2021.1923517
     """
 
@@ -32,13 +30,15 @@ class FedDLSA(FedRidge):
     def aggregate_client_updates(self, packages) -> None:
         L = self.input_len
         H = self.output_len
-        cids = list(packages.keys())
 
+        N = sum(packages[cid]["n_i"] for cid in packages)
         h_sum = torch.zeros(L, L)
         hw_sum = torch.zeros(L, H)
-        for cid in cids:
-            h_sum.add_(packages[cid]["h_i"])
-            hw_sum.add_(packages[cid]["h_i"] @ packages[cid]["w_i"])
+        for cid in packages:
+            alpha_k = packages[cid]["n_i"] / N
+            h_k = packages[cid]["h_i"]  # = Sigma_xx / (n_i * sigma_i^2) = Sigma_k^{-1}
+            h_sum.add_(h_k, alpha=alpha_k)
+            hw_sum.add_(h_k @ packages[cid]["w_i"], alpha=alpha_k)
 
         W_g = torch.linalg.solve(h_sum + self.gamma * torch.eye(L), hw_sum)
         self._load_linear_weights(self.model, W_g)
@@ -49,18 +49,16 @@ class FedDLSA(FedRidge):
         )
 
 
-class FedDLSA_Client(FedRidge_Client):
-    """Client for FedDLSA.
+class DLSA_Client(FedRidge_Client):
+    """Client for DLSA.
 
-    Computes local OLS solution W_i and heteroscedasticity-aware precision
-    matrix H_i = Sigma_xx_i / sigma_i^2 in a single data pass, where
-    sigma_i^2 is estimated from the training residuals.
-
-    No personalisation — receives and loads the global model only.
+    Computes local OLS solution W_i and normalised precision matrix
+    Sigma_k^{-1} = Sigma_xx_i / (n_i * sigma_i^2) per paper Eq. 2.4.
     """
 
     _w_i: Optional[torch.Tensor] = None
     _h_i: Optional[torch.Tensor] = None
+    _n_i: int = 0
 
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
@@ -92,11 +90,14 @@ class FedDLSA_Client(FedRidge_Client):
         sigma_sq = max((yy_mean - fit_trace) / H, 1e-8)
 
         self._w_i = w_i
-        self._h_i = sigma_xx / sigma_sq
+        self._h_i = sxx / sigma_sq  # = Sigma_xx / (n_i * sigma_i^2) = Sigma_k^{-1}
+        self._n_i = n_obs
         self.train_samples = n_obs
 
     def package(self) -> Dict[str, Any]:
         result = super().package()
         result["w_i"] = self._w_i
         result["h_i"] = self._h_i
+        result["n_i"] = self._n_i
+        result["__real__"] = ("w_i", "h_i", "n_i")
         return result
