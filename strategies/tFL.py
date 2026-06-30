@@ -114,6 +114,18 @@ class tFL_Client(SharedMethods):
 
     return_diff: bool = False
 
+    def _warmup(self) -> None:
+        self.model.to(self.device)
+        b, s, c = 1, self.configs.input_len, self.configs.input_channels
+        x = torch.zeros(b, s, c, dtype=torch.float32, device=self.device)
+        try:
+            self.model(x)
+        except Exception:
+            pass
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        self.model.to("cpu")
+
     def set_parameters(self, package: Dict[str, Any]) -> None:
         self.id = package["client_id"]
         self.current_iter = package["current_iter"]
@@ -166,7 +178,7 @@ class tFL_Client(SharedMethods):
             k: state[k].detach().cpu().clone() for k in self.personal_params_name
         }
         pkg = {
-            "__real__": ("regular_model_params",),
+            "__real__": ("regular_model_params", "score"),
             "client_id": self.id,
             "regular_model_params": regular,
             "personal_model_params": personal,
@@ -254,20 +266,21 @@ class Trainer:
                 remote_cls.remote(configs=configs, times=times, device=device)
                 for _ in range(self.num_workers)
             ]
+            # Force each Ray actor to initialize (imports, CUDA context, model build)
+            # before the first timed round starts.
+            ray.get([w._warmup.remote() for w in self.workers])
 
     def _dispatch(self, cid: int) -> dict:
         pkg = self.server.package(cid)
         real_keys = pkg.pop("__real__", ())
-        self.server._downlink_sizes[cid] = self.server.get_size(pkg)
-        self.server._downlink_real_sizes[cid] = sum(
+        self.server._downlink_sizes[cid] = sum(
             self.server.get_size(pkg[k]) for k in real_keys if k in pkg
         )
         return pkg
 
     def _receive(self, cid: int, out: dict) -> dict:
         real_keys = out.pop("__real__", ())
-        self.server._uplink_sizes[cid] = self.server.get_size(out)
-        self.server._uplink_real_sizes[cid] = sum(
+        self.server._uplink_sizes[cid] = sum(
             self.server.get_size(out[k]) for k in real_keys if k in out
         )
         return out
@@ -393,14 +406,11 @@ class tFL(SharedMethods):
             "generalization_avg_train_loss": [],
             "generalization_avg_test_loss": [],
             "downlink_mb": [],
-            "downlink_real_mb": [],
         }
         self._best_global_loss: float = float("inf")
         self._round_client_data: Dict[int, Dict[str, float]] = {}
         self._downlink_sizes: Dict[int, float] = {}
         self._uplink_sizes: Dict[int, float] = {}
-        self._downlink_real_sizes: Dict[int, float] = {}
-        self._uplink_real_sizes: Dict[int, float] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
         with open(self.path_info, "r", encoding="utf-8") as f:
@@ -489,22 +499,20 @@ class tFL(SharedMethods):
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
-    def _downlink_real_payload(self) -> Dict[str, Any]:
+    def _downlink_payload(self) -> Dict[str, Any]:
         return {}
 
     def _compute_send_mb(self, packages) -> tuple:
         uplink = {
-            cid: (self._uplink_sizes.get(cid, 0.0), self._uplink_real_sizes.get(cid, 0.0))
+            cid: self._uplink_sizes.get(cid, 0.0)
             for cid in packages
         }
-        downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
-        post_agg = self._downlink_real_payload()
+        post_agg = self._downlink_payload()
         if post_agg:
-            per_client = sum(self.get_size(v) for v in post_agg.values())
-            downlink_real = per_client * len(self.selected_clients)
+            downlink = sum(self.get_size(v) for v in post_agg.values()) * len(self.selected_clients)
         else:
-            downlink_real = sum(self._downlink_real_sizes.get(cid, 0.0) for cid in self.selected_clients)
-        return uplink, (downlink, downlink_real)
+            downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
+        return uplink, downlink
 
     def train_one_round(self) -> dict:
         packages = self.trainer.train(self.selected_clients)
@@ -556,7 +564,7 @@ class tFL(SharedMethods):
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
         row = {"round": self.current_iter}
         for k, v in self.metrics.items():
-            row[k] = v[-1] if v else self.default_value
+            row[k] = v[-1] if v else ""
         write_header = not os.path.exists(path)
         with open(path, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(row.keys()))
@@ -565,12 +573,12 @@ class tFL(SharedMethods):
             writer.writerow(row)
 
     def _flush_client_data(self) -> None:
-        fields = ("uplink_mb", "uplink_real_mb", "train_loss", "test_loss")
+        fields = ("uplink_mb", "train_loss", "test_loss")
         for cid, data in self._round_client_data.items():
             path = os.path.join(self.result_path, f"client_{cid}.csv")
             row = {"round": self.current_iter}
             for f in fields:
-                row[f] = data.get(f, self.default_value)
+                row[f] = data.get(f, "")
             write_header = not os.path.exists(path)
             with open(path, "a", newline="") as fh:
                 writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
@@ -579,28 +587,19 @@ class tFL(SharedMethods):
                 writer.writerow(row)
         self._round_client_data.clear()
 
-    def _save_per_client_results(self) -> None:
+    def _flush_round(self) -> None:
+        self._flush_server_metrics()
         self._flush_client_data()
-        self.logger.info(f"Per-client results saved to {self.result_path}")
 
     def _save_best_hook(self) -> None:
         vals = self.metrics.get("generalization_avg_test_loss", [])
-        if not vals or vals[-1] == self.default_value:
+        if not vals:
             return
         if vals[-1] == self._best_global_loss:
             SharedMethods.save_model(
                 self.model, self.model_path, self.name.strip(), "best",
                 configs=self.configs, verbose=self.logger,
             )
-
-    def fix_results(self, default: float = -1.0) -> None:
-        super().fix_results(default)
-        self._flush_server_metrics()
-        self._flush_client_data()
-
-    def save_results(self) -> None:
-        path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
-        self.logger.info(f"Results saved to {path}")
 
     def _save_last_hook(self) -> None:
         SharedMethods.save_model(
@@ -623,12 +622,10 @@ class tFL(SharedMethods):
                         continue
                     self._pre_eval_hook(dataset_type)
             packages = self.train_one_round()
-            uplink, (downlink, downlink_real) = self._compute_send_mb(packages)
+            uplink, downlink = self._compute_send_mb(packages)
             self.metrics["downlink_mb"].append(downlink)
-            self.metrics["downlink_real_mb"].append(downlink_real)
-            for cid, (mb, mb_real) in uplink.items():
+            for cid, mb in uplink.items():
                 self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
-                self._round_client_data.setdefault(cid, {})["uplink_real_mb"] = mb_real
             if i % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
@@ -639,12 +636,10 @@ class tFL(SharedMethods):
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"{iter_time:.2f}s")
-            self.fix_results(default=self.default_value)
+            self._flush_round()
             if self.early_stopping():
                 break
         self._save_last_hook()
-        self.save_results()
-        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:

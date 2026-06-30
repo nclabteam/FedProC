@@ -25,7 +25,6 @@ class pFL(tFL):
             "generalization_avg_test_loss": m["generalization_avg_test_loss"],
             "personalization_avg_test_loss": [],
             "downlink_mb": m["downlink_mb"],
-            "downlink_real_mb": m["downlink_real_mb"],
         }
 
     def package(self, client_id: int):
@@ -51,6 +50,8 @@ class pFL(tFL):
         )
         if dataset_type == "test":
             self._best_personal_loss = min(self._best_personal_loss, metric_val)
+        for cid, loss in zip(incumbent, losses):
+            self._round_client_data.setdefault(cid, {})[f"{dataset_type}_loss"] = float(loss)
 
     def _save_personal_models(self, postfix: str) -> None:
         tmp = copy.deepcopy(self.model)

@@ -220,7 +220,7 @@ class ExperimentAnalysis:
 
         derived = defaultdict(list)
         for run in runs_data:
-            loss_series = run.get(loss_metric, [])
+            loss_series = parse_numeric_list(run.get(loss_metric, []))
             if len(loss_series) < 2:
                 continue
 
@@ -267,11 +267,18 @@ class ExperimentAnalysis:
             return pl.DataFrame()
 
         # Aggregate across runs
-        stats = defaultdict(lambda: {"min": [], "max": []})
+        stats = defaultdict(lambda: {"min": [], "max": [], "avg": []})
         for run in runs_agg:
             for key, value in run.items():
                 stats[key]["min"].append(value)
                 stats[key]["max"].append(value)
+
+        runs_agg_mean = ExperimentAnalysis(
+            self.experiment_dir, agg_mode="mean", decimal_places=self.decimal_places
+        ).load_all_runs()
+        for run in runs_agg_mean:
+            for key, value in run.items():
+                stats[key]["avg"].append(value)
 
         # Add time per experiment from timing.json
         timing_path = self.experiment_dir / "timing.json"
@@ -281,18 +288,21 @@ class ExperimentAnalysis:
             if durations:
                 stats["time_per_experiment"]["min"] = durations
                 stats["time_per_experiment"]["max"] = durations
+                stats["time_per_experiment"]["avg"] = durations
 
         # Compute derived metrics
         derived = self.compute_derived_metrics(runs_raw)
         for metric, values in derived.items():
             stats[metric]["min"] = values
             stats[metric]["max"] = values
+            stats[metric]["avg"] = values
 
         # Build results table
         rows = []
         for metric, stat in sorted(stats.items()):
             min_vals = [v for v in stat["min"] if v != DEFAULT_VALUE]
             max_vals = [v for v in stat["max"] if v != DEFAULT_VALUE]
+            avg_vals = [v for v in stat["avg"] if v != DEFAULT_VALUE]
             unit = METRIC_UNITS.get(metric, "")
             name = f"{metric}_{unit}" if unit else metric
             row = {
@@ -305,6 +315,16 @@ class ExperimentAnalysis:
                 "std_min": (
                     round(float(np.std(min_vals, ddof=0)), self.decimal_places)
                     if min_vals
+                    else DEFAULT_VALUE
+                ),
+                "avg_avg": (
+                    round(float(np.mean(avg_vals)), self.decimal_places)
+                    if avg_vals
+                    else DEFAULT_VALUE
+                ),
+                "std_avg": (
+                    round(float(np.std(avg_vals, ddof=0)), self.decimal_places)
+                    if avg_vals
                     else DEFAULT_VALUE
                 ),
                 "avg_max": (
