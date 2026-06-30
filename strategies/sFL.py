@@ -61,11 +61,10 @@ class sFL(tFL):
     def __init__(self, configs, times) -> None:
         super().__init__(configs, times)
 
-        attack_name = getattr(self, "attack", "NoAttack")
-        attack_cls = SharedMethods._get_objective_function("attacks", attack_name)
+        attack_cls = SharedMethods._get_objective_function("attacks", self.attack)
         self._attack = attack_cls()
 
-        n_mal = int(self.num_clients * getattr(self, "malicious_frac", 0.0))
+        n_mal = int(self.num_clients * self.malicious_frac)
         if n_mal > 0:
             rng = np.random.default_rng(self.seed)
             self.malicious_ids: Set[int] = set(
@@ -73,7 +72,7 @@ class sFL(tFL):
             )
             self.logger.info(
                 f"Byzantine clients ({n_mal}/{self.num_clients}, "
-                f"attack={attack_name}): {sorted(self.malicious_ids)}"
+                f"attack={self.attack}): {sorted(self.malicious_ids)}"
             )
         else:
             self.malicious_ids: Set[int] = set()
