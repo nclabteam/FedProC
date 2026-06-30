@@ -170,8 +170,8 @@ class FedALA_Client(pFL_Client):
 
         del model_t
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        out = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        out = super().package()
         # Persist ALA state and current trained params for the next round
         out["personal_model_params"]["prev_local_params"] = [
             p.detach().cpu().clone() for p in self.model.parameters()

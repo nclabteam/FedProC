@@ -86,7 +86,7 @@ class PruneFL_Client(spFL_Client):
         else:
             self._sp_grad_sq = {}
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["_sp_extra"] = self._sp_grad_sq if self._sp_is_adj else {}
         return result

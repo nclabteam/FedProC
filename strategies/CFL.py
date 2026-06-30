@@ -186,8 +186,8 @@ class CFL_Client(pFL_Client):
             for name, v in package["regular_model_params"].items()
         }
 
-    def package(self, train_time: float) -> dict:
-        out = super().package(train_time)
+    def package(self) -> dict:
+        out = super().package()
         current_state = self.model.state_dict()
         out["model_diff"] = [
             current_state[name].cpu() - self._init_params[name]

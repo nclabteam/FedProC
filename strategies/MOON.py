@@ -50,8 +50,8 @@ class MOON_Client(tFL_Client):
         self._prev_model_params = package["personal_model_params"]["prev_model_state"]
         super().set_parameters(package)
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        out = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        out = super().package()
         # Persist current post-training model as prev_model for next round (w_i^t → w_i^{t-1})
         out["personal_model_params"]["prev_model_state"] = {
             k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()

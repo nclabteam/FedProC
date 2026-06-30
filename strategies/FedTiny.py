@@ -38,7 +38,7 @@ class FedTiny(spFL):
 class FedTiny_Client(spFL_Client):
     """FedTiny client — collects single-batch gradients after training on adj rounds."""
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["_sp_extra"] = self._collect_gradients() if self._sp_is_adj else {}
         return result

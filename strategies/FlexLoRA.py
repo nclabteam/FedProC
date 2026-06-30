@@ -233,7 +233,7 @@ class FlexLoRA_Client(FedIT_Client):
                     self.client_rank = package["client_ranks"][self.id]
         self.setup_lora_training(self.model)
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         result["client_rank"] = self.client_rank
         return result

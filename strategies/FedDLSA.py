@@ -95,8 +95,8 @@ class FedDLSA_Client(FedRidge_Client):
         self._h_i = sigma_xx / sigma_sq
         self.train_samples = n_obs
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["w_i"] = self._w_i
         result["h_i"] = self._h_i
         return result

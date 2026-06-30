@@ -14,6 +14,13 @@ class pFL(tFL):
     pFL and set ``personal_params_name`` on their client class.
     """
 
+    _uplink_payload_keys = ("regular_model_params", "personal_model_params")
+    _downlink_payload_keys = ("regular_model_params", "personal_model_params")
+
+    def __init__(self, configs, times):
+        super().__init__(configs, times)
+        self._best_personal_loss: float = float("inf")
+
     def _pre_eval_hook(self, dataset_type: str) -> None:
         incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
         losses = self.trainer.evaluate_personalized(
@@ -24,11 +31,14 @@ class pFL(tFL):
             self.current_iter,
         )
         metric = f"personal_avg_{dataset_type}_loss"
-        self.metrics[metric].append(float(np.mean(losses)))
+        metric_val = float(np.mean(losses))
+        self.metrics[metric].append(metric_val)
         self.logger.info(
             f"Personalization {dataset_type.capitalize()} Loss: "
             f"{self.metrics[metric][-1]:.4f}"
         )
+        if dataset_type == "test":
+            self._best_personal_loss = min(self._best_personal_loss, metric_val)
 
     def _save_personal_models(self, postfix: str) -> None:
         tmp = copy.deepcopy(self.model)
@@ -47,7 +57,7 @@ class pFL(tFL):
         if not losses:
             super()._save_best_hook()
             return
-        if losses[-1] != min(losses):
+        if losses[-1] != self._best_personal_loss:
             return
         SharedMethods.save_model(
             self.model, self.model_path, self.name.strip(), "best",

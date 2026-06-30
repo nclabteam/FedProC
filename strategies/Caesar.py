@@ -214,8 +214,8 @@ class Caesar_Client(tFL_Client):
             compressed[name] = (flat * mask).view(g.shape)
         return compressed
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["_caesar_gradient"] = self._compress_gradient(
             self._caesar_gradient, self._caesar_theta_u
         )

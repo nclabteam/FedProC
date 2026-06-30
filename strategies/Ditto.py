@@ -92,8 +92,8 @@ class Ditto_Client(pFL_Client):
         if self.efficiency == "med":
             self.model_per.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["personal_model_params"]["model_per"] = {
             k: v.detach().cpu().clone()
             for k, v in self.model_per.state_dict().items()

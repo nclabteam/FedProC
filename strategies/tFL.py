@@ -1,4 +1,4 @@
-"""Stateless-client / server-owned-state execution core (v2.0).
+"""Stateless-client / server-owned-state execution core.
 
 Stateless-client architecture: clients are reusable stateless workers; ALL
 per-client persistent state (model params, optimizer/scheduler state, personal
@@ -19,7 +19,7 @@ import logging
 import os
 import time
 
-import polars as pl
+import csv
 from argparse import Namespace
 from collections import OrderedDict, deque
 from typing import Any, Dict, List, Optional
@@ -154,11 +154,10 @@ class tFL_Client(SharedMethods):
 
     def train(self, package: Dict[str, Any]) -> Dict[str, Any]:
         self.set_parameters(package)
-        start = time.time()
         self.fit()
-        return self.package(train_time=time.time() - start)
+        return self.package()
 
-    def package(self, train_time: float) -> Dict[str, Any]:
+    def package(self) -> Dict[str, Any]:
         state = self.model.state_dict()
         regular = {
             k: state[k].detach().cpu().clone() for k in self.regular_params_name
@@ -173,7 +172,6 @@ class tFL_Client(SharedMethods):
             "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
             "scheduler_state": copy.deepcopy(self.scheduler.state_dict()),
             "score": self.train_samples,
-            "train_time": train_time,
         }
         if self.return_diff:
             pkg["model_params_diff"] = OrderedDict(
@@ -259,10 +257,16 @@ class Trainer:
     def _dispatch(self, cid: int) -> dict:
         pkg = self.server.package(cid)
         self.server._downlink_sizes[cid] = self.server.get_size(pkg)
+        self.server._downlink_real_sizes[cid] = sum(
+            self.server.get_size(pkg[k]) for k in self.server._downlink_payload_keys if k in pkg
+        )
         return pkg
 
     def _receive(self, cid: int, out: dict) -> dict:
         self.server._uplink_sizes[cid] = self.server.get_size(out)
+        self.server._uplink_real_sizes[cid] = sum(
+            self.server.get_size(out[k]) for k in self.server._uplink_payload_keys if k in out
+        )
         return out
 
     def train(self, selected: List[int]) -> "OrderedDict[int, dict]":
@@ -362,6 +366,11 @@ class tFL(SharedMethods):
     new_client_gen_test_loss: Optional[float] = None
     new_client_pers_test_loss: Optional[float] = None
 
+    # Package keys that count as real network payload (exclude optimizer/scheduler state).
+    # Strategies override these to declare exactly what crosses the wire in a real deployment.
+    _uplink_payload_keys: tuple = ("regular_model_params",)
+    _downlink_payload_keys: tuple = ("regular_model_params",)
+
     def __init__(self, configs: Namespace, times: int) -> None:
         self.set_configs(configs=configs, times=times)
         self.mkdir()
@@ -387,11 +396,14 @@ class tFL(SharedMethods):
             "global_avg_test_loss": [],
             "personal_avg_test_loss": [],
             "downlink_mb": [],
+            "downlink_real_mb": [],
         }
-        # per_client_metrics[cid] = {"round": [...], "train_loss": [...], "test_loss": [...], "uplink_mb": [...]}
-        self.per_client_metrics: Dict[int, Dict[str, list]] = {}
+        self._best_global_loss: float = float("inf")
+        self._round_client_data: Dict[int, Dict[str, float]] = {}
         self._downlink_sizes: Dict[int, float] = {}
         self._uplink_sizes: Dict[int, float] = {}
+        self._downlink_real_sizes: Dict[int, float] = {}
+        self._uplink_real_sizes: Dict[int, float] = {}
         self.make_logger(name=self.name, path=self.log_path)
 
         with open(self.path_info, "r", encoding="utf-8") as f:
@@ -480,20 +492,13 @@ class tFL(SharedMethods):
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _compute_send_mb(self, packages) -> tuple:
-        uplink = {cid: self._uplink_sizes.get(cid, 0.0) for cid in packages}
+        uplink = {
+            cid: (self._uplink_sizes.get(cid, 0.0), self._uplink_real_sizes.get(cid, 0.0))
+            for cid in packages
+        }
         downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
-        return uplink, downlink
-
-    def _ensure_client_row(self, cid: int) -> dict:
-        if cid not in self.per_client_metrics:
-            self.per_client_metrics[cid] = {"round": [], "uplink_mb": [], "train_loss": [], "test_loss": []}
-        entry = self.per_client_metrics[cid]
-        if not entry["round"] or entry["round"][-1] != self.current_iter:
-            entry["round"].append(self.current_iter)
-            entry["uplink_mb"].append(self.default_value)
-            entry["train_loss"].append(self.default_value)
-            entry["test_loss"].append(self.default_value)
-        return entry
+        downlink_real = sum(self._downlink_real_sizes.get(cid, 0.0) for cid in self.selected_clients)
+        return uplink, (downlink, downlink_real)
 
     def train_one_round(self) -> dict:
         packages = self.trainer.train(self.selected_clients)
@@ -521,13 +526,16 @@ class tFL(SharedMethods):
             incumbent, self.public_model_params, dataset_type, self.current_iter
         )
         metric = f"global_avg_{dataset_type}_loss"
-        self.metrics[metric].append(float(np.mean(losses)))
+        metric_val = float(np.mean(losses))
+        self.metrics[metric].append(metric_val)
         self.logger.info(
             f"Generalization {dataset_type.capitalize()} Loss: "
             f"{self.metrics[metric][-1]:.4f}"
         )
+        if dataset_type == "test":
+            self._best_global_loss = min(self._best_global_loss, metric_val)
         for cid, loss in zip(incumbent, losses):
-            self._ensure_client_row(cid)[f"{dataset_type}_loss"][-1] = float(loss)
+            self._round_client_data.setdefault(cid, {})[f"{dataset_type}_loss"] = float(loss)
 
     def early_stopping(self) -> bool:
         metric = self.metrics["global_avg_test_loss"]
@@ -538,32 +546,55 @@ class tFL(SharedMethods):
             return True
         return False
 
-    def _save_per_client_results(self) -> None:
-        for cid, entry in self.per_client_metrics.items():
-            keys = ["round", "uplink_mb", "train_loss", "test_loss"]
-            row = {k: entry.get(k, []) for k in keys}
-            max_len = max((len(v) for v in row.values()), default=0)
-            if max_len == 0:
-                continue
-            for k in row:
-                if len(row[k]) < max_len:
-                    row[k] = row[k] + [self.default_value] * (max_len - len(row[k]))
+    def _flush_server_metrics(self) -> None:
+        path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
+        row = {"round": self.current_iter}
+        for k, v in self.metrics.items():
+            row[k] = v[-1] if v else self.default_value
+        write_header = not os.path.exists(path)
+        with open(path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
+
+    def _flush_client_data(self) -> None:
+        fields = ("uplink_mb", "uplink_real_mb", "train_loss", "test_loss")
+        for cid, data in self._round_client_data.items():
             path = os.path.join(self.result_path, f"client_{cid}.csv")
-            pl.DataFrame(row).write_csv(path)
-        if self.per_client_metrics:
-            self.logger.info(
-                f"Per-client results saved to {self.result_path} ({len(self.per_client_metrics)} clients)"
-            )
+            row = {"round": self.current_iter}
+            for f in fields:
+                row[f] = data.get(f, self.default_value)
+            write_header = not os.path.exists(path)
+            with open(path, "a", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
+                if write_header:
+                    writer.writeheader()
+                writer.writerow(row)
+        self._round_client_data.clear()
+
+    def _save_per_client_results(self) -> None:
+        self._flush_client_data()
+        self.logger.info(f"Per-client results saved to {self.result_path}")
 
     def _save_best_hook(self) -> None:
-        losses = [v for v in self.metrics.get("global_avg_test_loss", []) if v != self.default_value]
-        if not losses:
+        vals = self.metrics.get("global_avg_test_loss", [])
+        if not vals or vals[-1] == self.default_value:
             return
-        if losses[-1] == min(losses):
+        if vals[-1] == self._best_global_loss:
             SharedMethods.save_model(
                 self.model, self.model_path, self.name.strip(), "best",
                 configs=self.configs, verbose=self.logger,
             )
+
+    def fix_results(self, default: float = -1.0) -> None:
+        super().fix_results(default)
+        self._flush_server_metrics()
+        self._flush_client_data()
+
+    def save_results(self) -> None:
+        path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
+        self.logger.info(f"Results saved to {path}")
 
     def _save_last_hook(self) -> None:
         SharedMethods.save_model(
@@ -586,10 +617,12 @@ class tFL(SharedMethods):
                         continue
                     self._pre_eval_hook(dataset_type)
             packages = self.train_one_round()
-            uplink, downlink = self._compute_send_mb(packages)
+            uplink, (downlink, downlink_real) = self._compute_send_mb(packages)
             self.metrics["downlink_mb"].append(downlink)
-            for cid, mb in uplink.items():
-                self._ensure_client_row(cid)["uplink_mb"][-1] = mb
+            self.metrics["downlink_real_mb"].append(downlink_real)
+            for cid, (mb, mb_real) in uplink.items():
+                self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
+                self._round_client_data.setdefault(cid, {})["uplink_real_mb"] = mb_real
             if i % self.eval_gap == 0:
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:

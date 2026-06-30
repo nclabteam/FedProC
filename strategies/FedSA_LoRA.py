@@ -74,8 +74,8 @@ class FedSA_LoRA_Client(FedIT_Client):
         if lora_B:
             self.update_lora_params(self.model, lora_B)
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         # Move lora_B from regular to personal so server only aggregates A
         new_regular = OrderedDict()
         for name, tensor in result["regular_model_params"].items():

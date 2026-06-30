@@ -63,10 +63,12 @@ class aFL(tFL):
                     self._pre_eval_hook(dataset_type)
 
             self.aggregate_client_updates(buffer)
-            uplink, downlink = self._compute_send_mb(buffer)
+            uplink, (downlink, downlink_real) = self._compute_send_mb(buffer)
             self.metrics["downlink_mb"].append(downlink)
-            for cid, mb in uplink.items():
-                self._ensure_client_row(cid)["uplink_mb"][-1] = mb
+            self.metrics["downlink_real_mb"].append(downlink_real)
+            for cid, (mb, mb_real) in uplink.items():
+                self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
+                self._round_client_data.setdefault(cid, {})["uplink_real_mb"] = mb_real
             global_version += 1
             buffer.clear()
 

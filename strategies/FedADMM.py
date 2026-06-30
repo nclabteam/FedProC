@@ -155,8 +155,8 @@ class FedADMM_Client(tFL_Client):
         if self.efficiency != "high":
             self.model.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        out = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        out = super().package()
 
         # Dual update: α_i ← α_i - (w_i - θ)  [scaled-form ADMM consensus]
         updated_alpha: Dict[str, torch.Tensor] = {}

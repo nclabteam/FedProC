@@ -112,7 +112,7 @@ class Elastic_Client(tFL_Client):
         # Standard local training
         super().fit()
 
-    def package(self, train_time: float) -> dict:
-        out = super().package(train_time)
+    def package(self) -> dict:
+        out = super().package()
         out["sensitivity"] = self._sensitivity
         return out

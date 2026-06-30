@@ -39,6 +39,7 @@ class FedRidge(_LinearWeightsMixin, tFL):
     """
 
     optional = {"gamma": 0.1}
+    _uplink_payload_keys = ("sigma_xx", "sigma_xy")
 
     @classmethod
     def args_update(cls, parser):
@@ -58,10 +59,12 @@ class FedRidge(_LinearWeightsMixin, tFL):
         self.current_iter = 0
         self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
         packages = self.trainer.train(self.selected_clients)
-        uplink, downlink = self._compute_send_mb(packages)
+        uplink, (downlink, downlink_real) = self._compute_send_mb(packages)
         self.metrics["downlink_mb"].append(downlink)
-        for cid, mb in uplink.items():
-            self._ensure_client_row(cid)["uplink_mb"][-1] = mb
+        self.metrics["downlink_real_mb"].append(downlink_real)
+        for cid, (mb, mb_real) in uplink.items():
+            self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
+            self._round_client_data.setdefault(cid, {})["uplink_real_mb"] = mb_real
         self.aggregate_client_updates(packages)
 
         for dataset_type in ["train", "test"]:
@@ -137,8 +140,8 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
         self._sigma_xx = sigma_xx
         self._sigma_xy = sigma_xy
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["sigma_xx"] = self._sigma_xx
         result["sigma_xy"] = self._sigma_xy
         return result

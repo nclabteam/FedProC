@@ -141,8 +141,8 @@ class pFedMe_Client(pFL_Client):
         if self.efficiency != "high":
             self.model.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        out = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        out = super().package()
         out["personal_model_params"]["personalized_params"] = self._personalized_params
         return out
 

@@ -91,8 +91,8 @@ class AirMetapFL_Client(pFL_Client):
         if self.efficiency != "high":
             self.model.to("cpu")
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
 
         if self.sparsity < 1.0:
             if self._memory is None:

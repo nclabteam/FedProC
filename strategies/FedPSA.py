@@ -160,8 +160,8 @@ class FedPSA_Client(tFL_Client):
         self._calib_x = package["_psa_calib_x"]
         self._calib_y = package["_psa_calib_y"]
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         # Δw_i = w_after - w_before
         delta = {k: v.detach().cpu() - self._w0[k] for k, v in self.model.named_parameters()}
         flat_delta = torch.cat([v.flatten() for v in delta.values()])

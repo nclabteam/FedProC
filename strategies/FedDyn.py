@@ -133,8 +133,8 @@ class FedDyn_Client(pFL_Client):
             model.to("cpu")
         del global_params, old_grad
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        out = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        out = super().package()
         # Dual-variable update: old_grad_i -= alpha * (w_i_new - global_w_i)
         updated_old_grad = [
             og - self.alpha * (w.detach().cpu() - gp)

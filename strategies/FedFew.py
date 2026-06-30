@@ -151,8 +151,8 @@ class FedFew_Client(pFL_Client):
         best_k = int(torch.tensor(self._fedfew_losses).argmin().item())
         self.model.load_state_dict(self._server_models[best_k], strict=False)
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["fedfew_losses"] = self._fedfew_losses
         result["fedfew_gradients"] = self._fedfew_gradients
         return result

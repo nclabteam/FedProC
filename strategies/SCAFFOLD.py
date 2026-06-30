@@ -141,8 +141,8 @@ class SCAFFOLD_Client(tFL_Client):
         self._delta_c = delta_c
         self.model.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["personal_model_params"]["client_c"] = self.client_c
         result["delta_c"] = self._delta_c
         return result

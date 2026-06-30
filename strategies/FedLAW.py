@@ -136,8 +136,8 @@ class FedLAW(tFL):
 
 
 class FedLAW_Client(tFL_Client):
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         result["flat_params"] = parameters_to_vector(
             self.model.parameters()
         ).detach().cpu()

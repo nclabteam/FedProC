@@ -111,8 +111,8 @@ class APFL_Client(pFL_Client):
             np.clip(self.alpha - self.learning_rate * grad_alpha, 0.0, 1.0)
         )
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["personal_model_params"]["model_per"] = {
             k: v.detach().cpu().clone()
             for k, v in self.model_per.state_dict().items()

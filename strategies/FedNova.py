@@ -218,8 +218,8 @@ class FedNova_Client(tFL_Client):
         self._tau = nova_opt.local_normalizing_vec
         self.model.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["nova_grad"] = self._nova_grad
         result["tau"] = self._tau
         return result

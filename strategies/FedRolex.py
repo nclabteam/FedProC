@@ -222,7 +222,7 @@ class FedRolex_Client(tFL_Client):
         self._sub_state = sub_model.state_dict()
         sub_model.to("cpu")
 
-    def package(self, train_time: float) -> dict:
+    def package(self) -> dict:
         return {
             "client_id": self.id,
             "regular_model_params": self._sub_state,

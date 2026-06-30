@@ -152,7 +152,7 @@ class FedMef_Client(spFL_Client):
         for pg in self.optimizer.param_groups:
             pg["lr"] = float(min(self.xi, max(pg["lr"], self.psi * adjusted)))
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["_sp_extra"] = self._collect_gradients() if self._sp_is_adj else {}
         return result

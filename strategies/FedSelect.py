@@ -185,8 +185,8 @@ class FedSelect_Client(pFL_Client):
                     (1 - lw) * param.data + lw * local_state[name].to(param.device)
                 )
 
-    def package(self, train_time: float) -> dict:
-        out = super().package(train_time)
+    def package(self) -> dict:
+        out = super().package()
         out["personal_model_params"]["local_model_state"] = {
             name: p.detach().cpu().clone()
             for name, p in self.model.named_parameters()

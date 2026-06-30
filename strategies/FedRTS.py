@@ -110,8 +110,8 @@ class FedRTS(spFL):
 class FedRTS_Client(spFL_Client):
     """FedRTS client - votes on active/inactive weights via gradient+magnitude top-k."""
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         if not self._sp_is_adj:
             result["_sp_extra"] = {}
             return result

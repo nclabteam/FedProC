@@ -69,8 +69,8 @@ class Centralized_Client(tFL_Client):
     def fit(self) -> None:
         pass  # server trains on collected client data; no client-side training
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         result["train_loader"] = self.load_train_data()
         return result
 

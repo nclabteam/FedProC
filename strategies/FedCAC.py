@@ -140,8 +140,8 @@ class FedCAC_Client(pFL_Client):
         self._global_mask = gm
         self._local_mask = lm
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         result["personal_model_params"]["critical_parameter"] = self._critical_parameter
         result["personal_model_params"]["local_mask"] = self._local_mask
         result["personal_model_params"]["global_mask"] = self._global_mask

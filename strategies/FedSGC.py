@@ -119,8 +119,8 @@ class FedSGC_Client(spFL_Client):
         if self.efficiency == "med":
             self.model.to("cpu")
 
-    def package(self, train_time: float) -> Dict[str, Any]:
-        result = super().package(train_time)
+    def package(self) -> Dict[str, Any]:
+        result = super().package()
         result["_sp_extra"] = (
             {"mask_dict": {n: m.cpu() for n, m in self._sp_mask_dict.items()}}
             if self._sp_is_adj else {}

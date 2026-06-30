@@ -46,8 +46,8 @@ class FedPAQ_Client(tFL_Client):
             for name, param in self.model.named_parameters()
         }
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         if self.s > 0:
             # Quantize the update vector delta = x_τ - x_0, then send x_0 + Q(delta).
             # Server FedAvg then gives x_0 + Σ w_i·Q(delta_i) as required by paper.

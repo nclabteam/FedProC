@@ -86,8 +86,8 @@ class FML_Client(pFL_Client):
         if self.efficiency == "med":
             self.model_g.to("cpu")
 
-    def package(self, train_time: float) -> dict:
-        result = super().package(train_time)
+    def package(self) -> dict:
+        result = super().package()
         # regular_model_params = model_g (FedAvg'd by server each round)
         result["regular_model_params"] = OrderedDict(
             (k, v.detach().cpu().clone()) for k, v in self.model_g.state_dict().items()
