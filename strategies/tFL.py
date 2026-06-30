@@ -178,7 +178,7 @@ class tFL_Client(SharedMethods):
             k: state[k].detach().cpu().clone() for k in self.personal_params_name
         }
         pkg = {
-            "__real__": ("regular_model_params", "score"),
+            "__wire__": ("regular_model_params", "score"),
             "client_id": self.id,
             "regular_model_params": regular,
             "personal_model_params": personal,
@@ -272,14 +272,14 @@ class Trainer:
 
     def _dispatch(self, cid: int) -> dict:
         pkg = self.server.package(cid)
-        real_keys = pkg.pop("__real__", ())
+        real_keys = pkg.pop("__wire__", ())
         self.server._downlink_sizes[cid] = sum(
             self.server.get_size(pkg[k]) for k in real_keys if k in pkg
         )
         return pkg
 
     def _receive(self, cid: int, out: dict) -> dict:
-        real_keys = out.pop("__real__", ())
+        real_keys = out.pop("__wire__", ())
         self.server._uplink_sizes[cid] = sum(
             self.server.get_size(out[k]) for k in real_keys if k in out
         )
@@ -486,7 +486,7 @@ class tFL(SharedMethods):
 
     def package(self, client_id: int) -> Dict[str, Any]:
         return {
-            "__real__": ("regular_model_params",),
+            "__wire__": ("regular_model_params",),
             "client_id": client_id,
             "current_iter": self.current_iter,
             "regular_model_params": copy.deepcopy(self.public_model_params),

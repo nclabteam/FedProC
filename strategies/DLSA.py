@@ -99,5 +99,5 @@ class DLSA_Client(FedRidge_Client):
         result["w_i"] = self._w_i
         result["h_i"] = self._h_i
         result["n_i"] = self._n_i
-        result["__real__"] = ("w_i", "h_i", "n_i")
+        result["__wire__"] = ("w_i", "h_i", "n_i")
         return result

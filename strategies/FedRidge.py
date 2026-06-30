@@ -140,5 +140,5 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
         result = super().package()
         result["sigma_xx"] = self._sigma_xx
         result["sigma_xy"] = self._sigma_xy
-        result["__real__"] = ("sigma_xx", "sigma_xy")
+        result["__wire__"] = ("sigma_xx", "sigma_xy")
         return result

@@ -29,7 +29,7 @@ class pFL(tFL):
 
     def package(self, client_id: int):
         pkg = super().package(client_id)
-        pkg["__real__"] = ("regular_model_params", "personal_model_params")
+        pkg["__wire__"] = ("regular_model_params", "personal_model_params")
         return pkg
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
@@ -99,5 +99,5 @@ class pFL_Client(tFL_Client):
 
     def package(self):
         pkg = super().package()
-        pkg["__real__"] = ("regular_model_params", "personal_model_params")
+        pkg["__wire__"] = ("regular_model_params", "personal_model_params")
         return pkg
