@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 
-from .pFL import pFL, pFL_Client
+from .nFL import nFL, nFL_Client
 
 
-class InfoTS(pFL):
+class InfoTS(nFL):
     """
     InfoTS: Information-Aware Time Series Meta-Contrastive Learning.
 
@@ -45,7 +45,7 @@ class InfoTS(pFL):
         pass
 
 
-class InfoTS_Client(pFL_Client):
+class InfoTS_Client(nFL_Client):
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))
 

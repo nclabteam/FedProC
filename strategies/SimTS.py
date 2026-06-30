@@ -1,9 +1,9 @@
 import torch
 
-from .pFL import pFL, pFL_Client
+from .nFL import nFL, nFL_Client
 
 
-class SimTS(pFL):
+class SimTS(nFL):
     """
     SimTS: local self-supervised contrastive pre-training + supervised fine-tuning.
 
@@ -42,7 +42,7 @@ class SimTS(pFL):
         pass
 
 
-class SimTS_Client(pFL_Client):
+class SimTS_Client(nFL_Client):
 
     def fit(self) -> None:
         self._set_worker_seed(self._loader_seed("train"))

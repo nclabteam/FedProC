@@ -26,7 +26,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
 
-from .pFL import pFL, pFL_Client
+from .nFL import nFL, nFL_Client
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +112,11 @@ class _DLinearEstimator(nn.Module):
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
-class SL(pFL):
+class SL(nFL):
     """
     Selective Learning — model-agnostic dual-mask training strategy.
 
-    Inherits from ``pFL``. Each client trains independently using uncertainty
+    Each client trains independently using uncertainty
     and/or anomaly masks to exclude noisy timesteps from the loss computation.
     Personalized evaluation uses each client's locally-trained model.
     """
@@ -159,7 +159,7 @@ class SL(pFL):
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
-class SL_Client(pFL_Client):
+class SL_Client(nFL_Client):
     """Client-side Selective Learning logic."""
 
     # Class-level defaults for the ``optional`` hyper-parameters. The framework
