@@ -6,8 +6,8 @@ Standalone baselines and non-FL pre-training methods. No model communication; ea
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
-| LocalOnly | | | Per-client local training only, no communication | | |
-| LocalOLS | | | Per-client local OLS regression, no communication | | |
+| **LocalOnly** | | | Per-client local training only, no communication | | |
+| **LocalOLS** | | | Per-client local OLS regression, no communication | | |
 | Centralized | | | Oracle upper bound — all data on one server | | |
 | SimTS | ICASSP | 2024 | Contrastive pretraining with instance-pair selection for TSF | SimTS: Rethinking Contrastive Representation Learning for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.18205) - [IEEE](https://ieeexplore.ieee.org/document/10446875) - [GitHub](https://github.com/xingyu617/SimTS_Representation_Learning) |
 | InfoTS | ICLR | 2023 | Meta-contrastive with learnable augmentation selection for TSF | InfoTS: Information-Aware Time Series Meta-Contrastive Learning | [Arxiv](https://arxiv.org/abs/2303.01186) - [REF](https://github.com/Sec-Sci-Lab/InfoTS) |
@@ -19,7 +19,7 @@ Central-server FL where a server aggregates client updates each round and broadc
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
-| FedAvg | AISTATS | 2017 | Weighted average of client model updates | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) |
+| **FedAvg** | AISTATS | 2017 | Weighted average of client model updates | Communication-Efficient Learning of Deep Networks from Decentralized Data | [Arxiv](https://arxiv.org/abs/1602.05629) |
 | FedAvgM | | | FedAvg with server-side Polyak momentum on model updates | Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification | [Arxiv](https://arxiv.org/abs/1909.06335) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedavgm.py) |
 | SCAFFOLD | ICML | 2020 | Variance-reduced FL via per-client control variates | SCAFFOLD: Stochastic Controlled Averaging for Federated Learning | [Arxiv](https://arxiv.org/abs/1910.06378) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/serverscaffold.py) |
 | FedNova | NeurIPS | 2020 | Normalizes local updates by effective steps to fix objective inconsistency | Tackling the Objective Inconsistency Problem in Heterogeneous Federated Optimization | [Arxiv](https://arxiv.org/abs/2007.07481) - [REF](https://github.com/JYWa/FedNova) |
@@ -37,8 +37,8 @@ Central-server FL where a server aggregates client updates each round and broadc
 | FedRCL† | CVPR | 2024 | Relaxed supervised contrastive loss with per-pair divergence penalty | Relaxed Contrastive Learning for Federated Learning | [OpenAccess](https://openaccess.thecvf.com/content/CVPR2024/html/Seo_Relaxed_Contrastive_Learning_for_Federated_Learning_CVPR_2024_paper.html) - [Arxiv](https://arxiv.org/abs/2401.04928) - [GitHub](https://github.com/skynbe/FedRCL) |
 | FedAWA | CVPR | 2025 | Server-optimized per-client aggregation weights via client vectors | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
 | FedTrend | Science China Information Sciences | 2026 | Trend-aware aggregation for heterogeneous federated TSF | Tackling Data Heterogeneity in Federated Time Series Forecasting | [PUB](https://doi.org/10.1007/s11432-025-4553-x) - [Arxiv](https://arxiv.org/abs/2411.15716) |
-| FedRidge | arXiv | 2026 | One-shot federated ridge regression via sufficient statistic aggregation | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
-| DLSA | JCGS | 2021 | Federated weighted least-squares via precision-matrix aggregation | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
+| **FedRidge** | arXiv | 2026 | One-shot federated ridge regression via sufficient statistic aggregation | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
+| **DLSA** | JCGS | 2021 | Federated weighted least-squares via precision-matrix aggregation | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
 
 ## sFL — Security-Aware Federated Learning
 
@@ -129,6 +129,8 @@ Dynamic sparse training in FL: clients maintain a binary mask that zeroes select
 | FedRTS | NeurIPS | 2025 | Per-weight Beta(α,β) distributions; clients vote on core active (top-κ mag) and grow candidates (top-k grad); server Thompson-samples new mask | FedRTS: Federated Robust Pruning via Combinatorial Thompson Sampling | [Arxiv](https://arxiv.org/abs/2501.19122) - [REF](https://github.com/FedPruning/FedPruning/tree/main/api/distributed/fedrts) |
 
 ---
+
+**Bold** entries have been cross-checked against their original papers for formula, aggregation, and communication fidelity.
 
 \* Adapted from classification to regression. Please use with caution.
 
