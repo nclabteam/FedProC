@@ -216,7 +216,7 @@ class ExperimentAnalysis:
     ) -> Dict[str, float]:
         """Compute derived metrics from per-run loss time-series."""
         cfg = load_config(self.experiment_dir)
-        loss_metric = resolve_loss_metric(cfg.get("save_local_model", False))
+        loss_metric = resolve_loss_metric()
 
         derived = defaultdict(list)
         for run in runs_data:

@@ -166,6 +166,7 @@ class tFL_Client(SharedMethods):
             k: state[k].detach().cpu().clone() for k in self.personal_params_name
         }
         pkg = {
+            "__real__": ("regular_model_params",),
             "client_id": self.id,
             "regular_model_params": regular,
             "personal_model_params": personal,
@@ -256,16 +257,18 @@ class Trainer:
 
     def _dispatch(self, cid: int) -> dict:
         pkg = self.server.package(cid)
+        real_keys = pkg.pop("__real__", ())
         self.server._downlink_sizes[cid] = self.server.get_size(pkg)
         self.server._downlink_real_sizes[cid] = sum(
-            self.server.get_size(pkg[k]) for k in self.server._downlink_payload_keys if k in pkg
+            self.server.get_size(pkg[k]) for k in real_keys if k in pkg
         )
         return pkg
 
     def _receive(self, cid: int, out: dict) -> dict:
+        real_keys = out.pop("__real__", ())
         self.server._uplink_sizes[cid] = self.server.get_size(out)
         self.server._uplink_real_sizes[cid] = sum(
-            self.server.get_size(out[k]) for k in self.server._uplink_payload_keys if k in out
+            self.server.get_size(out[k]) for k in real_keys if k in out
         )
         return out
 
@@ -367,10 +370,6 @@ class tFL(SharedMethods):
     new_client_pers_test_loss: Optional[float] = None
 
     # Package keys that count as real network payload (exclude optimizer/scheduler state).
-    # Strategies override these to declare exactly what crosses the wire in a real deployment.
-    _uplink_payload_keys: tuple = ("regular_model_params",)
-    _downlink_payload_keys: tuple = ("regular_model_params",)
-
     def __init__(self, configs: Namespace, times: int) -> None:
         self.set_configs(configs=configs, times=times)
         self.mkdir()
@@ -391,10 +390,10 @@ class tFL(SharedMethods):
         self.name = "  SERVER  "
         self.metrics = {
             "time_per_iter": [],
-            "global_avg_train_loss": [],
-            "personal_avg_train_loss": [],
-            "global_avg_test_loss": [],
-            "personal_avg_test_loss": [],
+            "generalization_avg_train_loss": [],
+            "personalization_avg_train_loss": [],
+            "generalization_avg_test_loss": [],
+            "personalization_avg_test_loss": [],
             "downlink_mb": [],
             "downlink_real_mb": [],
         }
@@ -479,6 +478,7 @@ class tFL(SharedMethods):
 
     def package(self, client_id: int) -> Dict[str, Any]:
         return {
+            "__real__": ("regular_model_params",),
             "client_id": client_id,
             "current_iter": self.current_iter,
             "regular_model_params": copy.deepcopy(self.public_model_params),
@@ -491,13 +491,21 @@ class tFL(SharedMethods):
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
+    def _downlink_real_payload(self) -> Dict[str, Any]:
+        return {}
+
     def _compute_send_mb(self, packages) -> tuple:
         uplink = {
             cid: (self._uplink_sizes.get(cid, 0.0), self._uplink_real_sizes.get(cid, 0.0))
             for cid in packages
         }
         downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
-        downlink_real = sum(self._downlink_real_sizes.get(cid, 0.0) for cid in self.selected_clients)
+        post_agg = self._downlink_real_payload()
+        if post_agg:
+            per_client = sum(self.get_size(v) for v in post_agg.values())
+            downlink_real = per_client * len(self.selected_clients)
+        else:
+            downlink_real = sum(self._downlink_real_sizes.get(cid, 0.0) for cid in self.selected_clients)
         return uplink, (downlink, downlink_real)
 
     def train_one_round(self) -> dict:
@@ -525,7 +533,7 @@ class tFL(SharedMethods):
         losses = self.trainer.evaluate(
             incumbent, self.public_model_params, dataset_type, self.current_iter
         )
-        metric = f"global_avg_{dataset_type}_loss"
+        metric = f"generalization_avg_{dataset_type}_loss"
         metric_val = float(np.mean(losses))
         self.metrics[metric].append(metric_val)
         self.logger.info(
@@ -538,7 +546,7 @@ class tFL(SharedMethods):
             self._round_client_data.setdefault(cid, {})[f"{dataset_type}_loss"] = float(loss)
 
     def early_stopping(self) -> bool:
-        metric = self.metrics["global_avg_test_loss"]
+        metric = self.metrics["generalization_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:
             return False
         if min(metric) not in metric[-self.patience:]:
@@ -578,7 +586,7 @@ class tFL(SharedMethods):
         self.logger.info(f"Per-client results saved to {self.result_path}")
 
     def _save_best_hook(self) -> None:
-        vals = self.metrics.get("global_avg_test_loss", [])
+        vals = self.metrics.get("generalization_avg_test_loss", [])
         if not vals or vals[-1] == self.default_value:
             return
         if vals[-1] == self._best_global_loss:

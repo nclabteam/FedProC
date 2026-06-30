@@ -181,7 +181,7 @@ class pFedHN(pFL):
         if save_type not in ["last", "best"]:
             raise ValueError("save_type must be 'last' or 'best'")
         if save_type == "best":
-            metric_key = "personal_avg_test_loss"
+            metric_key = "personalization_avg_test_loss"
             if metric_key not in self.metrics or not self.metrics[metric_key]:
                 return
             vals = self.metrics[metric_key]

@@ -67,12 +67,6 @@ class Options:
         )
 
         parser.add_argument(
-            "--save_local_model",
-            action="store_true",
-            default=False,
-            help="save local model for each client (personalized federated learning)",
-        )
-        parser.add_argument(
             "--keep_useless_run",
             action="store_true",
             default=False,

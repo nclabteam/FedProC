@@ -173,7 +173,7 @@ class hFL(pFL):
             raise ValueError("save_type must be 'last' or 'best'")
 
         if save_type == "best":
-            vals = [v for v in self.metrics.get("personal_avg_test_loss", []) if v != self.default_value]
+            vals = [v for v in self.metrics.get("personalization_avg_test_loss", []) if v != self.default_value]
             if not vals or vals[-1] != min(vals):
                 return
 
@@ -203,7 +203,7 @@ class hFL(pFL):
         self.save_models("last")
 
     def early_stopping(self) -> bool:
-        metric = self.metrics["personal_avg_test_loss"]
+        metric = self.metrics["personalization_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:
             return False
         if min(metric) not in metric[-self.patience:]:

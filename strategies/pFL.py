@@ -14,12 +14,14 @@ class pFL(tFL):
     pFL and set ``personal_params_name`` on their client class.
     """
 
-    _uplink_payload_keys = ("regular_model_params", "personal_model_params")
-    _downlink_payload_keys = ("regular_model_params", "personal_model_params")
-
     def __init__(self, configs, times):
         super().__init__(configs, times)
         self._best_personal_loss: float = float("inf")
+
+    def package(self, client_id: int):
+        pkg = super().package(client_id)
+        pkg["__real__"] = ("regular_model_params", "personal_model_params")
+        return pkg
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
         incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
@@ -30,7 +32,7 @@ class pFL(tFL):
             dataset_type,
             self.current_iter,
         )
-        metric = f"personal_avg_{dataset_type}_loss"
+        metric = f"personalization_avg_{dataset_type}_loss"
         metric_val = float(np.mean(losses))
         self.metrics[metric].append(metric_val)
         self.logger.info(
@@ -53,7 +55,7 @@ class pFL(tFL):
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _save_best_hook(self) -> None:
-        losses = [v for v in self.metrics.get("personal_avg_test_loss", []) if v != self.default_value]
+        losses = [v for v in self.metrics.get("personalization_avg_test_loss", []) if v != self.default_value]
         if not losses:
             super()._save_best_hook()
             return
@@ -70,7 +72,7 @@ class pFL(tFL):
         self._save_personal_models("last")
 
     def early_stopping(self) -> bool:
-        metric = self.metrics["personal_avg_test_loss"]
+        metric = self.metrics["personalization_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:
             return False
         if min(metric) not in metric[-self.patience:]:
@@ -83,3 +85,8 @@ class pFL_Client(tFL_Client):
     """Passthrough — same as tFL_Client; named subclass kept as the
     discovery anchor for ``<Strategy>_Client`` resolution and as the shared
     base for personalized-FL client classes."""
+
+    def package(self):
+        pkg = super().package()
+        pkg["__real__"] = ("regular_model_params", "personal_model_params")
+        return pkg

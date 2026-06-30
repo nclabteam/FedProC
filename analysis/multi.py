@@ -80,11 +80,11 @@ METRIC_DESCRIPTIONS = {
     "loss": {"title": "Test loss", "explanation": "Lower is better."},
     "personalization_loss": {
         "title": "Personalization test loss",
-        "explanation": "personal_avg_test_loss.",
+        "explanation": "personalization_avg_test_loss.",
     },
     "generalization_loss": {
         "title": "Generalization test loss",
-        "explanation": "global_avg_test_loss.",
+        "explanation": "generalization_avg_test_loss.",
     },
     "efficiency": {
         "title": "Time per round",
@@ -167,11 +167,11 @@ class ExperimentComparison:
 
     def _resolve_metric(self, metric: str, experiment: Dict) -> str:
         if metric == "personalization_loss":
-            return "personal_avg_test_loss"
+            return "personalization_avg_test_loss"
         if metric == "generalization_loss":
-            return "global_avg_test_loss"
+            return "generalization_avg_test_loss"
         if metric == "loss":
-            return resolve_loss_metric(experiment.get("save_local_model", False))
+            return resolve_loss_metric()
         return metric
 
     def _get_metric_value_str(self, experiment: Dict, metric: str) -> Optional[str]:

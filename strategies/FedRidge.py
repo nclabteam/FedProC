@@ -39,7 +39,6 @@ class FedRidge(_LinearWeightsMixin, tFL):
     """
 
     optional = {"gamma": 0.1}
-    _uplink_payload_keys = ("sigma_xx", "sigma_xy")
 
     @classmethod
     def args_update(cls, parser):
@@ -144,4 +143,5 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
         result = super().package()
         result["sigma_xx"] = self._sigma_xx
         result["sigma_xy"] = self._sigma_xy
+        result["__real__"] = ("sigma_xx", "sigma_xy")
         return result

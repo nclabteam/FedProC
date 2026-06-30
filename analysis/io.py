@@ -131,9 +131,8 @@ def parse_numeric_list(
 # =============================================================================
 
 
-def resolve_loss_metric(save_local_model: bool) -> str:
-    """Resolve the loss metric name based on save_local_model flag."""
-    return "personal_avg_test_loss" if save_local_model else "global_avg_test_loss"
+def resolve_loss_metric() -> str:
+    return "generalization_avg_test_loss"
 
 
 def load_config(experiment_dir: Path) -> Dict:

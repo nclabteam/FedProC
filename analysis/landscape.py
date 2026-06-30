@@ -47,7 +47,6 @@ class LossLandscape:
 
         # Load config
         self.config = load_config(self.experiment_dir)
-        self.save_local_model = self.config.get("save_local_model", False)
 
     # =========================================================================
     # Model loading
@@ -136,11 +135,7 @@ class LossLandscape:
         metrics = data.get("metric", [])
         avg_mins = data.get("avg_min", [])
 
-        loss_metric = (
-            "personal_avg_test_loss"
-            if self.save_local_model
-            else "global_avg_test_loss"
-        )
+        loss_metric = "generalization_avg_test_loss"
         for i, m in enumerate(metrics):
             if m == loss_metric:
                 # We need per-run min, not avg. Fall back to first run.
@@ -487,8 +482,9 @@ class LossLandscape:
         files = []
         suffix = f"_{checkpoint}.pt"  # _best.pt or _last.pt
 
-        if not self.save_local_model:
-            # Traditional FL: server model only
+        client_models = sorted(models_dir.glob(f"client_*{suffix}"))
+        if not client_models:
+            # No client models: server model only
             path = models_dir / f"server{suffix}"
             if path.exists():
                 files.append(("server", path))
