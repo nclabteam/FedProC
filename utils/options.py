@@ -32,7 +32,10 @@ class Options:
         self.dup = {}
 
     def parse_options(self):
-        parser = argparse.ArgumentParser(formatter_class=CustomHelpFormatter)
+        parser = argparse.ArgumentParser(
+            formatter_class=CustomHelpFormatter,
+            allow_abbrev=False,
+        )
         # allow loading defaults from a JSON config file (CLI overrides file)
         parser.add_argument(
             "--config_file",

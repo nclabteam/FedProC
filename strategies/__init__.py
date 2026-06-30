@@ -76,7 +76,19 @@ class _LazyModuleRegistry(Mapping):
 
     def _resolve(self, key: str, fallback: Any) -> Any:
         cls = _load_strategy_class(key)
-        return getattr(cls, self.attribute_name, fallback)
+        # For dict attributes, merge across the full MRO (parent → child) so
+        # subclasses don't need to manually include **parent.optional.
+        # Non-dict attributes (classmethods etc.) use normal MRO via getattr.
+        sample = getattr(cls, self.attribute_name, fallback)
+        if isinstance(sample, dict):
+            merged: dict = {}
+            for base in reversed(cls.__mro__):
+                if self.attribute_name in base.__dict__:
+                    val = base.__dict__[self.attribute_name]
+                    if isinstance(val, dict):
+                        merged.update(val)
+            return merged if merged else fallback
+        return sample
 
     def __getitem__(self, key):
         if key not in STRATEGIES:

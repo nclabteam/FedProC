@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from .tFL import tFL, tFL_Client
+from .sFL import sFL, sFL_Client
 
 
-class FedMedian(tFL):
+class FedMedian(sFL):
     """Coordinate-wise median aggregation (Byzantine-robust).
 
     Aggregates client updates by taking the element-wise median across all
@@ -26,5 +26,5 @@ class FedMedian(tFL):
         self._commit_global(new_params)
 
 
-class FedMedian_Client(tFL_Client):
+class FedMedian_Client(sFL_Client):
     pass

@@ -26,9 +26,6 @@ Central-server FL where a server aggregates client updates each round and broadc
 | FedSPA | IJCAI | 2021 | Client rand-k sparsification + Gaussian DP noise per local step; server Adam-like adaptive update (u/v moments over avg delta) | Federated Learning with Sparsification-Amplified Privacy and Adaptive Optimization | [Arxiv](https://arxiv.org/abs/2008.01558) |
 | FedAdam | ICLR | 2021 | Server-side Adam momentum for global model update | Adaptive Federated Optimization | [Arxiv](https://arxiv.org/abs/2003.00295) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedadam.py) |
 | FedYogi | ICLR | 2021 | Server-side Yogi optimizer (sign-scaled momentum) for global update | Adaptive Federated Optimization | [Arxiv](https://arxiv.org/abs/2003.00295) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedyogi.py) |
-| Krum | NeurIPS | 2017 | Byzantine-robust aggregation via nearest-neighbor cluster selection | Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent | [PUB](https://papers.nips.cc/paper_files/paper/2017/hash/f4b9ec30ad9f68f89b29639786cb62ef-Abstract.html) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/krum.py) |
-| FedMedian | ICML | 2018 | Byzantine-robust coordinate-wise median aggregation | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedmedian.py) |
-| FedTrimmedAvg | ICML | 2018 | Byzantine-robust trimmed mean aggregation | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedtrimmedavg.py) |
 | FedPAQ | AISTATS | 2020 | Periodic averaging with stochastic quantization of update vectors | FedPAQ: A Communication-Efficient Federated Learning Method with Periodic Averaging and Quantization | [Arxiv](https://arxiv.org/abs/1909.13014) |
 | MOON | CVPR | 2021 | Model-contrastive regularization with global and previous local models | Model-Contrastive Federated Learning | [Arxiv](https://arxiv.org/abs/2103.16257) |
 | Caesar | arXiv | 2024 | Staleness-aware top-K+1-bit model download with client recovery; importance-ranked gradient upload sparsification | Caesar: A Low-deviation Compression Approach for Efficient Federated Learning | [Arxiv](https://arxiv.org/abs/2412.19989) |
@@ -42,6 +39,20 @@ Central-server FL where a server aggregates client updates each round and broadc
 | FedTrend | Science China Information Sciences | 2026 | Trend-aware aggregation for heterogeneous federated TSF | Tackling Data Heterogeneity in Federated Time Series Forecasting | [PUB](https://doi.org/10.1007/s11432-025-4553-x) - [Arxiv](https://arxiv.org/abs/2411.15716) |
 | FedRidge | arXiv | 2026 | One-shot federated ridge regression via sufficient statistic aggregation | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
 | FedDLSA | JCGS | 2021 | Federated weighted least-squares via precision-matrix aggregation | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
+
+## sFL — Security-Aware Federated Learning
+
+Central-server FL with a pluggable threat injection seam between client training and aggregation. Strategies that inherit from `sFL` get the seam for free and can be evaluated under any registered attack (Byzantine model poisoning, sign-flip, etc.) by flipping `--attack` at run time without changing strategy code.
+
+Strategies that inherit from `sFL` implement a specific defense; more families can be added without touching the injection seam.
+
+Use `--attack <name>` and `--malicious_frac <f>` to switch between benign and adversarial evaluation — see [Usage § Adversarial Eval](usage.md#adversarial-eval).
+
+| Name | Venue | Year | Description | Paper | URL |
+|------|-------|------|-------------|-------|-----|
+| Krum | NeurIPS | 2017 | Byzantine-robust aggregation via nearest-neighbor cluster selection | Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent | [PUB](https://papers.nips.cc/paper_files/paper/2017/hash/f4b9ec30ad9f68f89b29639786cb62ef-Abstract.html) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/krum.py) |
+| FedMedian | ICML | 2018 | Byzantine-robust coordinate-wise median aggregation | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedmedian.py) |
+| FedTrimmedAvg | ICML | 2018 | Byzantine-robust trimmed mean aggregation | Byzantine-Robust Distributed Learning: Towards Optimal Statistical Rates | [Arxiv](https://arxiv.org/abs/1803.01498) - [REF](https://github.com/adap/flower/blob/main/src/py/flwr/server/strategy/fedtrimmedavg.py) |
 
 ## pFL — Personalized Federated Learning
 
@@ -66,7 +77,6 @@ Each client maintains its own model or model component alongside the global mode
 | FedFew | arXiv | 2025 | K server models with STCH-Set soft assignment; near-optimal pFL via few-for-many | Few-for-Many Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2603.11992) |
 | FedALA | AAAI | 2023 | Element-wise adaptive local aggregation via gradient alignment | FedALA: Adaptive Local Aggregation for Personalized Federated Learning | [Arxiv](https://arxiv.org/abs/2212.01197) |
 | FedCAC | ICCV | 2023 | Sparsity-based selective collaboration with cautious aggregation | Bold but Cautious: Unlocking the Potential of Personalized Federated Learning through Cautiously Aggressive Collaboration | [OpenAccess](https://openaccess.thecvf.com/content/ICCV2023/html/Wu_Bold_but_Cautious_Unlocking_the_Potential_of_Personalized_Federated_Learning_ICCV_2023_paper.html) - [Arxiv](https://arxiv.org/abs/2309.11103) |
-| FDCR | NeurIPS | 2024 | Parameter-disparity dissection for backdoor defense in heterogeneous FL | Parameter Disparities Dissection for Backdoor Defense in Heterogeneous Federated Learning | [Arxiv](https://arxiv.org/abs/2404.10332) - [GitHub](https://github.com/WenkeHuang/FDCR) |
 | FedIT | ICASSP | 2024 | Federated instruction tuning with LoRA for large language models | Towards Building the Federated GPT: Federated Instruction Tuning | [Arxiv](https://arxiv.org/abs/2305.05644) |
 | FFA_LoRA | ICLR | 2024 | Freezes LoRA-A, aggregates only LoRA-B for privacy-preserving fine-tuning | Improving LoRA in Privacy-preserving Federated Learning | [Arxiv](https://arxiv.org/abs/2403.12313) |
 | FedSelect | CVPR | 2024 | Sparse parameter selection masks for efficient personalized fine-tuning | FedSelect: Personalized Federated Learning with Customized Selection of Parameters for Fine-Tuning | [Arxiv](https://arxiv.org/abs/2404.02478) - [GitHub](https://github.com/lapisrocks/fedselect) |

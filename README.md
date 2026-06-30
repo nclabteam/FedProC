@@ -49,6 +49,7 @@ Get started with FedProC in just a few steps:
 - **[Installation](docs/installation.md)** - Installation guide and requirements
 - **[Usage](docs/usage.md)** - Basic usage and examples
 - **[Strategies](docs/strategies.md)** - Available federated learning strategies (66 strategies)
+- **[Attacks](docs/attacks.md)** - Attack registry for adversarial evaluation (6 attacks)
 - **[Datasets](docs/datasets.md)** - Supported datasets and data preparation (31 datasets)
 - **[Models](docs/models.md)** - Available models and architectures (78 models)
 - **[Augmentations](docs/augs.md)** - Custom GPU-native PyTorch augmentations (8 augmentations)

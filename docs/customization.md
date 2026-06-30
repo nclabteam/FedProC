@@ -155,9 +155,10 @@ optional = {
     "key2": value2,
 }
 ```
-Those keys must be specified with the same file by making a global function `args_update`. For example:
+Those keys must be exposed via a `@classmethod` named `args_update`. For example:
 ```
-def args_update(parser):
+@classmethod
+def args_update(cls, parser):
     parser.add_argument(
         "--key1",
         type=int,
@@ -190,26 +191,34 @@ class FedNew_Client(Client):
     return self.key2
 ```
 
-If this is a customized method which is inherited from another mehtod having `compulsory` or `optional`:
-```
-from .FedNew import args_update as FedNew_args_update
-from .FedNew import optional as FedNew_optional
+If this is a customized method which is inherited from another method having `compulsory` or `optional`:
 
+The framework automatically merges `optional` dicts up the full MRO at runtime — parent defaults flow into subclasses without any manual `**parent_optional` spread. Just define your own keys:
+
+```
 optional = {
-    **FedNew_optional,
     "key3": value3,
 }
+```
 
-def args_update(parser):
-    FedNew_args_update(parser)
+For `args_update`, call `super().args_update(parser)` to inherit the parent's CLI arguments:
+
+```
+@classmethod
+def args_update(cls, parser):
+    super().args_update(parser)
     parser.add_argument(
         "--key3",
         type=str,
         default=None,
-        choices=["a", "b", "c"]
+        choices=["a", "b", "c"],
         help="what is this parameter",
     )
 ```
+
+## Attack
+
+See [attacks.md](attacks.md) for the full attack registry and how to add a custom attack.
 
 ## Analysis Tools
 

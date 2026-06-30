@@ -9,6 +9,8 @@ Canonical class hierarchy:
     └─ tFL_Client   reusable stateless worker
     └─ tFL          server — owns global model + all per-client state
          └─ pFL     adds per-client personal-model evaluation pre-hook
+         └─ sFL     adds Byzantine attack injection seam (attacks/ registry)
+              └─ Krum, FedMedian, FedTrimmedAvg
 """
 
 import copy

@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from .tFL import tFL, tFL_Client
+from .sFL import sFL, sFL_Client
 
 
-class FedTrimmedAvg(tFL):
+class FedTrimmedAvg(sFL):
     """Coordinate-wise trimmed-mean aggregation (Byzantine-robust).
 
     Sorts client parameters per coordinate, removes the bottom and top
@@ -22,6 +22,7 @@ class FedTrimmedAvg(tFL):
 
     @classmethod
     def args_update(cls, parser):
+        super().args_update(parser)
         parser.add_argument(
             "--beta",
             type=float,
@@ -47,5 +48,5 @@ class FedTrimmedAvg(tFL):
         self._commit_global(new_params)
 
 
-class FedTrimmedAvg_Client(tFL_Client):
+class FedTrimmedAvg_Client(sFL_Client):
     pass

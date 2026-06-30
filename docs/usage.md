@@ -79,6 +79,34 @@ python main.py --config_file configs/my_experiment.json --iterations 200
 | `--loss` | str | `MSE` | Loss function — see `docs/losses.md` |
 | `--scheduler` | str | `BaseScheduler` | LR scheduler — see `docs/schedulers.md` |
 
+### Adversarial Eval
+
+Applies only to `sFL`-based strategies. In benign mode (defaults) the behaviour is identical to a standard tFL run.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--attack` | str | `NoAttack` | Attack injected into malicious clients' packages each round |
+| `--malicious_frac` | float | `0.0` | Fraction of clients designated as Byzantine; `0` = benign mode |
+
+**Krum-specific**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--num_malicious_clients` | int | `0` | f assumed by Krum when computing neighbor scores; `0` = derive from `--malicious_frac` |
+| `--num_clients_to_keep` | int | `0` | Multi-Krum: average the top-k lowest-score clients; `0` = classical Krum |
+
+**FedTrimmedAvg-specific**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--beta` | float | `0.2` | Fraction trimmed from each tail per coordinate |
+
+```bash
+# Krum under Sign-Flip attack, 20% Byzantine clients
+python main.py --dataset Electricity --strategy Krum --model DLinear \
+    --attack SignFlip --malicious_frac 0.2 --iterations 100
+```
+
 ### New-Client Onboarding
 
 Holds out a fraction of clients from training. After federation ends, each held-out client runs a local adaptation step and is evaluated separately. Results are logged to the server log and saved to `new_client_results.json` in the run directory.

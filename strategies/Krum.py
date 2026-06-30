@@ -2,10 +2,10 @@ from collections import OrderedDict
 
 import torch
 
-from .tFL import tFL, tFL_Client
+from .sFL import sFL, sFL_Client
 
 
-class Krum(tFL):
+class Krum(sFL):
     """Krum and Multi-Krum Byzantine-robust aggregation (Blanchard et al., NeurIPS 2017).
 
     For each client i, compute the sum of squared L2 distances to its
@@ -23,11 +23,12 @@ class Krum(tFL):
 
     @classmethod
     def args_update(cls, parser):
+        super().args_update(parser)
         parser.add_argument(
             "--num_malicious_clients",
             type=int,
             default=None,
-            help="Number of malicious clients in the system",
+            help="f in Krum: assumed Byzantine count. 0 = derive from --malicious_frac.",
         )
         parser.add_argument(
             "--num_clients_to_keep",
@@ -41,7 +42,8 @@ class Krum(tFL):
         distance_matrix = self.compute_distances(client_weights)
 
         num_clients = len(client_weights)
-        num_closest = max(1, num_clients - self.num_malicious_clients - 2)
+        f = self.num_malicious_clients or len(self.malicious_ids)
+        num_closest = max(1, num_clients - f - 2)
         closest_indices = [
             torch.argsort(distance)[1 : num_closest + 1].tolist()
             for distance in distance_matrix
@@ -82,5 +84,5 @@ class Krum(tFL):
         return distance_matrix
 
 
-class Krum_Client(tFL_Client):
+class Krum_Client(sFL_Client):
     pass
