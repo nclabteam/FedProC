@@ -12,12 +12,12 @@ Download (server -> client):
   local model where sign matches and abs <= max_abs; otherwise uses avg_abs * sign.
 
 Upload (client -> server):
-  Importance C_i = train_samples / max_samples (TSF has no class labels, so
-  the KL-divergence term is dropped). Rank-based upload ratio:
-  theta_u_i = theta_u_min + (theta_u_max - theta_u_min) / N * rank(C_i).
-  Client sparsifies gradient (top-K by magnitude, keeping 1-theta_u proportion).
+Importance C_i = train_samples / max_samples (TSF has no class labels, so
+the KL-divergence term is dropped). Rank-based upload ratio (N = all clients):
+theta_u_i = theta_u_min + (theta_u_max - theta_u_min) / N * rank(C_i).
+Client sparsifies gradient (top-K by magnitude, keeping 1-theta_u proportion).
 
-Aggregation: w^{t+1} = w^t - (1/N) * sum(compressed_gradient_i).
+Aggregation: w^{t+1} = w^t - (1/|N^t|) * sum(compressed_gradient_i).
 """
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
@@ -52,7 +52,7 @@ class Caesar(tFL):
             self._caesar_importance[cid] /= max_s
 
     def _caesar_update_upload_ratios(self, selected: List[int]) -> None:
-        n = len(selected)
+        n = self.num_clients
         ranked = sorted(selected, key=lambda c: self._caesar_importance.get(c, 0.0), reverse=True)
         for rank, cid in enumerate(ranked, start=1):
             self._caesar_upload_ratio[cid] = (
@@ -109,12 +109,11 @@ class Caesar(tFL):
             self._caesar_update_upload_ratios(list(packages.keys()))
             self._caesar_ratio_iter = self.current_iter
 
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
+        n_participants = len(packages)
+        w = 1.0 / n_participants
 
         avg_grad: Dict[str, torch.Tensor] = {}
-        for pkg, score in zip(packages.values(), scores):
-            w = score / total
+        for pkg in packages.values():
             for name, g in pkg["_caesar_gradient"].items():
                 if name not in avg_grad:
                     avg_grad[name] = g.float() * w
