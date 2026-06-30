@@ -81,9 +81,7 @@ class aFL(tFL):
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
             self.logger.info(f"{iter_time:.2f}s")
-            self.fix_results(default=self.default_value)
-            if self.early_stopping():
-                break
+            self._flush_round()
 
         for fut in pending:
             try:
@@ -92,8 +90,6 @@ class aFL(tFL):
                 pass
 
         self._save_last_hook()
-        self.save_results()
-        self._save_per_client_results()
         try:
             self.close_logger()
         except Exception:

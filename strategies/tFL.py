@@ -606,6 +606,9 @@ class tFL(SharedMethods):
             self.model, self.model_path, self.name.strip(), "last",
             configs=self.configs, verbose=self.logger,
         )
+        path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
+        self.logger.info(f"Results saved to {path}")
+        self.logger.info(f"Per-client results saved to {self.result_path}")
 
     def train(self) -> None:
         for i in range(self.iterations):
