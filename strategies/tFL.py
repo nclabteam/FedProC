@@ -572,8 +572,10 @@ class tFL(SharedMethods):
                 writer.writeheader()
             writer.writerow(row)
 
+    _client_csv_fields: tuple = ("uplink_mb", "train_loss", "test_loss")
+
     def _flush_client_data(self) -> None:
-        fields = ("uplink_mb", "train_loss", "test_loss")
+        fields = self._client_csv_fields
         for cid, data in self._round_client_data.items():
             path = os.path.join(self.result_path, f"client_{cid}.csv")
             row = {"round": self.current_iter}
