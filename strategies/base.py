@@ -58,6 +58,7 @@ class SharedMethods:
         shuffle: bool = False,
         scaler: Any = None,
         seed: Optional[int] = None,
+        indices: Optional[List[int]] = None,
     ) -> DataLoader:
         assert 0 <= sample_ratio <= 1, "sample_ratio must be between 0 and 1"
         generator = None
@@ -74,10 +75,14 @@ class SharedMethods:
         y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
         dataset = TensorDataset(x, y, x_mark, y_mark)
 
-        if sample_ratio < 1.0:
-            subset_size = int(len(dataset) * sample_ratio)
-            indices = torch.randperm(len(dataset), generator=generator)[:subset_size]
+        if indices is not None:
+            # Caller-supplied deterministic subset (e.g. strided/non-overlapping window
+            # selection) takes precedence over the random sample_ratio subset below.
             dataset = Subset(dataset, indices)
+        elif sample_ratio < 1.0:
+            subset_size = int(len(dataset) * sample_ratio)
+            rand_indices = torch.randperm(len(dataset), generator=generator)[:subset_size]
+            dataset = Subset(dataset, rand_indices)
 
         return DataLoader(
             dataset=dataset,
