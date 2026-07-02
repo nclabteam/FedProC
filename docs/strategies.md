@@ -147,4 +147,3 @@ Dynamic sparse training in FL: clients maintain a binary mask that zeroes select
 | FML† | TSF adaptation | KL divergence computed over the time dimension instead of the class dimension. |
 | Caesar† | TSF adaptation | No class labels → KL term dropped. Uplink = COO sparse gradient; downlink = true compressed wire size. Paper defaults (§5.1): `theta_d_max=0.6`, `theta_u_min=0.1`, `theta_u_max=0.6`, `lambda=0.5`. |
 | DeComFL | Implementation note | Uplink faithful (dimension-free ZO scalars, `mu=0.001` matches paper). Downlink is full model, not seed-replayed — stateless clients can't persist history across rounds. `q=2`, `zo_lr=0.01` are TSF-adapted, not paper defaults. |
-| FedLUAR | Implementation note | Exact match to Alg. 1 / Eq. 1–2. `luar_num_recycle_layers=1` is an unvalidated default (paper uses 2–30, dataset-specific). |
