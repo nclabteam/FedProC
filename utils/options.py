@@ -277,9 +277,6 @@ class Options:
             )
 
         self.args = parser.parse_args()
-        os.environ["CUDA_VISIBLE_DEVICES"] = (
-            self.args.device_id if self.args.device == "cuda" else ""
-        )
         return self
 
     # Function to apply args_update to a parser
