@@ -149,11 +149,14 @@ class FedAWA(Server):
         new_params = OrderedDict()
         for name in self.public_model_params:
             stacked = torch.stack(
-                [client_params[i][name].float() for i in range(num_clients)], dim=-1
+                [client_params[i][name].float().to(self.device) for i in range(num_clients)],
+                dim=-1,
             )
-            new_params[name] = torch.sum(
-                stacked * weights.to(stacked.dtype), dim=-1
-            ).to(self.public_model_params[name].dtype)
+            new_params[name] = (
+                torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
+                .to(self.public_model_params[name].dtype)
+                .cpu()
+            )
         self._commit_global(new_params)
 
 
