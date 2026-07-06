@@ -1,9 +1,23 @@
+import math
 from collections import OrderedDict
 
 import numpy as np
 import torch
 
 from .tFL import tFL, tFL_Client
+
+_BYTES_PER_MB = 1024 ** 2
+
+
+def _recycle_layers_mb(num_layers: int, delta: int) -> float:
+    """Paper (line 322): R_t (the delta recycled-layer IDs) is transmitted
+    downlink alongside the model. Encoded as delta integers, each needing
+    ceil(log2(num_layers)) bits to index one of num_layers layers.
+    """
+    if delta <= 0 or num_layers <= 1:
+        return 0.0
+    bits_per_index = math.ceil(math.log2(num_layers))
+    return delta * bits_per_index / 8 / _BYTES_PER_MB
 
 
 class FedLUAR(tFL):
@@ -51,6 +65,17 @@ class FedLUAR(tFL):
         pkg["luar_recycle_layers"] = self._luar_recycle_layers
         return pkg
 
+    def _compute_send_mb(self, packages) -> tuple:
+        uplink = {cid: self._uplink_sizes.get(cid, 0.0) for cid in packages}
+        model_downlink = sum(
+            self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients
+        )
+        rt_mb = _recycle_layers_mb(
+            len(self.public_model_params), len(self._luar_recycle_layers)
+        )
+        downlink = model_downlink + rt_mb * len(self.selected_clients)
+        return uplink, downlink
+
     def select_clients(self) -> None:
         super().select_clients()
         self._update_layer_selection()
@@ -97,11 +122,9 @@ class FedLUAR(tFL):
             (k, v.data.clone()) for k, v in self.public_model_params.items()
         )
 
-        # 2. Weighted averaging of returned params (all layers clients sent)
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
-        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
-
+        # 2. Simple (1/a) averaging of returned params (Alg. 1, line 2:
+        #    u_t = (1/a) * sum(u_t^i) -- NOT sample-count weighted)
+        a = len(packages)
         agg_params = OrderedDict()
         for name in self.public_model_params:
             available = all(
@@ -111,9 +134,7 @@ class FedLUAR(tFL):
                 stacked = torch.stack(
                     [p["regular_model_params"][name] for p in packages.values()], dim=-1
                 )
-                agg_params[name] = torch.sum(
-                    stacked * weights.to(stacked.dtype), dim=-1
-                )
+                agg_params[name] = stacked.sum(dim=-1) / a
             else:
                 agg_params[name] = self._luar_prev_params[name].data.clone()
 

@@ -1,6 +1,7 @@
 import math
 import torch
 from collections import OrderedDict
+from torch.func import functional_call
 
 from .tFL import tFL, tFL_Client
 from .base import SharedMethods
@@ -20,15 +21,29 @@ def _qsgd_uplink_mb(model_params: OrderedDict, s: int) -> float:
 
 
 def _fake_quantize_weight(w: torch.Tensor, s: int) -> torch.Tensor:
-    """Symmetric per-layer fake quantization with max-based scale."""
+    """Paper's vector quantizer Q(w) applied during the QAT forward pass.
+
+    Exact Eqs. 7-10: scale = (v_max-v_min)/(q_max-q_min) (Eq. 9), zero point
+    z = q_max - round(v_max/scale) (Eq. 10), stochastic rounding (Eq. 7),
+    dequantize v' = (q-z)*scale (Eq. 8). q_min=-s//2, q_max=s//2-1 matches the
+    paper's own 8-bit example (s=256 -> q_max=127, q_min=-128).
+    """
     if s <= 0:
         return w
-    scale = w.abs().max()
-    if scale == 0:
+    v_max, v_min = w.max(), w.min()
+    if v_max == v_min:
         return w
-    half = s // 2
-    q = torch.clamp(torch.round(w / scale * half), -half, half - 1)
-    return q * scale / half
+    q_min = -(s // 2)
+    q_max = s // 2 - 1
+    scale = (v_max - v_min) / (q_max - q_min)
+    z = q_max - torch.round(v_max / scale)
+    scaled = w / scale + z
+    floor_val = torch.floor(scaled)
+    prob = scaled - floor_val
+    rand = torch.rand_like(w)
+    q = torch.where(rand < prob, floor_val + 1.0, floor_val)
+    q = torch.clamp(q, q_min, q_max)
+    return (q - z) * scale
 
 
 class QATFLShared(SharedMethods):
@@ -83,6 +98,22 @@ class QATFL(QATFLShared, tFL):
         downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
         return uplink, downlink
 
+    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
+        """Unweighted FedAvg per paper Eq. 22 / Algorithm 1:
+
+            w_{k+1} = w_k + (1/r) * sum_{i in S_k} Q_de(Q(w_{k,tau+M}^i - w_k))
+
+        r = number of selected nodes -- NOT sample-count weighted.
+        """
+        r = len(packages)
+        new_params = OrderedDict()
+        for name in self.public_model_params:
+            stacked = torch.stack(
+                [p["regular_model_params"][name] for p in packages.values()], dim=-1
+            )
+            new_params[name] = stacked.sum(dim=-1) / r
+        self._commit_global(new_params)
+
 
 class QATFL_Client(QATFLShared, tFL_Client):
     s: int = 16
@@ -101,8 +132,9 @@ class QATFL_Client(QATFLShared, tFL_Client):
         offload_after_epoch = self.efficiency == "low"
 
         # Phase 1: regular local SGD updates (τ epochs)
-        qat_epochs = min(self.M_qat, max(0, self.epochs - 1))
-        regular_epochs = max(0, self.epochs - qat_epochs)
+        # Paper's Table 1 tests tau=0 (all-QAT) as a valid config -- no floor here.
+        qat_epochs = min(self.M_qat, self.epochs)
+        regular_epochs = self.epochs - qat_epochs
         for _ in range(regular_epochs):
             self.train_one_epoch(
                 model=self.model, dataloader=loader, optimizer=self.optimizer,
@@ -125,7 +157,12 @@ class QATFL_Client(QATFLShared, tFL_Client):
         self, model, dataloader, optimizer, criterion, device,
         offload_after=True,
     ) -> None:
-        """One QAT epoch: fake-quantize weights, forward, backward (STE), update."""
+        """One QAT epoch (paper Eqs. 20-21): loss computed via fake-quantized
+        forward Q_fake(w) with straight-through gradient, but the optimizer
+        update lands on the true persistent full-precision w -- quantization
+        never overwrites the parameter itself, so noise cannot compound
+        irreversibly across batches.
+        """
         model.to(device)
         SharedMethods._move_optimizer_state_to_param_devices(optimizer)
         model.train()
@@ -136,12 +173,16 @@ class QATFL_Client(QATFLShared, tFL_Client):
             x_mark = x_mark.to(device=device, dtype=torch.float32, non_blocking=True)
             y_mark = y_mark.to(device=device, dtype=torch.float32, non_blocking=True)
 
-            # Fake-quantize all trainable weights in-place (STE: backward uses identity)
-            for param in model.parameters():
-                if param.requires_grad:
-                    param.data = _fake_quantize_weight(param.data, self.s)
-
-            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
+            # STE: forward value = Q_fake(w), but d(quantized)/dw = 1 (identity),
+            # so the gradient accumulated on the true param w is unaffected.
+            quantized = {
+                name: p + (_fake_quantize_weight(p.detach(), self.s) - p).detach()
+                for name, p in model.named_parameters()
+                if p.requires_grad
+            }
+            outputs = functional_call(
+                model, quantized, (batch_x,), {"x_mark": x_mark, "y_mark": y_mark}
+            )
             loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
