@@ -173,7 +173,10 @@ class ExperimentAnalysis:
             return {}
 
         result = {}
-        skip_cols = {"round"}
+        # downlink_mb/uplink_mb are already aggregated via _compute_bandwidth_stats
+        # below (reported as downlink_MB/uplink_MB); skip them here or they'd be
+        # double-counted as a separate raw-cased row.
+        skip_cols = {"round", "downlink_mb", "uplink_mb"}
         for col, values in data.items():
             if not isinstance(values, list) or col in skip_cols:
                 continue
