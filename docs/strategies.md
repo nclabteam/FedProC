@@ -40,7 +40,7 @@ Central-server FL where a server aggregates client updates each round and broadc
 | **FedRidge** | arXiv | 2026 | One-shot federated ridge regression via sufficient statistic aggregation | One-Shot Federated Ridge Regression: Exact Recovery via Sufficient Statistic Aggregation | [Arxiv](https://arxiv.org/abs/2601.08216) |
 | **DLSA** | JCGS | 2021 | Federated weighted least-squares via precision-matrix aggregation | Least-Square Approximation for a Distributed System | [PUB](https://doi.org/10.1080/10618600.2021.1923517) - [Arxiv](https://arxiv.org/abs/1908.04904) |
 | **QATFL** | IEEE TMLCN | 2026 | Fake-quantization + STE during local training reduces quantization distortion vs. post-training quantization; QSGD-quantized delta upload | Communication Efficient Federated Learning With Quantization-Aware Training Design | [PUB](https://doi.org/10.1109/TMLCN.2025.3635050) |
-| **DeComFL** | arXiv | 2024 | Zeroth-order optimization: clients upload only scalar loss-difference gradients (dimension-free uplink); server replays SPSA update from shared perturbation seeds | Achieving Dimension-Free Communication in Federated Learning via Zeroth-Order Optimization | [Arxiv](https://arxiv.org/abs/2405.15861) - [GitHub](https://github.com/ZidongLiu/DeComFL) |
+| **DeComFL‡** | arXiv | 2024 | Zeroth-order optimization: clients upload only scalar loss-difference gradients (dimension-free uplink); server replays SPSA update from shared perturbation seeds | Achieving Dimension-Free Communication in Federated Learning via Zeroth-Order Optimization | [Arxiv](https://arxiv.org/abs/2405.15861) - [GitHub](https://github.com/ZidongLiu/DeComFL) |
 | **FedLUAR** | arXiv | 2025 | Recycles previous-round updates for a subset of layers, chosen via inverse-magnitude probability sampling, to cut uplink | Layer-wise Update Aggregation with Recycling for Communication-Efficient Federated Learning | [Arxiv](https://arxiv.org/abs/2503.11146) - [GitHub](https://github.com/swblaster/FedLUAR) |
 
 ## sFL — Security-Aware Federated Learning
@@ -133,17 +133,17 @@ Dynamic sparse training in FL: clients maintain a binary mask that zeroes select
 
 ---
 
-**Bold** entries have been cross-checked against their original papers for formula, aggregation, and communication fidelity.
-
 \* Adapted from classification to regression. Please use with caution.
 
 \*\* Decentralized variant converted from its tFL/pFL counterpart (e.g. FedAvg → DFedAvg).
 
 † TSF adaptation applied: class-level assumptions replaced with time-series equivalents. Please use with caution.
 
+‡ Architecture-driven deviation: FedProC's stateless-client design cannot support a mechanism the paper relies on. Not a bug, not a TSF adaptation — see the Implementation Notes table.
+
 | Strategy | Type | Note |
 |---|---|---|
 | FedRCL† | TSF adaptation | Pseudo-labels via quantile binning replace class labels; no multi-level contrastive hooks (TSF has no intermediate features). |
 | FML† | TSF adaptation | KL divergence computed over the time dimension instead of the class dimension. |
 | Caesar† | TSF adaptation | No class labels → KL term dropped. Uplink = COO sparse gradient; downlink = true compressed wire size. Paper defaults (§5.1): `theta_d_max=0.6`, `theta_u_min=0.1`, `theta_u_max=0.6`, `lambda=0.5`. |
-| DeComFL | Implementation note | Uplink faithful (dimension-free ZO scalars, `mu=0.001` matches paper). Downlink is full model, not seed-replayed — stateless clients can't persist history across rounds. `q=2`, `zo_lr=0.01` are TSF-adapted, not paper defaults. |
+| DeComFL‡ | Implementation note | Uplink faithful (dimension-free ZO scalars, `mu=0.001` matches paper). Downlink is **not** dimension-free like the paper: the paper's trick needs stateful clients to replay a model update from a shared random seed; FedProC's clients are stateless (respawned fresh each round) and cannot replay history, so the full model is sent downlink every round instead. `q=2`, `zo_lr=0.01` are TSF-adapted, not paper defaults. |
