@@ -422,7 +422,7 @@
       <div class="fl">Search</div>
       <div class="search-wrap">
         <input id="searchInput" class="search-input" type="text"
-               placeholder="_ filter titles..." autocomplete="off" spellcheck="false">
+               placeholder="_ filter by title, venue, id..." autocomplete="off" spellcheck="false">
         <span class="search-hint">Ctrl+K</span>
       </div>
     </div>
@@ -610,7 +610,7 @@ async function load() {
       p._t = tags(p);
     });
     initFilters();
-    loadHash();
+    loadQueryId();
     apply();
   } catch(e) {
     tableWrap.innerHTML = `<div class="status-msg">✗ ${e.message}<br>
@@ -668,7 +668,8 @@ function apply() {
   const q = S.q.toLowerCase();
   filtered = all.filter(p => {
     if (q && !(p.Title||'').toLowerCase().includes(q) &&
-             !(p.Venue||'').toLowerCase().includes(q)) return false;
+             !(p.Venue||'').toLowerCase().includes(q) &&
+             !(p.ID||'').toLowerCase().includes(q)) return false;
     const y = +p.Year;
     if (y && (y < S.yMin || y > S.yMax)) return false;
     if (S.venues.size && !S.venues.has(p.Venue)) return false;
@@ -832,6 +833,22 @@ function pushHash() {
   if (page>1) p.set('page',page);
   const str=p.toString();
   history.replaceState(null,'',str?'#'+str:location.pathname+location.search);
+}
+
+function loadQueryId() {
+  // Direct-link entry point: ?id=10025 or #id=10025 jumps straight to that
+  // paper by reusing the existing search filter, so it round-trips through
+  // the URL exactly like every other filter (via pushHash() below).
+  const queryId = new URLSearchParams(location.search).get('id');
+  const hashId = new URLSearchParams(location.hash.slice(1)).get('id');
+  const id = queryId || hashId;
+  if (id) {
+    S.q = id;
+    searchInput.value = id;
+    history.replaceState(null, '', location.pathname); // drop ?id=/#id= before pushHash() rewrites it
+    return;
+  }
+  loadHash();
 }
 
 function loadHash() {
