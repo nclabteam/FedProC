@@ -20,6 +20,13 @@
 | Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304±0    | 0.41±0.28     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
 | ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256±0   |                 | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
 | ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588±0     |                 | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| M4                       | Mixed         | Mixed        | 1        | 100_000       |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Daily                  | Mixed         | 1 day        | 1        | 4_227         |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Hourly                 | Mixed         | 1 hour       | 1        | 414           |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Monthly                | Mixed         | 1 month      | 1        | 48_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Quarterly              | Mixed         | 1 quarter    | 1        | 24_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Weekly                 | Mixed         | 1 week       | 1        | 359           |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Yearly                 | Mixed         | 1 year       | 1        | 23_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
 | METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272±0    |                 | [Github](https://github.com/liyaguang/DCRNN) |
 | MekongSalinity           | Environment   | 1 day        | 1        | 38            | 1_500±953   | 0.90±0.40     | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
 | PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |

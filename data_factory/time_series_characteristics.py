@@ -332,6 +332,7 @@ class TimeSeriesCharacteristics:
             "d": max(7 // granularity, 1),
             "w": max(52 // granularity, 1),
             "mo": max(12 // granularity, 1),
+            "q": max(4 // granularity, 1),
         }
         trend_results = {"variable": "trend_strength"}
         seasonal_results = {"variable": "seasonal_strength"}
@@ -356,6 +357,14 @@ class TimeSeriesCharacteristics:
                 continue
 
             ts_values = ts_series.to_numpy()
+            if granularity_unit not in seasonal_period:
+                # No known sub-unit periodicity at this granularity (e.g. yearly
+                # data has nothing shorter than a year to seasonally decompose).
+                trend_results[col] = 0.0
+                seasonal_results[col] = 0.0
+                trend_entropy_results[col] = 0.0
+                seasonal_entropy_results[col] = 0.0
+                continue
             stl = STL(ts_values, period=seasonal_period[granularity_unit], robust=True)
             result = stl.fit()
 
@@ -372,6 +381,12 @@ class TimeSeriesCharacteristics:
 
             # Calculate entropy for trend and seasonal components
             def safe_entropy(arr, bins=20):
+                if np.ptp(arr) < 1e-8:
+                    # Near-constant component (e.g. STL trend on a very short
+                    # segment): no meaningful spread to bin, treat as zero
+                    # information content instead of letting np.histogram's
+                    # auto bin-width computation blow up on a ~0 range.
+                    return 0.0
                 hist, _ = np.histogram(arr, bins=bins, density=True)
                 hist = hist + 1e-12  # avoid log(0)
                 hist = hist / hist.sum()
