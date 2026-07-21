@@ -23,6 +23,17 @@ def _load_module(module_name: str):
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
         _MODULE_CACHE[module_name] = module
+        # Importing a submodule makes Python auto-bind it onto this package
+        # under its own name (e.g. `data_factory.M4` = the M4 module object).
+        # When a dataset class shares that exact name (M4.py's `M4` class,
+        # ThreeW.py's `ThreeW` class), that auto-bind permanently shadows the
+        # class for every subsequent `from data_factory import <name>` in the
+        # process, since __getattr__ below only fires when the attribute is
+        # still missing. Re-assert the real class bindings immediately so the
+        # shadowing never sticks.
+        for dataset_name, owning_module in _DATASET_TO_MODULE.items():
+            if owning_module == module_name:
+                globals()[dataset_name] = getattr(module, dataset_name)
     return module
 
 

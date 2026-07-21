@@ -2,47 +2,50 @@
 
 ## Available Datasets
 
-| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples       | CV (mean±std) | URL |
-|--------------------------|---------------|--------------|----------|---------------|---------------|-----------------|-----|
-| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 9_004±5_018 |                 | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
-| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            | 31_847±981  | 0.93±0.03     | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
-| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               |                 | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
-| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |               |                 | [Github](https://github.com/ashfarhangi/COVID-19) |
-| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |               |                 | [CDD](https://www.cryptodatadownload.com/data/binance/) |
-| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400±0    | 0.74±0.29     | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600±0    |                 | [Github](https://github.com/zhouhaoyi/ETDataset) |
-| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304±0    | 0.41±0.28     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256±0   |                 | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
-| ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588±0     |                 | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| M4                       | Mixed         | Mixed        | 1        | 100_000       |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Daily                  | Mixed         | 1 day        | 1        | 4_227         |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Hourly                 | Mixed         | 1 hour       | 1        | 414           |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Monthly                | Mixed         | 1 month      | 1        | 48_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Quarterly              | Mixed         | 1 quarter    | 1        | 24_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Weekly                 | Mixed         | 1 week       | 1        | 359           |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| M4Yearly                 | Mixed         | 1 year       | 1        | 23_000        |               |                 | [Github](https://github.com/Mcompetitions/M4-methods) |
-| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272±0    |                 | [Github](https://github.com/liyaguang/DCRNN) |
-| MekongSalinity           | Environment   | 1 day        | 1        | 38            | 1_500±953   | 0.90±0.40     | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
-| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856±0    |                 | [Github](https://github.com/guoshnBJTU/ASTGNN) |
-| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116±0    |                 | [Github](https://github.com/liyaguang/DCRNN) |
-| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345±0    |                 | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
-| SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 63_852±16_443 |               | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
-| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560±0    | 1.46±0.04     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| StatesILI                | Healthcare    | 1 week       | 1        | 37            |               |                 | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
-| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416±0    |                 | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
-| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544±0    | 0.81±0.22     | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
-| TinyWeather5K            | Environment   | 1 hour       | 5        | 200           | 87_648±0    | 0.57±0.22     | [Github](https://github.com/taohan10200/WEATHER-5K) |
-| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |               |                 | [Github](https://github.com/taohan10200/WEATHER-5K) |
-| WindCSGREGFC             | Energy        | 15 minutes   | 10       | 6             | 70_146±66   |                 | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
+| Name                     | Domain        | Granularity  | Variates | Clients (max) | Samples       | CV (mean±std) | License | URL |
+|--------------------------|---------------|--------------|----------|---------------|---------------|-----------------|---------|-----|
+| BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 9_004±5_018 |                 |         | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
+| BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            | 31_847±981  | 0.93±0.03     | CC BY 4.0 | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
+| CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               |                 |         | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| COVID19Cases             | Healthcare    | 1 day        | 10       | 55            |               |                 | Apache-2.0 | [Github](https://github.com/ashfarhangi/COVID-19) |
+| CryptoDataDownloadDay    | Economic      | 1 day        | 4        |               |               |                 |         | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadHour   | Economic      | 1 hour       | 4        |               |               |                 |         | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| CryptoDataDownloadMinute | Economic      | 1 minute     | 4        |               |               |                 |         | [CDD](https://www.cryptodatadownload.com/data/binance/) |
+| ETTh1                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTh2                    | Energy        | 1 hour       | 7        | 1             | 14_400±0    | 0.74±0.29     | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETDatasetHour            | Energy        | 1 hour       | 7        | 2             | 14_400±0    | 0.74±0.29     | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTm1                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETTm2                    | Energy        | 15 minutes   | 7        | 1             | 57_600±0    |                 | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| ETDatasetMinute          | Energy        | 15 minutes   | 7        | 2             | 57_600±0    |                 | CC BY-ND 4.0 | [Github](https://github.com/zhouhaoyi/ETDataset) |
+| Electricity              | Energy        | 15 minutes   | 1        | 321           | 26_304±0    | 0.41±0.28     |         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| ElectricityLoadDiagrams  | Energy        | 15 minutes   | 1        | 370           | 140_256±0   |                 | CC BY 4.0 | [UCI](https://archive.ics.uci.edu/dataset/321/electricityloaddiagrams20112014) |
+| ExchangeRate             | Economic      | 1 day        | 1        | 8             | 7_588±0     |                 |         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| M4                       | Mixed         | Mixed        | 1        | 100_000       | 253±593     | 0.35±0.25     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Daily                  | Mixed         | 1 day        | 1        | 4_227         | 2_371±1_756 | 0.28±0.22     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Hourly                 | Mixed         | 1 hour       | 1        | 414           | 902±128     | 0.39±0.30     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Monthly                | Mixed         | 1 month      | 1        | 48_000        | 234±137     | 0.31±0.22     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Quarterly              | Mixed         | 1 quarter    | 1        | 24_000        | 100±51      | 0.36±0.25     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Weekly                 | Mixed         | 1 week       | 1        | 359           | 1_035±706   | 0.44±0.27     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| M4Yearly                 | Mixed         | 1 year       | 1        | 23_000        | 37±25       | 0.45±0.28     |         | [Github](https://github.com/Mcompetitions/M4-methods) |
+| METRLA                   | Traffic       | 5 minutes    | 1        | 207           | 34_272±0    |                 | MIT     | [Github](https://github.com/liyaguang/DCRNN) |
+| MekongSalinity           | Environment   | 1 day        | 1        | 38            | 1_500±953   | 0.90±0.40     |         | [Springer](https://link.springer.com/chapter/10.1007/978-981-97-5504-2_43) |
+| PeMS03                   | Traffic       | 5 minutes    | 1        | 358           | 26_208±0    |                 |         | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS04                   | Traffic       | 5 minutes    | 1        | 307           | 16_992±0    |                 |         | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS07                   | Traffic       | 5 minutes    | 1        | 883           | 28_224±0    |                 |         | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMS08                   | Traffic       | 5 minutes    | 3        | 170           | 17_856±0    |                 |         | [Github](https://github.com/guoshnBJTU/ASTGNN) |
+| PeMSBAY                  | Traffic       | 5 minutes    | 1        | 325           | 52_116±0    |                 | MIT     | [Github](https://github.com/liyaguang/DCRNN) |
+| PeMSSF                   | Traffic       | 10 minutes   | 1        | 963           | 63_345±0    |                 | CC BY 4.0 | [UCI](https://archive.ics.uci.edu/dataset/204/pems+sf) |
+| SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 63_852±16_443 |               |         | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
+| SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560±0    | 1.46±0.04     |         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| StatesILI                | Healthcare    | 1 week       | 1        | 37            |               |                 |         | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416±0    |                 | CC BY 4.0 | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
+| ThreeW                   | Energy        | 1 second     | 5        | 1_314         | 37_658±40_010 | 0.09±0.13     | CC BY 4.0 | [Github](https://github.com/petrobras/3W) |
+| ThreeWReal               | Energy        | 1 second     | 5        | 440           | 33_042±63_970 | 0.03±0.12     | CC BY 4.0 | [Github](https://github.com/petrobras/3W) |
+| ThreeWSimulated          | Energy        | 1 second     | 5        | 874           | 39_982±18_178 | 0.12±0.13     | CC BY 4.0 | [Github](https://github.com/petrobras/3W) |
+| Traffic                  | Traffic       | 1 hour       | 1        | 862           | 17_544±0    | 0.81±0.22     |         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
+| TinyWeather5K            | Environment   | 1 hour       | 5        | 200           | 87_648±0    | 0.57±0.22     | MIT     | [Github](https://github.com/taohan10200/WEATHER-5K) |
+| Weather5K                | Environment   | 1 hour       | 5        | 5_672         |               |                 | MIT     | [Github](https://github.com/taohan10200/WEATHER-5K) |
+| WindCSGREGFC             | Energy        | 15 minutes   | 10       | 6             | 70_146±66   |                 |         | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
 
 **Note**: Number of clients will be decided after splitting the data since clients with insufficient data (cannot form at least 10 samples) will be discarded. `Clients (max)` is the maximum number of clients possible.
 
