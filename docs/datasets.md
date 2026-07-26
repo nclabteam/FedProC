@@ -38,6 +38,7 @@
 | SolarCSGREGFC            | Energy        | 15 minutes   | 5        | 8             | 63_852±16_443 |               |         | [Github](https://github.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis) |
 | SolarEnergy              | Energy        | 1 hour       | 1        | 137           | 52_560±0    | 1.46±0.04     |         | [Github](https://github.com/laiguokun/multivariate-time-series-data) |
 | StatesILI                | Healthcare    | 1 week       | 1        | 37            |               |                 |         | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
+| TEP                      | Industrial    | 3 minutes    | 52       | 1             | 500±0       | 0.03±0.08     | Public Domain | [Dataverse](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/6C3JR1) |
 | TetouanPowerConsumption  | Energy        | 10 minutes   | 1        | 3             | 52_416±0    |                 | CC BY 4.0 | [UCI](https://archive.ics.uci.edu/dataset/849/power+consumption+of+tetouan+city) |
 | ThreeW                   | Energy        | 1 second     | 5        | 1_314         | 37_658±40_010 | 0.09±0.13     | CC BY 4.0 | [Github](https://github.com/petrobras/3W) |
 | ThreeWReal               | Energy        | 1 second     | 5        | 440           | 33_042±63_970 | 0.03±0.12     | CC BY 4.0 | [Github](https://github.com/petrobras/3W) |
