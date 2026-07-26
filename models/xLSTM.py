@@ -1,6 +1,7 @@
 import torch.nn as nn
 
 from layers.mLSTM import mLSTMBlock
+from layers.MultiHeadLayerNorm import MultiHeadLayerNorm
 from layers.sLSTM import sLSTMBlock
 from utils.parsing import str2bool
 
@@ -147,7 +148,7 @@ class xLSTM(nn.Module):
                 for idx, cell in enumerate(pattern)
             ]
         )
-        self.norm_out = nn.LayerNorm(self.embedding_dim, bias=False)
+        self.norm_out = MultiHeadLayerNorm(self.embedding_dim, num_heads=1)
         self.fc_pred = nn.Linear(self.embedding_dim, self.pred_len * self.enc_in)
 
     def forward(self, x, **kwargs):

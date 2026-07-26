@@ -34,17 +34,17 @@ class MultiHeadLayerNorm(nn.Module):
             nn.init.zeros_(self.bias)
 
     def forward(self, x):
-        batch_size, seq_len, ndim = x.shape
-        # group_norm over (N, C) normalizes within each group of channels; the
-        # time axis is folded into N so no statistics are shared across steps.
+        *leading, ndim = x.shape
+        # group_norm over (N, C) normalizes within each group of channels; all
+        # leading dims are folded into N so no statistics are shared across them
         out = F.group_norm(
-            x.reshape(batch_size * seq_len, ndim),
+            x.reshape(-1, ndim),
             num_groups=self.num_heads,
             weight=self.weight_proxy,
             bias=self.bias,
             eps=self.eps,
         )
-        return out.view(batch_size, seq_len, ndim)
+        return out.view(*leading, ndim)
 
     def extra_repr(self):
         return f"ndim={self.ndim}, num_heads={self.num_heads}, eps={self.eps}"

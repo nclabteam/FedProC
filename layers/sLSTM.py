@@ -133,7 +133,7 @@ class sLSTMBlock(nn.Module):
         round_proj_to=64,
     ):
         super().__init__()
-        self.norm = nn.LayerNorm(embedding_dim, bias=False)
+        self.norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
         self.conv1d = (
             CausalConv1d(embedding_dim, conv_kernel_size)
             if conv_kernel_size > 0
@@ -151,7 +151,7 @@ class sLSTMBlock(nn.Module):
         self.group_norm = MultiHeadLayerNorm(embedding_dim, num_heads)
         self.dropout = nn.Dropout(dropout)
 
-        self.ffn_norm = nn.LayerNorm(embedding_dim, bias=False)
+        self.ffn_norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
         self.ffn = GatedFeedForward(
             embedding_dim,
             proj_factor=ffn_proj_factor,

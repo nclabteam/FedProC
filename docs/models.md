@@ -44,6 +44,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | SegRNN | RNN | Univariate ||| SegRNN: Segment Recurrent Neural Network for Long-Term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2308.11200) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/SegRNN.py) |
 | RWKV4TS | RNN |||| RWKV-TS: Beyond Traditional Recurrent Neural Network for Time Series Tasks | [Arxiv](https://arxiv.org/abs/2401.09093) - [REF](https://github.com/howard-hou/RWKV-TS/blob/main/Long-term_Forecasting/models/RWKV4TS.py) |
 | xLSTM | RNN || NeurIPS | 2024 | xLSTM: Extended Long Short-Term Memory | [Arxiv](https://arxiv.org/abs/2405.04517) - [GitHub](https://github.com/NX-AI/xlstm) |
+| xLSTMMixer | RNN || NeurIPS | 2025 | xLSTM-Mixer: Multivariate Time Series Forecasting by Mixing via Scalar Memories | [Arxiv](https://arxiv.org/abs/2410.16928) - [GitHub](https://github.com/mauricekraus/xlstm-mixer) |
 ||||||||
 ||||||||
 | DSSRNN | SSM |||| DSSRNN: Decomposition-Enhanced State-Space Recurrent Neural Network for Time-Series Analysis | [Arxiv](https://arxiv.org/abs/2412.00994) - [REF](https://github.com/ahmad-shirazi/DSSRNN/blob/main/models/DSSRNN.py) |

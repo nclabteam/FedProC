@@ -138,7 +138,7 @@ class mLSTMBlock(nn.Module):
         )
         self.inner = inner
 
-        self.norm = nn.LayerNorm(embedding_dim, bias=False)
+        self.norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
         self.proj_up = nn.Linear(embedding_dim, 2 * inner, bias=bias)
 
         num_proj_heads = inner // qkv_proj_blocksize
