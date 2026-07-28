@@ -10,6 +10,7 @@
 | AnemometerShear          | Energy        | 10 minutes   | Mixed    | 262           | 797±464       |                |         | Manual | [PHM Society](https://phmsociety.org/phm_competition/2011-phm-society-conference-data-challenge/) |
 | AnemometerShear3         | Energy        | 10 minutes   | 20       | 82            | 790±444       |                |         | Manual | [PHM Society](https://phmsociety.org/phm_competition/2011-phm-society-conference-data-challenge/) |
 | AnemometerShear4         | Energy        | 10 minutes   | 24       | 180           | 800±473       |                |         | Manual | [PHM Society](https://phmsociety.org/phm_competition/2011-phm-society-conference-data-challenge/) |
+| AppliancesEnergy         | Energy        | 10 minutes   | 26       | 1             | 19_735        |                | CC BY 4.0 | Auto | [UCI](https://archive.ics.uci.edu/dataset/374/appliances+energy+prediction) |
 | BaseStation5G            | Communication | 2 minutes    | 11       | 3             | 9_004±5_018 |                 |         | Auto | [Github](https://github.com/vperifan/Federated-Time-Series-Forecasting) |
 | BeijingAirQuality        | Environment   | 1 hour       | 11       | 12            | 31_847±981  | 0.93±0.03     | CC BY 4.0 | Auto | [UCI](https://archive.ics.uci.edu/dataset/501/beijing+multi+site+air+quality+data) |
 | CitiesILI                | Healthcare    | 1 week       | 1        | 122           |               |                 |         | Auto | [Github](https://github.com/emilylaiken/ml-flu-prediction) |
