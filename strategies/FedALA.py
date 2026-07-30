@@ -86,9 +86,14 @@ class FedALA_Client(pFL_Client):
           3. Applies the learned weights to set the higher layers of
              self.model to the interpolated values.
         """
-        # Global params: what set_parameters already loaded into self.model
-        global_params = [p.detach().cpu().clone() for p in self.model.parameters()]
-        prev_local = [t.clone() for t in self._prev_local_params]
+        # Global params: what set_parameters already loaded into self.model.
+        # Persistent state is kept on CPU for transport/storage, but ALA's
+        # temporary optimization must run on the same device as the model.
+        self.model.to(self.device)
+        global_params = [
+            p.detach().to(self.device).clone() for p in self.model.parameters()
+        ]
+        prev_local = [t.to(self.device).clone() for t in self._prev_local_params]
 
         # Skip if global and previous local are identical (e.g. first real round)
         if torch.sum(global_params[0] - prev_local[0]) == 0:
@@ -99,11 +104,13 @@ class FedALA_Client(pFL_Client):
         params_gp = global_params[-self.layer_idx:] # global,     higher layers
 
         if self._ala_weights is None:
-            self._ala_weights = [torch.ones_like(p) for p in params_p]
+            ala_weights = [torch.ones_like(p) for p in params_p]
+        else:
+            ala_weights = [w.to(self.device) for w in self._ala_weights]
 
         # model_t: deep copy of self.model (global params everywhere).
         # Lower layers stay as global; higher layers are set to interpolated init.
-        model_t = copy.deepcopy(self.model)
+        model_t = copy.deepcopy(self.model).to(self.device)
         params_t = list(model_t.parameters())
         params_tp = params_t[-self.layer_idx:]
 
@@ -111,7 +118,7 @@ class FedALA_Client(pFL_Client):
             param.requires_grad = False
 
         with torch.no_grad():
-            for pt, pp, pg, w in zip(params_tp, params_p, params_gp, self._ala_weights):
+            for pt, pp, pg, w in zip(params_tp, params_p, params_gp, ala_weights):
                 pt.data = pp + (pg - pp) * w
 
         # SGD optimizer with lr=0: we update weights manually, not via step()
@@ -130,15 +137,19 @@ class FedALA_Client(pFL_Client):
         loss_value = torch.tensor(0.0)
         while True:
             for batch_x, batch_y, x_mark, y_mark in rand_loader:
-                batch_x = batch_x.float()
-                batch_y = batch_y.float()
+                batch_x = batch_x.to(self.device, dtype=torch.float32)
+                batch_y = batch_y.to(self.device, dtype=torch.float32)
+                if isinstance(x_mark, torch.Tensor):
+                    x_mark = x_mark.to(self.device)
+                if isinstance(y_mark, torch.Tensor):
+                    y_mark = y_mark.to(self.device)
                 optimizer.zero_grad()
                 output = model_t(batch_x, x_mark=x_mark, y_mark=y_mark)
                 loss_value = self.loss(output, batch_y)
                 loss_value.backward()
                 with torch.no_grad():
                     for pt, pp, pg, w in zip(
-                        params_tp, params_p, params_gp, self._ala_weights
+                        params_tp, params_p, params_gp, ala_weights
                     ):
                         w.data = torch.clamp(
                             w - self.eta * (pt.grad * (pg - pp)), 0, 1
@@ -168,6 +179,7 @@ class FedALA_Client(pFL_Client):
             for mp, pt in zip(model_params[-self.layer_idx:], params_tp):
                 mp.data.copy_(pt.data)
 
+        self._ala_weights = [w.detach().cpu().clone() for w in ala_weights]
         del model_t
 
     def package(self) -> Dict[str, Any]:
