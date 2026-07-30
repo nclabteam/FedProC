@@ -191,10 +191,12 @@ class InferenceEvaluator:
                 # Evaluate
                 client_losses = []
                 with torch.no_grad():
-                    for x, y in testloader:
+                    for x, y, x_mark, y_mark in testloader:
                         x = x.to(self.device)
                         y = y.to(self.device)
-                        pred = model(x)
+                        x_mark = x_mark.to(self.device)
+                        y_mark = y_mark.to(self.device)
+                        pred = model(x, x_mark=x_mark, y_mark=y_mark)
 
                         if denormalize:
                             pred = torch.tensor(
