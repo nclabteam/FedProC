@@ -10,7 +10,7 @@ class sMdAPE(Loss):
 
     def forward(self, input, target):
         return torch.median(
-            input=self._symmetric_abosulute_percentage_error(
+            input=self._symmetric_absolute_percentage_error(
                 input=input,
                 target=target,
             )
