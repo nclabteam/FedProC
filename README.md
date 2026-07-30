@@ -4,6 +4,8 @@
 
 📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/)
 
+📦 **Version**: `2.1.12`
+
 ---
 
 ## 📚 Awesome Federated Learning & Time Series Forecasting

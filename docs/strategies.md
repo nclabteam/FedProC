@@ -32,7 +32,6 @@ Central-server FL where a server aggregates client updates each round and broadc
 | FedADMM | ICDE | 2022 | ADMM-based FL robust to system heterogeneity and stragglers | FedADMM: A Robust Federated Deep Learning Framework with Adaptability to System Heterogeneity | [IEEE](https://ieeexplore.ieee.org/abstract/document/9835545) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/fedadmm.py) |
 | FedLAW | ICML | 2023 | Learned aggregation weights via auxiliary network on validation data | Revisiting Weighted Aggregation in Federated Learning with Neural Networks | [Arxiv](https://arxiv.org/abs/2302.10911) - [GitHub](https://github.com/ZexiLee/ICML-2023-FedLAW) |
 | Elastic | CVPR | 2023 | Sensitivity-weighted elastic aggregation to preserve task-critical params | Elastic Aggregation for Federated Optimization | [OpenAccess](https://openaccess.thecvf.com/content/CVPR2023/html/Chen_Elastic_Aggregation_for_Federated_Optimization_CVPR_2023_paper.html) - [REF](https://github.com/KarhouTam/FL-bench/blob/master/src/server/elastic.py) |
-| FedRolex | NeurIPS | 2022 | Heterogeneous FL via rolling sub-model extraction and cyclic training | FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction | [Arxiv](https://arxiv.org/abs/2211.11614) - [GitHub](https://github.com/AIoT-MLSys-Lab/FedRolex) |
 | FedCross | ICDE | 2024 | Cross-aggregation of multiple global model candidates per round | FedCross: Towards Accurate Federated Learning via Multi-Model Cross-Aggregation | [IEEE](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=10597740) - [Arxiv](https://arxiv.org/abs/2210.08285) - [REF](https://github.com/TsingZ0/PFLlib/blob/master/system/flcore/servers/servercross.py) |
 | FedRCL† | CVPR | 2024 | Relaxed supervised contrastive loss with per-pair divergence penalty | Relaxed Contrastive Learning for Federated Learning | [OpenAccess](https://openaccess.thecvf.com/content/CVPR2024/html/Seo_Relaxed_Contrastive_Learning_for_Federated_Learning_CVPR_2024_paper.html) - [Arxiv](https://arxiv.org/abs/2401.04928) - [GitHub](https://github.com/skynbe/FedRCL) |
 | FedAWA | CVPR | 2025 | Server-optimized per-client aggregation weights via client vectors | FedAWA: Adaptive Optimization of Aggregation Weights in Federated Learning Using Client Vectors | [CVPR](https://cvpr.thecvf.com/virtual/2025/poster/33857) - [Arxiv](https://arxiv.org/abs/2503.15842) |
@@ -42,6 +41,18 @@ Central-server FL where a server aggregates client updates each round and broadc
 | **QATFL** | IEEE TMLCN | 2026 | Fake-quantization + STE during local training reduces quantization distortion vs. post-training quantization; QSGD-quantized delta upload | Communication Efficient Federated Learning With Quantization-Aware Training Design | [PUB](https://doi.org/10.1109/TMLCN.2025.3635050) |
 | **DeComFL‡** | arXiv | 2024 | Zeroth-order optimization: clients upload only scalar loss-difference gradients (dimension-free uplink); server replays SPSA update from shared perturbation seeds | Achieving Dimension-Free Communication in Federated Learning via Zeroth-Order Optimization | [Arxiv](https://arxiv.org/abs/2405.15861) - [GitHub](https://github.com/ZidongLiu/DeComFL) |
 | **FedLUAR** | arXiv | 2025 | Recycles previous-round updates for a subset of layers, chosen via inverse-magnitude probability sampling, to cut uplink | Layer-wise Update Aggregation with Recycling for Communication-Efficient Federated Learning | [Arxiv](https://arxiv.org/abs/2503.11146) - [GitHub](https://github.com/swblaster/FedLUAR) |
+
+## ptFL — Partial-Training Federated Learning
+
+Model-heterogeneous FL where the server owns a full model but each client
+trains and communicates only a capacity-matched physical submodel. The server
+retains each extraction manifest and selectively aggregates only the exact
+global coordinates trained by participating clients.
+
+| Name | Venue | Year | Description | Paper | URL |
+|------|-------|------|-------------|-------|-----|
+| **FedDropout** | arXiv | 2018 | Fresh random fixed-width physical submodels reduce client compute and communication | Expanding the Reach of Federated Learning by Reducing Client Resource Requirements | [Arxiv](https://arxiv.org/abs/1812.07210) - [GitHub](https://github.com/AIoT-MLSys-Lab/FedRolex) |
+| **FedRolex** | NeurIPS | 2022 | Unit-stride rolling physical submodels with selective per-coordinate averaging | FedRolex: Model-Heterogeneous Federated Learning with Rolling Sub-Model Extraction | [Arxiv](https://arxiv.org/abs/2212.01548) - [GitHub](https://github.com/AIoT-MLSys-Lab/FedRolex) |
 
 ## sFL — Security-Aware Federated Learning
 
