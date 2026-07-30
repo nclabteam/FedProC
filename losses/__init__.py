@@ -47,10 +47,10 @@ def evaluation_result(y_pred, y_true):
 
     # Include training losses
     for loss in LOSSES:
-        results[loss] = getattr(sys.modules[__name__], loss)()(y_true, y_pred).item()
+        results[loss] = getattr(sys.modules[__name__], loss)()(y_pred, y_true).item()
 
     # Include evaluation-only losses
     for loss in EVAL_LOSSES:
-        results[loss] = getattr(sys.modules[__name__], loss)()(y_true, y_pred).item()
+        results[loss] = getattr(sys.modules[__name__], loss)()(y_pred, y_true).item()
 
     return results
