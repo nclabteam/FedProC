@@ -10,6 +10,11 @@ import polars as pl
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from scripts.compact import (
+    copy_experiments,
+    is_compacted_experiment,
+    plan_experiments,
+)
 from utils.compact import compact_experiment_runs
 
 TEST_TMP_ROOT = Path(".tmp-py") / "test-compact"
@@ -84,6 +89,70 @@ class TestCompactResults(unittest.TestCase):
         self.assertEqual(summary["client_rows"], 0)
         self.assertEqual(summary["generated_files"], [])
         self.assertEqual(summary["deleted_paths"], [])
+
+    def test_skip_compacted_plan_is_incremental(self):
+        source = self.make_dir("source")
+        output = self.make_dir("output")
+
+        full_new = source / "full-new"
+        full_new.mkdir()
+        (full_new / "config.json").write_text("{}", encoding="utf-8")
+        (full_new / "0").mkdir()
+
+        compact_copy_only = source / "compact-copy-only"
+        compact_copy_only.mkdir()
+        (compact_copy_only / "config.json").write_text("{}", encoding="utf-8")
+        (compact_copy_only / "server.csv").write_text(
+            "loss\n1.0\n",
+            encoding="utf-8",
+        )
+
+        full_existing = source / "full-existing"
+        full_existing.mkdir()
+        (full_existing / "config.json").write_text("{}", encoding="utf-8")
+        (full_existing / "0").mkdir()
+
+        compact_existing = output / full_existing.name
+        compact_existing.mkdir()
+        (compact_existing / "config.json").write_text("{}", encoding="utf-8")
+        (compact_existing / "client.csv").write_text(
+            "loss\n1.0\n",
+            encoding="utf-8",
+        )
+
+        copy_only, to_compact, skipped = plan_experiments(
+            [full_new, compact_copy_only, full_existing],
+            output,
+            skip_compacted=True,
+        )
+
+        self.assertEqual([path.name for path in copy_only], ["compact-copy-only"])
+        self.assertEqual([path.name for path in to_compact], ["full-new"])
+        self.assertEqual([path.name for path in skipped], ["full-existing"])
+
+        copied = copy_experiments([*copy_only, *to_compact], output)
+        self.assertEqual(
+            sorted(path.name for path in copied),
+            ["compact-copy-only", "full-new"],
+        )
+        self.assertTrue((source / "full-new" / "0").is_dir())
+        self.assertTrue((output / "full-new" / "0").is_dir())
+        self.assertTrue((output / "compact-copy-only" / "server.csv").is_file())
+        self.assertTrue((output / "full-existing" / "client.csv").is_file())
+
+    def test_compacted_detection_rejects_mixed_rerun(self):
+        experiment_dir = self.make_dir("mixed-experiment")
+        (experiment_dir / "config.json").write_text("{}", encoding="utf-8")
+        (experiment_dir / "server.csv").write_text(
+            "loss\n1.0\n",
+            encoding="utf-8",
+        )
+
+        self.assertTrue(is_compacted_experiment(experiment_dir))
+
+        (experiment_dir / "0").mkdir()
+
+        self.assertFalse(is_compacted_experiment(experiment_dir))
 
 
 if __name__ == "__main__":
