@@ -310,6 +310,17 @@ class SharedMethods:
             return sum(SharedMethods._get_size_bytes(value) for value in obj.values())
         if isinstance(obj, (list, tuple)):
             return sum(SharedMethods._get_size_bytes(item) for item in obj)
+        if isinstance(obj, np.ndarray):
+            return obj.nbytes
+        if isinstance(obj, np.generic):
+            return obj.itemsize
+        if isinstance(obj, bool):
+            return 1
+        if isinstance(obj, (int, float)):
+            # wire width of a scalar, not the Python object header: sys.getsizeof
+            # bills a float at 24 bytes and an int at 28, inflating any payload
+            # that carries scalars alongside tensors
+            return 4
         return sys.getsizeof(obj)
 
     @staticmethod
