@@ -68,10 +68,12 @@ class TestStrategies(unittest.TestCase):
 
         from strategies.FedPAQ import FedPAQ_Client
 
-        tensor = torch.ones(100000)
-        quantized = FedPAQ_Client.quantize_tensor(tensor, 4)
-        mean_diff = torch.abs(torch.mean(quantized) - 1.0).item()
-        self.assertLess(mean_diff, 0.08)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            tensor = torch.ones(100000)
+            quantized = FedPAQ_Client.quantize_tensor(tensor, 4)
+            mean_diff = torch.abs(torch.mean(quantized) - 1.0).item()
+            self.assertLess(mean_diff, 0.08)
 
         zeros = torch.zeros(10)
         quantized_zeros = FedPAQ_Client.quantize_tensor(zeros, 4)
