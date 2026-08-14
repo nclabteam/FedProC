@@ -9,10 +9,27 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestLazyRegistries(unittest.TestCase):
+    @staticmethod
+    def restore_modules(module_name: str, saved_modules: dict) -> None:
+        """Restore a package tree replaced by a registry reload test."""
+        for loaded_name in list(sys.modules):
+            if loaded_name == module_name or loaded_name.startswith(
+                f"{module_name}."
+            ):
+                sys.modules.pop(loaded_name)
+        sys.modules.update(saved_modules)
+
     def reload_module(self, module_name: str):
+        saved_modules = {
+            loaded_name: module
+            for loaded_name, module in sys.modules.items()
+            if loaded_name == module_name
+            or loaded_name.startswith(f"{module_name}.")
+        }
         for loaded_name in list(sys.modules):
             if loaded_name == module_name or loaded_name.startswith(f"{module_name}."):
                 sys.modules.pop(loaded_name)
+        self.addCleanup(self.restore_modules, module_name, saved_modules)
         return importlib.import_module(module_name)
 
     def test_models_registry_is_lazy(self):

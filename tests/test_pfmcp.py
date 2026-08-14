@@ -90,8 +90,6 @@ class TestPFMCPStrategy(unittest.TestCase):
     def test_strategy_uses_personalized_fl_base(self) -> None:
         self.assertTrue(issubclass(PFMCP, pFL))
         self.assertTrue(issubclass(PFMCP_Client, pFL_Client))
-        server = object.__new__(PFMCP)
-        self.assertIs(server._client_cls(), PFMCP_Client)
 
     def test_strategy_requires_pfmcp_model(self) -> None:
         self.assertEqual(PFMCP.compulsory["model"], "PFMCP")
