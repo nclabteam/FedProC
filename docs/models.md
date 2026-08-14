@@ -63,6 +63,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 ||||||||
 ||||||||
 | iTransformer | Transformer | Multivariate | ICLR | 2024 | iTransformer: Inverted Transformers Are Effective for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2310.06625) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/iTransformer.py) |
+| **PFMCP** | Transformer + dual MLP MoE | Multivariate | Expert Systems with Applications | 2026 | Personalized Federated Learning with Mixture of Experts and Conformal Prediction for Household Energy Forecasting | [PUB](https://doi.org/10.1016/j.eswa.2025.130417) |
 | TimeMixer | MLP | Multivariate | ICLR | 2024 | TimeMixer: Decomposable Multiscale Mixing for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2405.14616) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/TimeMixer.py) |
 | TimesNet | CNN | Multivariate | ICLR | 2023 | TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis | [Arxiv](https://arxiv.org/abs/2210.02186) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/TimesNet.py) |
 | TimeXer | Transformer | Multivariate | NeurIPS | 2024 | TimeXer: Empowering Transformers for Time Series Forecasting with Exogenous Variables | [Arxiv](https://arxiv.org/abs/2402.19072) - [REF](https://github.com/thuml/Time-Series-Library/blob/main/models/TimeXer.py) |

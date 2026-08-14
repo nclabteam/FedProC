@@ -4,7 +4,7 @@
 
 📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/)
 
-📦 **Version**: `2.1.12`
+📦 **Version**: `2.1.13`
 
 ---
 
@@ -44,16 +44,16 @@ Get started with FedProC in just a few steps:
 
 1. [Installation](docs/installation.md) - Set up your environment
 2. [Usage](docs/usage.md) - Run your first experiment
-3. [Strategies](docs/strategies.md) - Choose your federated learning strategy (66 strategies)
+3. [Strategies](docs/strategies.md) - Choose your federated learning strategy (67 strategies)
 
 ## Documentation Structure
 
 - **[Installation](docs/installation.md)** - Installation guide and requirements
 - **[Usage](docs/usage.md)** - Basic usage and examples
-- **[Strategies](docs/strategies.md)** - Available federated learning strategies (66 strategies)
+- **[Strategies](docs/strategies.md)** - Available federated learning strategies (67 strategies)
 - **[Attacks](docs/attacks.md)** - Attack registry for adversarial evaluation (6 attacks)
 - **[Datasets](docs/datasets.md)** - Supported datasets and data preparation (31 datasets)
-- **[Models](docs/models.md)** - Available models and architectures (78 models)
+- **[Models](docs/models.md)** - Available models and architectures (79 models)
 - **[Augmentations](docs/augs.md)** - Custom GPU-native PyTorch augmentations (8 augmentations)
 - **[Losses](docs/losses.md)** - Loss functions and metrics (19 losses)
 - **[Optimizers](docs/optimizers.md)** - Optimization methods (9 optimizers)
