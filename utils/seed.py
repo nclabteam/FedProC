@@ -6,10 +6,12 @@ import torch
 
 
 class SetSeed:
-    def __init__(self, seed: int):
+    """Apply one seed across Python, NumPy, and PyTorch."""
+
+    def __init__(self, seed: int) -> None:
         self.seed = seed
 
-    def _check(self):
+    def _check(self) -> None:
         max_seed_value = np.iinfo(np.uint32).max
         min_seed_value = np.iinfo(np.uint32).min
         if self.seed is None:
@@ -34,7 +36,7 @@ class SetSeed:
             )
             self.seed = random.randint(min_seed_value, max_seed_value)
 
-    def _torch(self):
+    def _torch(self) -> None:
         torch.manual_seed(self.seed)
         torch.cuda.manual_seed(self.seed)
         torch.cuda.manual_seed_all(self.seed)  # for Multi-GPU, exception safe
@@ -42,22 +44,24 @@ class SetSeed:
         torch.backends.cudnn.benchmark = False
         torch.use_deterministic_algorithms(True, warn_only=True)
 
-    def _os(self):
+    def _os(self) -> None:
         os.environ["PYTHONHASHSEED"] = str(self.seed)
         os.environ["PL_GLOBAL_SEED"] = str(self.seed)
         os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
-    def _random(self):
+    def _random(self) -> None:
         random.seed(self.seed)
 
-    def _numpy(self):
+    def _numpy(self) -> None:
         np.random.seed(self.seed)
 
     @staticmethod
     def set_all(seed: int, verbose: bool = True) -> None:
+        """Set all supported random number generators."""
         SetSeed(seed).set(verbose=verbose)
 
-    def set(self, verbose: bool = True):
+    def set(self, verbose: bool = True) -> None:
+        """Validate and apply the configured seed."""
         self._check()
         self._os()
         self._torch()

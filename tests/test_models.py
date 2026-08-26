@@ -7,6 +7,7 @@ import torch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import models
 from models.DLinear import DLinear
 from models.FLinear import FLinear
 from models.Linear import Linear
@@ -68,6 +69,27 @@ class TestModels(unittest.TestCase):
     def test_xpatch_forward_shape(self):
         configs = self.make_base_config()
         self.assert_forward_shape(xPatch(configs), configs)
+
+    def test_leddam_registry_forward_backward(self):
+        configs = self.make_base_config(
+            n_layers=1,
+            positional_encoding_type="sincos",
+        )
+        model = models.Leddam(configs=configs)
+        inputs = torch.randn(
+            2,
+            configs.input_len,
+            configs.input_channels,
+            requires_grad=True,
+        )
+        output = model(inp=inputs)
+        self.assertEqual(
+            output.shape,
+            (2, configs.output_len, configs.output_channels),
+        )
+        self.assertTrue(torch.isfinite(output).all())
+        output.mean().backward()
+        self.assertTrue(torch.isfinite(inputs.grad).all())
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA is not available")
     def test_flinear_cuda_smoke(self):

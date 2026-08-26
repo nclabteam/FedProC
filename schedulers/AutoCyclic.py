@@ -80,6 +80,7 @@ def autocorrelation(input, dim=0):
 
 class AutoCyclic(_LRScheduler):
 
+    compulsory = {"scheduler_mode": "batch"}
     optional = {
         "max_lr_multiplier": 7,
         "cycle_size": 25,

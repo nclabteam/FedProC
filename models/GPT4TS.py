@@ -4,6 +4,7 @@ from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
 from layers.RevIN import RevIN
+from models import CHECKPOINT_DIR
 from utils.parsing import str2bool
 
 
@@ -44,7 +45,10 @@ class GPT4TS(nn.Module):
         if configs.is_gpt:
             if configs.pretrain:
                 self.gpt2 = GPT2Model.from_pretrained(
-                    "gpt2", output_attentions=True, output_hidden_states=True
+                    pretrained_model_name_or_path="gpt2",
+                    output_attentions=True,
+                    output_hidden_states=True,
+                    cache_dir=str(CHECKPOINT_DIR),
                 )  # loads a pretrained GPT-2 base model
             else:
                 print("------------------no pretrain------------------")

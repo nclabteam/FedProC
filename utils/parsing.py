@@ -1,4 +1,5 @@
-def str2bool(value):
+def str2bool(value: object) -> bool | None:
+    """Convert common textual boolean values while preserving booleans and None."""
     if isinstance(value, bool):
         return value
     if value is None:

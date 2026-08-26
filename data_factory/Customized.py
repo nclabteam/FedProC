@@ -8,7 +8,9 @@ from .TetouanPowerConsumption import TetouanPowerConsumption
 
 
 class Customized1(CustomDataset):
-    def __init__(self, *args, **kwargs):
+    """Combine four heterogeneous energy forecasting datasets."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Customized1")
         self.sets = [
@@ -28,7 +30,9 @@ class Customized1(CustomDataset):
 
 
 class Customized2(CustomDataset):
-    def __init__(self, *args, **kwargs):
+    """Combine univariate and multivariate ETDataset clients."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Customized2")
         self.sets = [
@@ -44,7 +48,9 @@ class Customized2(CustomDataset):
 
 
 class Customized3(CustomDataset):
-    def __init__(self, *args, **kwargs):
+    """Combine datasets configured with different forecast horizons."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Customized3")
         self.sets = [

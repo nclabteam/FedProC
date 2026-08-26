@@ -4,7 +4,9 @@ import torch.nn as nn
 
 # This is inspired by Kolmogorov-Arnold Networks but using Chebyshev polynomials instead of splines coefficients
 class ChebyKANLinear(nn.Module):
-    def __init__(self, input_dim, output_dim, degree):
+    """Apply a Chebyshev-polynomial KAN linear transform."""
+
+    def __init__(self, input_dim: int, output_dim: int, degree: int) -> None:
         super().__init__()
         self.inputdim = input_dim
         self.outdim = output_dim
@@ -17,7 +19,7 @@ class ChebyKANLinear(nn.Module):
         nn.init.normal_(self.cheby_coeffs, mean=0.0, std=1 / (input_dim * (degree + 1)))
         self.register_buffer("arange", torch.arange(0, degree + 1, 1))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Since Chebyshev polynomial is defined in [-1, 1]
         # We need to normalize x to [-1, 1] using tanh
         # View and repeat input degree + 1 times

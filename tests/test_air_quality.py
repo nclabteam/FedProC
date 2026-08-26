@@ -21,12 +21,8 @@ class TestAirQuality(unittest.TestCase):
         )
         self.dataset = AirQuality(configs)
         self.dataset.save_path = str(temporary_path / "AirQuality")
-        self.dataset.path_raw = str(
-            temporary_path / "AirQuality" / "raw"
-        )
-        self.dataset.path_temp = str(
-            temporary_path / "AirQuality" / "temp"
-        )
+        self.dataset.path_raw = str(temporary_path / "AirQuality" / "raw")
+        self.dataset.path_temp = str(temporary_path / "AirQuality" / "temp")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()

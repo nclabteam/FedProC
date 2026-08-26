@@ -1,10 +1,13 @@
 import math
+from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
 
 import torch
-from torch.optim.optimizer import Optimizer
+from torch.optim.optimizer import Optimizer, ParamsT
 
 
 class PlainRAdam(Optimizer):
+    """Implement rectified Adam without a rolling step buffer."""
 
     optional = {
         "eps": 1e-8,
@@ -15,14 +18,14 @@ class PlainRAdam(Optimizer):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--eps", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--degenerated_to_sgd", default=None, action="store_true")
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
 
-    def __init__(self, params, configs):
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
         betas = (configs.beta1, configs.beta2)
         lr = configs.learning_rate
         if not 0.0 <= lr:
@@ -39,12 +42,15 @@ class PlainRAdam(Optimizer):
             lr=lr, betas=betas, eps=configs.eps, weight_decay=configs.weight_decay
         )
 
-        super(PlainRAdam, self).__init__(params, defaults)
+        super().__init__(params=params, defaults=defaults)
 
-    def __setstate__(self, state):
-        super(PlainRAdam, self).__setstate__(state)
+    def __setstate__(self, state: dict) -> None:
+        super().__setstate__(state)
 
-    def step(self, closure=None):
+    def step(
+        self,
+        closure: Callable[[], float] | None = None,
+    ) -> float | None:
         loss = None
         if closure is not None:
             loss = closure()

@@ -1,8 +1,8 @@
 import argparse
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -26,7 +26,7 @@ def is_compacted_experiment(experiment_dir: Path) -> bool:
         return False
     if not (experiment_dir / "config.json").is_file():
         return False
-    if has_seed_runs(experiment_dir):
+    if has_seed_runs(experiment_dir=experiment_dir):
         return False
     return any(
         (experiment_dir / filename).is_file() for filename in COMPACT_OUTPUT_FILES
@@ -54,9 +54,9 @@ def plan_experiments(
 
     for experiment_dir in experiment_dirs:
         output_dir = output_base / experiment_dir.name
-        if is_compacted_experiment(output_dir):
+        if is_compacted_experiment(experiment_dir=output_dir):
             skipped.append(experiment_dir)
-        elif is_compacted_experiment(experiment_dir):
+        elif is_compacted_experiment(experiment_dir=experiment_dir):
             copy_only.append(experiment_dir)
         else:
             to_compact.append(experiment_dir)
@@ -101,7 +101,8 @@ def clean_experiments(base_dir: Path) -> tuple[int, int]:
     return deleted, kept
 
 
-def main():
+def main() -> None:
+    """Compact experiment directories selected from the CLI."""
     parser = argparse.ArgumentParser(
         description="Compact experiment runs by merging seed runs into CSV files"
     )
@@ -164,8 +165,8 @@ def main():
     print(f"Found {len(experiment_dirs)} experiments\n")
 
     copy_only, to_compact, skipped = plan_experiments(
-        experiment_dirs,
-        output_base,
+        experiment_dirs=experiment_dirs,
+        output_base=output_base,
         skip_compacted=args.skip_compacted,
     )
     if args.skip_compacted:
@@ -179,7 +180,10 @@ def main():
     # Step 3: Copy all experiments to output directory
     print("Step 1: Copying experiments to output directory...")
     copy_sources = [*copy_only, *to_compact]
-    copy_experiments(copy_sources, output_base)
+    copy_experiments(
+        experiment_dirs=copy_sources,
+        output_base=output_base,
+    )
     print(f"  Copied {len(copy_sources)} experiments\n")
 
     # Only copied outputs may enter the destructive compactor. Sources that
@@ -189,7 +193,7 @@ def main():
     # Step 4: Clean output directory if requested
     if args.clean:
         print("Step 2: Cleaning incomplete runs in output directory...\n")
-        deleted, kept = clean_experiments(output_base)
+        deleted, kept = clean_experiments(base_dir=output_base)
         print(f"  Deleted: {deleted}, Kept: {kept}\n")
 
         experiment_dirs = [
@@ -212,7 +216,7 @@ def main():
 
         try:
             # Compact in the output directory
-            result = compact_experiment_runs(exp_dir)
+            result = compact_experiment_runs(save_path=exp_dir)
             print(f"  ✓ Runs: {result['runs']}")
             print(f"  ✓ Server rows: {result['server_rows']}")
             print(f"  ✓ Client rows: {result['client_rows']}")

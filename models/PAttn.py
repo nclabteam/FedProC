@@ -21,7 +21,7 @@ class PAttn(nn.Module):
         parser.add_argument("--stride", type=int, default=None)
 
     def __init__(self, configs):
-        super(PAttn, self).__init__()
+        super().__init__()
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.patch_size = configs.patch_size
@@ -149,7 +149,7 @@ class ScaledDotProductAttention(nn.Module):
 
 class Encoder_LLaTA(nn.Module):
     def __init__(self, input_dim, hidden_dim=768, num_heads=12, num_encoder_layers=1):
-        super(Encoder_LLaTA, self).__init__()
+        super().__init__()
         self.linear = nn.Linear(input_dim, hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=num_heads)
         self.transformer_encoder = nn.TransformerEncoder(

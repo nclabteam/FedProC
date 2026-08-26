@@ -1,10 +1,15 @@
+"""Safely remove interrupted experiment run directories."""
+
 import os
 import shutil
 import stat
+from collections.abc import Callable
 from pathlib import Path
+from types import TracebackType
 
 
 def resolve_cleanup_path(save_path: str, project_root: str) -> Path:
+    """Resolve a run path and reject targets outside or equal to the project root."""
     resolved_save_path = Path(save_path).resolve()
     resolved_project_root = Path(project_root).resolve()
 
@@ -28,7 +33,13 @@ def resolve_cleanup_path(save_path: str, project_root: str) -> Path:
 
 
 def cleanup_interrupted_run(save_path: str, project_root: str) -> Path:
-    def handle_remove_error(func, path, exc_info):
+    """Remove an interrupted run, retrying read-only paths after chmod."""
+
+    def handle_remove_error(
+        func: Callable[[str], object],
+        path: str,
+        exc_info: tuple[type[BaseException], BaseException, TracebackType],
+    ) -> None:
         _, error, _ = exc_info
         if not isinstance(error, PermissionError):
             raise error

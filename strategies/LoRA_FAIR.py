@@ -1,156 +1,108 @@
+from argparse import ArgumentParser
 from collections import OrderedDict
+from collections.abc import Mapping
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 
-from .FedIT import FedIT, FedIT_Client
+from .peftFL import peftFL, peftFL_Client
 
 
-class LoRA_FAIR(FedIT):
-    """LoRA-FAIR: Federated LoRA Fine-Tuning with Aggregation and Initialization Refinement (Bian et al., ICCV 2025).
-
-    Corrects FedAvg LoRA aggregation bias by solving for a ΔB per layer that
-    minimizes S(Ā·(B̄+ΔB), W_target) + λ||ΔB||² where W_target = Σ p_k(A_k·B_k).
-    S is cosine or L2 similarity. Optimization via SGD on delta_B only.
-
-    Default: r=8, α=32, dropout=0.1, delta_steps=1000, delta_lr=1e-2,
-    delta_reg=1e-2, sim_metric="cosine". Reference: arXiv:2411.14961.
-    """
+class LoRA_FAIR(peftFL):
+    """LoRA-FAIR: refine averaged LoRA-B to match the averaged full update."""
 
     optional = {
-        "lora_r": 8,
-        "lora_alpha": 32,
+        "lora_alpha": 8,
         "lora_dropout": 0.1,
         "lora_delta_steps": 1000,
         "lora_delta_lr": 1e-2,
         "lora_delta_reg": 1e-2,
-        "sim_metric": "cosine",
-        "lora_target_modules": ["Linear"],
     }
 
     @classmethod
-    def args_update(cls, parser):
-        parser.add_argument("--lora_r", default=None, type=int)
-        parser.add_argument("--lora_alpha", default=None, type=int)
-        parser.add_argument("--lora_dropout", default=None, type=float)
+    def args_update(cls, parser: ArgumentParser) -> None:
+        super().args_update(parser=parser)
         parser.add_argument("--lora_delta_steps", default=None, type=int)
         parser.add_argument("--lora_delta_lr", default=None, type=float)
         parser.add_argument("--lora_delta_reg", default=None, type=float)
-        parser.add_argument(
-            "--sim_metric", default=None, type=str, choices=["cosine", "l2"]
+
+    def aggregate_client_updates(self, packages: Mapping[int, dict[str, Any]]) -> None:
+        if (
+            self.lora_delta_steps <= 0
+            or self.lora_delta_lr <= 0
+            or self.lora_delta_reg < 0
+        ):
+            raise ValueError("LoRA-FAIR refinement settings must be positive")
+
+        client_params, client_scores = self.extract_models_and_scores(
+            packages=packages,
+            model_key="lora_model_params",
         )
-        parser.add_argument(
-            "--lora_target_modules",
-            default=None,
-            nargs="+",
-            help="List of target module class names (e.g., Linear Conv1d)",
+        scores = torch.as_tensor(
+            client_scores,
+            dtype=torch.float32,
         )
-
-    def _similarity_loss(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> torch.Tensor:
-        metric = self.sim_metric
-        if metric == "cosine":
-            p = pred.flatten().unsqueeze(0)
-            t = target.flatten().unsqueeze(0)
-            cos = F.cosine_similarity(p, t, dim=1)  # shape [1]
-            return 1.0 - cos.mean()
-        elif metric == "l2":
-            return F.mse_loss(pred, target)
-        else:
-            raise ValueError(f"Unknown sim_metric: {metric}. Choose 'cosine' or 'l2'.")
-
-    def aggregate_client_updates(self, packages) -> None:
-        """
-        Override FedIT.aggregate_client_updates:
-        1) compute A_bar, B_bar (weighted average)
-        2) compute ideal W_target = Σ p_k (A_k @ B_k)
-        3) optimize small ΔB per layer to minimize S(A_bar @ (B_bar+ΔB), W_target) + λ||ΔB||^2
-        4) update global model with A_bar and B_bar' = B_bar + ΔB
-        """
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
-        cids = list(packages.keys())
-        weights = [packages[cid]["score"] / total for cid in cids]
-
+        if not torch.isfinite(scores).all() or scores.sum() <= 0:
+            raise ValueError("LoRA-FAIR client scores must have a positive sum")
+        weights = scores / scores.sum()
+        averaged = self.mean_models(models=client_params, weights=scores)
+        layers = self.lora_layers(params=averaged)
         device = next(self.model.parameters()).device
 
-        # Build lora layer map from first client
-        first_params = packages[cids[0]]["regular_model_params"]
-        lora_layers = {}
-        for key in first_params.keys():
-            if key.endswith(".lora_A"):
-                layer = key[: -len(".lora_A")]
-                lora_layers.setdefault(layer, {})["A_name"] = key
-            elif key.endswith(".lora_B"):
-                layer = key[: -len(".lora_B")]
-                lora_layers.setdefault(layer, {})["B_name"] = key
-
-        A_bar = {}
-        B_bar = {}
-        W_target = {}
-
-        for layer, info in lora_layers.items():
-            A_name = info.get("A_name")
-            B_name = info.get("B_name")
-            if not (A_name and B_name):
+        bars: dict[str, tuple[str, str, torch.Tensor, torch.Tensor]] = {}
+        targets: dict[str, torch.Tensor] = {}
+        deltas: dict[str, torch.Tensor] = {}
+        for layer, names in layers.items():
+            if set(names) != {"A", "B"}:
                 continue
-            sample_A = first_params[A_name]
-            sample_B = first_params[B_name]
-            A_bar[A_name] = torch.zeros_like(sample_A, device=device)
-            B_bar[B_name] = torch.zeros_like(sample_B, device=device)
-            in_features = sample_A.shape[0]
-            out_features = sample_B.shape[1]
-            W_target[layer] = torch.zeros((in_features, out_features), device=device)
+            a_name, b_name = names["A"], names["B"]
+            client_a = torch.stack(
+                [params[a_name].float() for params in client_params]
+            ).to(device)
+            client_b = torch.stack(
+                [params[b_name].float() for params in client_params]
+            ).to(device)
+            a_bar = averaged[a_name].float().to(device)
+            b_bar = averaged[b_name].float().to(device)
+            bars[layer] = (a_name, b_name, a_bar, b_bar)
+            targets[layer] = torch.tensordot(
+                weights.to(device), torch.bmm(client_a, client_b), dims=([0], [0])
+            )
+            delta = torch.empty_like(b_bar)
+            torch.nn.init.xavier_uniform_(delta)
+            deltas[layer] = delta.requires_grad_()
 
-        for cid, w in zip(cids, weights):
-            cparams = packages[cid]["regular_model_params"]
-            for layer, info in lora_layers.items():
-                A_name = info.get("A_name")
-                B_name = info.get("B_name")
-                if A_name in cparams and B_name in cparams:
-                    cA = cparams[A_name].to(device)
-                    cB = cparams[B_name].to(device)
-                    A_bar[A_name].add_(cA, alpha=w)
-                    B_bar[B_name].add_(cB, alpha=w)
-                    W_target[layer].add_(cA @ cB, alpha=w)
+        optimizer = torch.optim.SGD(list(deltas.values()), lr=self.lora_delta_lr)
+        for _ in range(self.lora_delta_steps):
+            optimizer.zero_grad(set_to_none=True)
+            losses = []
+            for layer, (_, _, a_bar, b_bar) in bars.items():
+                # Paper Eq. 8, transposed to FedProC storage:
+                # min_dB S(mean(A_i B_i), A_bar (B_bar + dB)) + lambda ||dB||^2.
+                prediction = a_bar @ (b_bar + deltas[layer])
+                discrepancy = 1 - F.cosine_similarity(
+                    prediction.flatten(), targets[layer].flatten(), dim=0
+                )
+                losses.append(
+                    discrepancy + self.lora_delta_reg * deltas[layer].square().sum()
+                )
+            torch.stack(losses).sum().backward()
+            optimizer.step()
 
-        aggregated_lora = {}
-
-        for layer, info in lora_layers.items():
-            A_name = info.get("A_name")
-            B_name = info.get("B_name")
-            if A_name not in A_bar or B_name not in B_bar:
-                continue
-
-            A_t = A_bar[A_name]  # [in, r] = paper's B̄ (left factor)
-            B_t = B_bar[B_name]  # [r, out] = paper's Ā (right factor)
-            W_tgt = W_target[layer]  # [in, out]
-
-            # Paper Eq.: min_ΔB S(ΔW, (B̄+ΔB)·Ā) + λ||ΔB||²
-            # B̄ = lora_A_bar (left factor, paper's B), so ΔB applies to lora_A
-            delta_A = torch.zeros_like(A_t, device=device, requires_grad=True)
-            optimizer = torch.optim.SGD([delta_A], lr=self.lora_delta_lr)
-
-            for _ in range(max(1, self.lora_delta_steps)):
-                optimizer.zero_grad()
-                pred = (A_t + delta_A) @ B_t  # [in, out]
-                loss_sim = self._similarity_loss(pred, W_tgt)
-                loss_reg = self.lora_delta_reg * (delta_A.pow(2).sum())
-                loss = loss_sim + loss_reg
-                loss.backward()
-                optimizer.step()
-
-            aggregated_lora[A_name] = (A_t + delta_A.detach()).cpu().clone()
-            aggregated_lora[B_name] = B_t.detach().cpu().clone()
-
-        self.update_lora_params(self.model, aggregated_lora)
+        corrected = OrderedDict(averaged)
+        for layer, (_, b_name, _, b_bar) in bars.items():
+            corrected[b_name] = (
+                (b_bar + deltas[layer].detach()).cpu().to(averaged[b_name].dtype)
+            )
+        self.update_lora_params(model=self.model, params=corrected)
         self._commit_global(
-            OrderedDict(
-                (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
+            new_params=OrderedDict(
+                (name, value.detach().cpu().clone())
+                for name, value in self.model.named_parameters()
             )
         )
 
 
-class LoRA_FAIR_Client(FedIT_Client):
-    pass
+class LoRA_FAIR_Client(peftFL_Client):
+    """LoRA-FAIR worker; local training is standard two-factor LoRA."""

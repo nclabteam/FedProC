@@ -9,7 +9,9 @@ from .base import BaseDataset
 
 
 class CryptoDataDownloadDay(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Daily Binance spot OHLC series from CryptoDataDownload."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join(
             "datasets", "CryptoDataDownload", "raw", "Binance_Spot_Day"
@@ -26,7 +28,8 @@ class CryptoDataDownloadDay(BaseDataset):
             "https://www.cryptodatadownload.com/cdd/Binance_{symbol}_d.csv"
         )
 
-    def get_tickers(self):
+    def get_tickers(self) -> list[str]:
+        """Return available Binance spot symbols quoted in USDT."""
         # Define the URL and headers
         url = "https://api.cryptodatadownload.com/v1/data/ohlc/binance/all/available/"
         headers = {"accept": "application/json"}
@@ -44,7 +47,8 @@ class CryptoDataDownloadDay(BaseDataset):
         # only get tickets have USDT
         return [symbol for symbol in data["result"]["spot"] if "USDT" == symbol[-4:]]
 
-    def download(self):
+    def download(self) -> None:
+        """Download daily OHLC files for available USDT pairs."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
 
@@ -57,7 +61,8 @@ class CryptoDataDownloadDay(BaseDataset):
             self.download_file(url=day_url, save_path=day_save_path)
 
     @staticmethod
-    def read(path):
+    def read(path: str) -> pl.DataFrame | None:
+        """Read a CryptoDataDownload CSV after its metadata row."""
         try:
             df = pl.read_csv(path, try_parse_dates=True, skip_rows=1)
             return df
@@ -67,14 +72,17 @@ class CryptoDataDownloadDay(BaseDataset):
         except pl.exceptions.ComputeError:
             print(f"Date have more than one format: {path}")
 
-    def prepossess(self, df):
-        df = super().prepossess(df)
+    def prepossess(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Clean daily records and retain observations before 2025."""
+        df = super().prepossess(df=df)
         df = df.filter(df["Date"].dt.year() < 2025)
         return df
 
 
 class CryptoDataDownloadHour(CryptoDataDownloadDay, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Hourly Binance spot OHLC series from CryptoDataDownload."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join(
             "datasets", "CryptoDataDownload", "raw", "Binance_Spot_Hour"
@@ -93,7 +101,9 @@ class CryptoDataDownloadHour(CryptoDataDownloadDay, BaseDataset):
 
 
 class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Minute-level Binance spot OHLC series grouped by year."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join(
             "datasets", "CryptoDataDownload", "raw", "Binance_Spot_Minute"
@@ -110,7 +120,8 @@ class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
             "https://www.cryptodatadownload.com/cdd/Binance_{symbol}_{year}_minute.csv"
         )
 
-    def download(self):
+    def download(self) -> None:
+        """Download each available yearly minute-level OHLC file."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
 
@@ -129,7 +140,8 @@ class CryptoDataDownloadMinute(CryptoDataDownloadDay, BaseDataset):
                 if response.status_code == 200:
                     self.download_file(url=minute_url, save_path=minute_save_path)
 
-    def prepossess(self, df):
+    def prepossess(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Normalize column names before applying common preprocessing."""
         df = df.rename({col: col.capitalize() for col in df.columns})
-        df = super().prepossess(df)
+        df = super().prepossess(df=df)
         return df

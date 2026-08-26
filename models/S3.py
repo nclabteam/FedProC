@@ -63,7 +63,7 @@ class S3(nn.Module):
         )
 
     def __init__(self, configs):
-        super(S3, self).__init__()
+        super().__init__()
         self.S3_layers = nn.ModuleList()
         next_segment_num = configs.initial_num_segments
         for i in range(0, configs.num_layers):
@@ -123,7 +123,7 @@ class S3Layer(nn.Module):
             initialization_type (str): Initialization method for the shuffle vector ('kaiming' for Kaiming initialization, 'manual' for manual initialization).
             use_stitch (bool): If True, stitch the shuffled output with the original input using a weighted average.
         """
-        super(S3Layer, self).__init__()
+        super().__init__()
         self.num_segments = int(num_segments)
         self.activation = "relu"
         self.use_conv_w_avg = use_conv_w_avg

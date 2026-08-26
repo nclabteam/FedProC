@@ -67,12 +67,8 @@ class AppliancesEnergy(BaseDataset):
             "energydata_complete.csv",
         )
         frame = pl.read_csv(source_path).with_columns(
-            pl.col("date")
-            .str.to_datetime("%Y-%m-%d %H:%M:%S")
-            .alias(self.column_date)
+            pl.col("date").str.to_datetime("%Y-%m-%d %H:%M:%S").alias(self.column_date)
         )
-        frame.select(
-            [self.column_date] + self.measurement_columns
-        ).write_csv(
+        frame.select([self.column_date] + self.measurement_columns).write_csv(
             os.path.join(self.path_raw, "AppliancesEnergy.csv")
         )

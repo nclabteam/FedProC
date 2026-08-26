@@ -1,4 +1,5 @@
 # Losses
+
 | Abbreviation | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | Name | 
 | ------------ | - | - | - | - | - | - | - | - | - | - | -- | ----- | --- |
 | MAE          | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | 🗸 | ✗ | 🗸 | None | Mean Absolute Error | 
@@ -51,4 +52,14 @@ Legend:
 - 🗸 : generally suitable / recommended  
 - ✗ : generally unsuitable or problematic without adjustments
 
-Reference: [Forecast Evaluation for Data Scientists: Common Pitfalls and Best Practices](https://arxiv.org/pdf/2203.10716)
+## Metric scope
+
+- `LOSSES` contains two-input objectives selectable for training.
+- `EVAL_LOSSES` contains two-input scores, currently `RSquared`, that must not be minimized.
+- `CONTEXT_LOSSES` contains `RMSSE`, `sMAPC`, and `MQC`; generic `evaluation_result()` excludes them.
+
+`RMSSE` requires separate in-sample history for its seasonal-naive scale. `sMAPC` and `MQC` require forecasts for the same periods from consecutive forecast origins, not observations.
+
+Generic evaluation also skips KL divergence and the positive-only log metrics; call those directly when their input-domain contract is satisfied.
+
+References: [Forecast Evaluation for Data Scientists](https://arxiv.org/abs/2203.10716) · [On forecast stability](https://doi.org/10.1016/j.ijforecast.2025.01.006) · [On the stability of global forecasting models](https://arxiv.org/abs/2506.05776)

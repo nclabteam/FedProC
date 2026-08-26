@@ -6,7 +6,9 @@ from .base import BaseDataset
 
 
 class StatesILI(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Weekly influenza-like illness rates split by state."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # Set the dataset name and path
@@ -22,7 +24,8 @@ class StatesILI(BaseDataset):
         self.granularity_unit = "week"
         self.url = "https://raw.githubusercontent.com/emilylaiken/ml-flu-prediction/refs/heads/master/data/States_ILI.csv"
 
-    def download(self):
+    def download(self) -> None:
+        """Download state ILI data and write one file per state."""
         # Create the directory if it doesn't exist
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

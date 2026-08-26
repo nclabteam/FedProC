@@ -20,15 +20,9 @@ class TestAppliancesEnergy(unittest.TestCase):
             train_ratio=0.7,
         )
         self.dataset = AppliancesEnergy(configs)
-        self.dataset.save_path = str(
-            temporary_path / "AppliancesEnergy"
-        )
-        self.dataset.path_raw = str(
-            temporary_path / "AppliancesEnergy" / "raw"
-        )
-        self.dataset.path_temp = str(
-            temporary_path / "AppliancesEnergy" / "temp"
-        )
+        self.dataset.save_path = str(temporary_path / "AppliancesEnergy")
+        self.dataset.path_raw = str(temporary_path / "AppliancesEnergy" / "raw")
+        self.dataset.path_temp = str(temporary_path / "AppliancesEnergy" / "temp")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()

@@ -6,7 +6,9 @@ from .base import BaseDataset
 
 
 class COVID19Cases(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Daily US COVID-19 case, death, and vaccination measurements."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "COVID19Cases")
         self.path_raw = os.path.join("datasets", "COVID19Cases", "raw")
@@ -41,7 +43,8 @@ class COVID19Cases(BaseDataset):
         self.granularity_unit = "day"
         self.url = "https://raw.githubusercontent.com/ashfarhangi/COVID-19/main/data/COVID19_cases.xlsx"
 
-    def download(self):
+    def download(self) -> None:
+        """Download the workbook and split observations by state."""
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)
 

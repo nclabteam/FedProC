@@ -1,16 +1,16 @@
 import torch
+from torch import Tensor
 
 from .base import Loss
 
 
 class RSquared(Loss):
-    """
-    Coefficient of determination (R^2) score
-    """
+    """Compute the coefficient of determination for evaluation."""
 
-    def forward(self, input, target):
-        target_mean = torch.mean(target)
-        ss_tot = torch.sum((target - target_mean) ** 2)
-        ss_res = torch.sum((target - input) ** 2)
-        r2_score = 1 - ss_res / ss_tot
-        return r2_score
+    eval_only = True
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        residual = torch.sum(torch.square(target - input))
+        total = torch.sum(torch.square(target - torch.mean(target)))
+        score = 1 - residual / total.clamp_min(torch.finfo(total.dtype).eps)
+        return torch.where(total > 0, score, (residual == 0).to(input.dtype))

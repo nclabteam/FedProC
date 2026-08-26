@@ -1,13 +1,16 @@
+import math
+
 import torch
+from torch import Tensor
 
 from .base import Loss
 
 
 class RMSLE(Loss):
-    """
-    Root Mean Squared Log Error
-    https://towardsdatascience.com/mean-absolute-log-error-male-a-better-relative-performance-metric-a8fd17bc5f75/
-    """
+    """Compute root mean squared log error for positive values."""
 
-    def forward(self, input, target):
-        return torch.sqrt(torch.mean(self._log_error(x=input, y=target) ** 2))
+    generic_eval = False
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        error = self._log_error(input=input, target=target)
+        return torch.linalg.vector_norm(error) / math.sqrt(error.numel())

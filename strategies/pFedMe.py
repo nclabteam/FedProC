@@ -1,4 +1,3 @@
-import copy
 from argparse import Namespace
 from collections import OrderedDict
 from typing import Any, Dict, List
@@ -13,42 +12,33 @@ from .pFL import pFL, pFL_Client
 class pFedMeOptimizer(Optimizer):
     """Inner optimizer for pFedMe: gradient step on f(θ) + λ/2||θ - w||² w.r.t. θ."""
 
-    def __init__(self, params, lr: float = 0.01, lamda: float = 0.1) -> None:
-        super().__init__(params, dict(lr=lr, lamda=lamda))
+    def __init__(self, params: Any, lr: float = 0.01, lamda: float = 0.1) -> None:
+        super().__init__(params=params, defaults=dict(lr=lr, lamda=lamda))
 
-    def step(self, local_params: List[torch.Tensor], device: str):
+    @torch.no_grad()
+    def step(self, local_params: List[torch.Tensor]) -> None:
         for group in self.param_groups:
             for p, lw in zip(group["params"], local_params):
                 if p.grad is None:
                     continue
-                lw = lw.to(device)
-                p.data = p.data - group["lr"] * (
-                    p.grad.data + group["lamda"] * (p.data - lw.data)
+                p.add_(
+                    p.grad + group["lamda"] * (p - lw),
+                    alpha=-group["lr"],
                 )
-        return [p for group in self.param_groups for p in group["params"]]
 
 
 class pFedMe(pFL):
-    """pFedMe: Personalized Federated Learning with Moreau Envelopes (Dinh et al., NeurIPS 2020).
-
-    Each client finds a personalized model θ* that minimizes the Moreau envelope
-    F_i(w) = min_θ { f_i(θ) + λ/2||θ - w||² }, via K inner gradient steps.
-    The outer update moves w toward θ*: w -= η*λ*(w - θ*).
-    Server aggregates w_i with β-weighted blend: global = (1-β)*prev + β*FedAvg(w_i).
-
-    Default hyperparameters: λ=15 (paper: dataset-dependent), K=5, β=1.0.
-    Reference: arXiv:2006.08848. NeurIPS 2020.
-    """
+    """pFedMe: Personalized Federated Learning with Moreau Envelopes (Dinh et al., NeurIPS 2020)."""
 
     optional = {
         "lamda": 15.0,
         "K": 5,
-        "p_lr": 0.01,
+        "p_lr": 0.09,
         "beta": 1.0,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--lamda", type=float, default=None)
         parser.add_argument("--K", type=int, default=None)
         parser.add_argument("--p_lr", type=float, default=None)
@@ -56,7 +46,6 @@ class pFedMe(pFL):
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
-        self.parallel = False
         init_pp = [p.data.cpu().clone() for p in self.model.parameters()]
         for cid in range(self.num_clients):
             self.clients_personal_model_params[cid]["personalized_params"] = [
@@ -64,46 +53,54 @@ class pFedMe(pFL):
             ]
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
-        prev_global = copy.deepcopy(self.public_model_params)
-
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
-        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
-        new_params = OrderedDict()
-        for name in self.public_model_params:
-            stacked = torch.stack(
-                [p["regular_model_params"][name] for p in packages.values()], dim=-1
-            )
-            new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
-
-        if self.beta < 1.0:
-            for name in new_params:
-                new_params[name] = (
-                    (1.0 - self.beta) * prev_global[name]
-                    + self.beta * new_params[name]
+        mean = self.mean_models(
+            models=[package["regular_model_params"] for package in packages.values()]
+        )
+        self._commit_global(
+            new_params=OrderedDict(
+                (
+                    name,
+                    (1.0 - self.beta) * self.public_model_params[name]
+                    + self.beta * value,
                 )
+                for name, value in mean.items()
+            )
+        )
 
-        self._commit_global(new_params)
+    def select_clients(self) -> None:
+        super().select_clients()
+        self.aggregation_clients = self.selected_clients
+        self.selected_clients = [
+            cid for cid in range(self.num_clients) if not self.is_new[cid]
+        ]
+
+    def package(self, client_id: int) -> Dict[str, Any]:
+        package = super().package(client_id=client_id)
+        package["upload_model"] = client_id in self.aggregation_clients
+        return package
+
+    def train_one_round(self) -> dict:
+        packages = self.trainer.train(self.selected_clients)
+        self.aggregate_client_updates(
+            packages=OrderedDict(
+                (cid, packages[cid]) for cid in self.aggregation_clients
+            )
+        )
+        return packages
 
 
 class pFedMe_Client(pFL_Client):
-    """Client for pFedMe.
-
-    Maintains personalized params θ*_i (stored in personal_model_params["personalized_params"]).
-    Per round:
-      - K inner SGD steps per batch to find θ*_i (Moreau envelope minimizer)
-      - Outer update: w_i -= λ*η*(w_i - θ*_i) (gradient of envelope w.r.t. w)
-      - Send w_i to server (model reset to w_i for aggregation)
-    """
+    """Client for pFedMe."""
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        super().set_parameters(package)
+        super().set_parameters(package=package)
+        self.upload_model = package["upload_model"]
         self._personalized_params: List[torch.Tensor] = [
             pp.clone() for pp in package["personal_model_params"]["personalized_params"]
         ]
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
 
         self.model.to(self.device)
@@ -114,29 +111,37 @@ class pFedMe_Client(pFL_Client):
         )
         local_dev = [p.data.clone() for p in self.model.parameters()]
 
+        batches = iter(loader)
         for _ in range(self.epochs):
-            for batch_x, batch_y, x_mark, y_mark in loader:
-                batch_x = batch_x.to(device=self.device, dtype=torch.float32)
-                batch_y = batch_y.to(device=self.device, dtype=torch.float32)
-                x_mark = x_mark.to(device=self.device, dtype=torch.float32)
-                y_mark = y_mark.to(device=self.device, dtype=torch.float32)
+            try:
+                batch_x, batch_y, x_mark, y_mark = next(batches)
+            except StopIteration:
+                batches = iter(loader)
+                batch_x, batch_y, x_mark, y_mark = next(batches)
 
-                for _ in range(self.K):
-                    inner_optim.zero_grad()
-                    outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
-                    loss = self.loss(outputs, batch_y)
-                    loss.backward()
-                    inner_optim.step(local_dev, self.device)
+            batch_x = batch_x.to(device=self.device, dtype=torch.float32)
+            batch_y = batch_y.to(device=self.device, dtype=torch.float32)
+            x_mark = x_mark.to(device=self.device, dtype=torch.float32)
+            y_mark = y_mark.to(device=self.device, dtype=torch.float32)
 
+            for _ in range(self.K):
+                inner_optim.zero_grad()
+                outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
+                loss = self.loss(outputs, batch_y)
+                loss.backward()
+                inner_optim.step(local_dev)
+
+            with torch.no_grad():
                 for lp, param in zip(local_dev, self.model.parameters()):
-                    lp.data = lp.data - self.lamda * self.p_lr * (lp.data - param.data)
+                    lp.add_(lp - param, alpha=-self.lamda * self.learning_rate)
 
         self._personalized_params = [
             p.data.clone().cpu() for p in self.model.parameters()
         ]
 
-        for param, lp in zip(self.model.parameters(), local_dev):
-            param.data.copy_(lp)
+        with torch.no_grad():
+            for param, lp in zip(self.model.parameters(), local_dev):
+                param.copy_(lp)
 
         if self.efficiency != "high":
             self.model.to("cpu")
@@ -144,6 +149,8 @@ class pFedMe_Client(pFL_Client):
     def package(self) -> Dict[str, Any]:
         out = super().package()
         out["personal_model_params"]["personalized_params"] = self._personalized_params
+        if not self.upload_model:
+            out["__wire__"] = ("personal_model_params",)
         return out
 
     def evaluate_personalized(
@@ -156,15 +163,15 @@ class pFedMe_Client(pFL_Client):
     ) -> float:
         self.id = client_id
         self.current_iter = current_iter
-        self._load_private(client_id)
+        self._load_private(client_id=client_id)
         self.model.load_state_dict(global_params, strict=False)
         with torch.no_grad():
-            for param, pp in zip(self.model.parameters(), personal_params["personalized_params"]):
+            for param, pp in zip(
+                self.model.parameters(), personal_params["personalized_params"]
+            ):
                 param.data.copy_(pp)
         loader = (
-            self.load_test_data()
-            if dataset_type == "test"
-            else self.load_train_data()
+            self.load_test_data() if dataset_type == "test" else self.load_train_data()
         )
         losses = self.calculate_loss(
             model=self.model,

@@ -15,7 +15,12 @@ class LinearHeadwiseExpand(nn.Module):
     implementation with an expansion factor of 1.
     """
 
-    def __init__(self, in_features, num_heads, bias=False):
+    def __init__(
+        self,
+        in_features: int,
+        num_heads: int,
+        bias: bool = False,
+    ) -> None:
         super().__init__()
         assert num_heads > 0, "num_heads must be positive"
         assert num_heads <= in_features, "num_heads must be <= in_features"
@@ -30,7 +35,7 @@ class LinearHeadwiseExpand(nn.Module):
         self.bias = nn.Parameter(torch.zeros(in_features)) if bias else None
         self.reset_parameters()
 
-    def reset_parameters(self, dim=None):
+    def reset_parameters(self, dim: int | None = None) -> None:
         """Small init of Nguyen & Salazar (2019): N(0, sqrt(2 / (5 * dim))).
 
         The reference implementation re-inits these with ``dim`` set to the
@@ -43,7 +48,7 @@ class LinearHeadwiseExpand(nn.Module):
         if self.bias is not None:
             nn.init.zeros_(self.bias)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
         x = x.view(*shape[:-1], self.num_heads, -1)
         x = torch.einsum("...hd,hod->...ho", x, self.weight)
@@ -52,7 +57,7 @@ class LinearHeadwiseExpand(nn.Module):
             x = x + self.bias
         return x
 
-    def extra_repr(self):
+    def extra_repr(self) -> str:
         return (
             f"in_features={self.in_features}, num_heads={self.num_heads}, "
             f"bias={self.bias is not None}"

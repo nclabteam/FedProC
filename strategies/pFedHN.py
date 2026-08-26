@@ -1,6 +1,6 @@
 from argparse import Namespace
 from collections import OrderedDict
-from typing import List
+from typing import Any, List
 
 import torch
 import torch.nn as nn
@@ -9,10 +9,7 @@ from .pFL import pFL, pFL_Client
 
 
 class HyperNetwork(nn.Module):
-    """
-    Generic hypernetwork: client embedding → MLP → one linear head per target
-    parameter tensor → generates a full personalized model for each client.
-    """
+    """Generic hypernetwork: client embedding → MLP → one linear head per target parameter tensor → generates a full personalized model for each client."""
 
     def __init__(
         self,
@@ -25,12 +22,9 @@ class HyperNetwork(nn.Module):
         super().__init__()
         self.embeddings = nn.Embedding(n_nodes, embedding_dim)
 
-        layers: List[nn.Module] = [
-            nn.Linear(embedding_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-        ]
-        for _ in range(n_hidden - 1):
-            layers += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True)]
+        layers: List[nn.Module] = [nn.Linear(embedding_dim, hidden_dim)]
+        for _ in range(n_hidden):
+            layers += [nn.ReLU(inplace=True), nn.Linear(hidden_dim, hidden_dim)]
         self.mlp = nn.Sequential(*layers)
 
         self.param_names: List[str] = []
@@ -46,7 +40,11 @@ class HyperNetwork(nn.Module):
         self.outputs: List[torch.Tensor] = []
 
     def forward(self, client_id: int) -> OrderedDict:
-        idx = torch.tensor([client_id], dtype=torch.long)
+        idx = torch.tensor(
+            [client_id],
+            dtype=torch.long,
+            device=self.embeddings.weight.device,
+        )
         emd = self.embeddings(idx)
         features = self.mlp(emd)
         params = []
@@ -60,17 +58,9 @@ class HyperNetwork(nn.Module):
 
 
 class pFedHN(pFL):
-    """
-    Personalized Federated HyperNetworks (pFedHN).
+    """Personalized Federated HyperNetworks (pFedHN)."""
 
-    A server-side hypernetwork h(v_i; φ) generates a full personalized model θ_i
-    for each client i. Clients run K inner SGD steps and return the delta
-    Δθ_i = θ_i_init − θ_i_trained. The server back-propagates through the
-    hypernetwork using Δθ_i as grad_outputs.
-
-    Reference: Shamsian et al., ICML 2021. arXiv 2103.04628.
-    """
-
+    compulsory = {"return_diff": True}
     optional = {
         "embed_dim": -1,
         "hyper_hid": 100,
@@ -82,7 +72,7 @@ class pFedHN(pFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--embed_dim", type=int, default=None)
         parser.add_argument("--hyper_hid", type=int, default=None)
         parser.add_argument("--n_hidden", type=int, default=None)
@@ -122,13 +112,18 @@ class pFedHN(pFL):
             f"n_hidden={self.n_hidden}, total_params={n_hn:,}"
         )
 
+    def select_clients(self) -> None:
+        self._select_one_client()
+
     def package(self, client_id: int) -> dict:
-        result = super().package(client_id)
+        result = super().package(client_id=client_id)
         # Run HN forward (with grad) and inject generated weights as regular_model_params.
         # self.hnet.outputs retains the computation graph for this client's forward pass.
         self.hnet.train()
         self.hnet.to(self.device)
         result["regular_model_params"] = self.hnet(client_id)
+        result["personal_model_params"] = {}
+        result["__wire__"] = ("regular_model_params",)
         return result
 
     def train_one_round(self) -> dict:
@@ -144,8 +139,7 @@ class pFedHN(pFL):
                 outputs=self.hnet.outputs,
                 inputs=list(self.hnet.parameters()),
                 grad_outputs=[
-                    g.to(self.device)
-                    for g in pkg["model_params_diff"].values()
+                    g.to(self.device) for g in pkg["model_params_diff"].values()
                 ],
                 allow_unused=True,
             )
@@ -155,16 +149,11 @@ class pFedHN(pFL):
                     param.grad = grad
             torch.nn.utils.clip_grad_norm_(self.hnet.parameters(), self.norm_clip)
             self.hn_optimizer.step()
-            self.hnet.to("cpu")
-
-            # Write back personal model params (optimizer/scheduler state)
-            self.trainer._write_back(client_id, pkg)
             all_packages[client_id] = pkg
         return all_packages
 
-    def aggregate_client_updates(self, packages) -> None:
-        # All aggregation done per-client in train_one_round(); this is a no-op.
-        pass
+    def aggregate_client_updates(self, packages: Any) -> None:
+        """Aggregation is completed inside ``train_one_round``."""
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
         # Sync clients_personal_model_params with current HN weights before eval.
@@ -174,8 +163,7 @@ class pFedHN(pFL):
             for cid in range(self.num_clients):
                 weights = self.hnet(cid)
                 self.clients_personal_model_params[cid] = weights
-        self.hnet.to("cpu")
-        super()._pre_eval_hook(dataset_type)
+        super()._pre_eval_hook(dataset_type=dataset_type)
 
     def save_models(self, save_type: str) -> None:
         if save_type not in ["last", "best"]:
@@ -199,9 +187,7 @@ class pFedHN(pFL):
 
 
 class pFedHN_Client(pFL_Client):
-    """
-    Client for pFedHN. Receives HN-generated weights, runs local training,
-    and returns Δθ = θ_init − θ_trained via the return_diff mechanism.
-    """
+    """Client for pFedHN."""
 
     return_diff: bool = True
+    return_diff_score = False

@@ -1,10 +1,4 @@
-"""Physical partial-training base for model-heterogeneous FL.
-
-The server keeps each client's parameter-index manifest.  Clients receive and
-return only dense narrow parameter tensors; they never echo global indices.
-Subclasses define the index schedule, while model-family adapters define the
-meaning of a hidden unit and all tensor axes coupled to it.
-"""
+"""Physical partial-training base for model-heterogeneous FL."""
 
 from __future__ import annotations
 
@@ -13,7 +7,7 @@ import math
 from argparse import Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Callable, Dict, Mapping, TypeAlias
+from typing import Any, Callable, Dict, Mapping, TypeAlias
 
 import torch
 from torch import nn
@@ -55,7 +49,7 @@ class ptFL_SharedMethods:
     def _pt_retained_width(full_width: int, capacity: float) -> int:
         """Return the manuscript's exact ``floor(beta * K)`` width."""
 
-        ptFL_SharedMethods._pt_validate_capacity(capacity)
+        ptFL_SharedMethods._pt_validate_capacity(capacity=capacity)
         width = math.floor(capacity * full_width)
         if width < 1:
             raise ValueError(
@@ -152,10 +146,10 @@ class ptFL_SharedMethods:
 
     @staticmethod
     def _pt_build_output_only_plan(model: nn.Module, capacity: float) -> PTPlan:
-        ptFL_SharedMethods._pt_validate_capacity(capacity)
-        ptFL_SharedMethods._pt_reject_buffers(model)
+        ptFL_SharedMethods._pt_validate_capacity(capacity=capacity)
+        ptFL_SharedMethods._pt_reject_buffers(model=model)
         manifest: Manifest = OrderedDict(
-            (name, ptFL_SharedMethods._pt_full_indices(parameter))
+            (name, ptFL_SharedMethods._pt_full_indices(parameter=parameter))
             for name, parameter in model.named_parameters()
         )
         return PTPlan(manifest=manifest, retained_widths=(), is_degenerate=True)
@@ -168,7 +162,7 @@ class ptFL_SharedMethods:
     ) -> PTPlan:
         """Map independent per-layer cell selections to every coupled axis."""
 
-        ptFL_SharedMethods._pt_reject_buffers(model)
+        ptFL_SharedMethods._pt_reject_buffers(model=model)
         if not hasattr(model, "cells") or not isinstance(model.cells, nn.ModuleList):
             raise TypeError("recurrent ptFL requires model.cells as ModuleList")
         if not hasattr(model, "fc_pred") or not isinstance(model.fc_pred, nn.Linear):
@@ -178,7 +172,9 @@ class ptFL_SharedMethods:
 
         hidden_sizes = tuple(int(cell.hidden_size) for cell in model.cells)
         retained_widths = tuple(
-            ptFL_SharedMethods._pt_retained_width(hidden_size, capacity)
+            ptFL_SharedMethods._pt_retained_width(
+                full_width=hidden_size, capacity=capacity
+            )
             for hidden_size in hidden_sizes
         )
         if len(set(retained_widths)) != 1:
@@ -192,10 +188,10 @@ class ptFL_SharedMethods:
         ):
             selected_by_layer.append(
                 ptFL_SharedMethods._pt_validate_selected_indices(
-                    selector(f"cells.{layer}", hidden_size, width),
-                    hidden_size,
-                    width,
-                    f"cells.{layer}",
+                    indices=selector(f"cells.{layer}", hidden_size, width),
+                    full_width=hidden_size,
+                    retained=width,
+                    group_name=f"cells.{layer}",
                 )
             )
 
@@ -207,10 +203,10 @@ class ptFL_SharedMethods:
             for local_name, parameter in cell.named_parameters(recurse=False):
                 full_name = f"cells.{layer}.{local_name}"
                 rows = ptFL_SharedMethods._pt_expanded_rows(
-                    parameter,
-                    hidden_size,
-                    selected,
-                    full_name,
+                    parameter=parameter,
+                    hidden_size=hidden_size,
+                    selected=selected,
+                    parameter_name=full_name,
                 )
                 if local_name.startswith(ptFL_SharedMethods._PT_INPUT_WEIGHT_PREFIXES):
                     if parameter.dim() != 2:
@@ -273,27 +269,35 @@ class ptFL_SharedMethods:
         capacity: float,
         selector: IndexSelector,
     ) -> PTPlan:
-        adapter_kind = ptFL_SharedMethods._pt_adapter_kind(model_name, model)
+        adapter_kind = ptFL_SharedMethods._pt_adapter_kind(
+            model_name=model_name, model=model
+        )
         if adapter_kind == "output_only":
-            return ptFL_SharedMethods._pt_build_output_only_plan(model, capacity)
-        return ptFL_SharedMethods._pt_build_recurrent_plan(model, capacity, selector)
+            return ptFL_SharedMethods._pt_build_output_only_plan(
+                model=model, capacity=capacity
+            )
+        return ptFL_SharedMethods._pt_build_recurrent_plan(
+            model=model, capacity=capacity, selector=selector
+        )
 
     @staticmethod
     def _pt_build_model(configs: Namespace) -> nn.Module:
-        model_class = SharedMethods._get_objective_function("models", configs.model)
+        model_class = SharedMethods._get_objective_function(
+            func_type="models", func_name=configs.model
+        )
         return model_class(configs=configs)
 
     @staticmethod
     def _pt_build_client_model(configs: Namespace, capacity: float) -> nn.Module:
-        adapter_kind = ptFL_SharedMethods._pt_adapter_kind(configs.model)
+        adapter_kind = ptFL_SharedMethods._pt_adapter_kind(model_name=configs.model)
         narrow_configs = copy.deepcopy(configs)
         if adapter_kind == "recurrent_stack":
             narrow_configs.hidden_size = ptFL_SharedMethods._pt_retained_width(
-                int(configs.hidden_size), capacity
+                full_width=int(configs.hidden_size), capacity=capacity
             )
         else:
-            ptFL_SharedMethods._pt_validate_capacity(capacity)
-        return ptFL_SharedMethods._pt_build_model(narrow_configs)
+            ptFL_SharedMethods._pt_validate_capacity(capacity=capacity)
+        return ptFL_SharedMethods._pt_build_model(configs=narrow_configs)
 
 
 class ptFL(ptFL_SharedMethods, tFL):
@@ -302,7 +306,7 @@ class ptFL(ptFL_SharedMethods, tFL):
     optional = {"capacity": "1.0"}
 
     @classmethod
-    def args_update(cls, parser) -> None:
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument(
             "--capacity",
             type=str,
@@ -310,10 +314,10 @@ class ptFL(ptFL_SharedMethods, tFL):
             help="Comma-separated retained hidden-width ratios in (0, 1]",
         )
 
-    def __init__(self, configs, times) -> None:
-        super().__init__(configs, times)
-        self._pt_capacities = self._parse_capacities(self.capacity)
-        self._pt_adapter_kind(self.configs.model, self.model)
+    def __init__(self, configs: Any, times: Any) -> None:
+        super().__init__(configs=configs, times=times)
+        self._pt_capacities = self._parse_capacities(raw=self.capacity)
+        self._pt_adapter_kind(model_name=self.configs.model, model=self.model)
         self._pt_pending_manifests: Dict[int, Manifest] = {}
         self._pt_warned_degenerate = False
 
@@ -343,16 +347,16 @@ class ptFL(ptFL_SharedMethods, tFL):
         raise NotImplementedError("ptFL subclasses must define an index schedule")
 
     def package(self, client_id: int) -> dict:
-        capacity = self._pt_capacity_for_client(client_id)
+        capacity = self._pt_capacity_for_client(client_id=client_id)
         plan = self._pt_build_plan(
-            self.configs.model,
-            self.model,
-            capacity,
-            lambda group, width, retained: self._pt_select_indices(
-                group,
-                width,
-                retained,
-                client_id,
+            model_name=self.configs.model,
+            model=self.model,
+            capacity=capacity,
+            selector=lambda group, width, retained: self._pt_select_indices(
+                group_name=group,
+                full_width=width,
+                retained=retained,
+                client_id=client_id,
             ),
         )
         if plan.is_degenerate and not self._pt_warned_degenerate:
@@ -363,7 +367,9 @@ class ptFL(ptFL_SharedMethods, tFL):
             self._pt_warned_degenerate = True
 
         self._pt_pending_manifests[client_id] = plan.manifest
-        submodel = self._pt_extract_parameters(self.public_model_params, plan.manifest)
+        submodel = self._pt_extract_parameters(
+            parameters=self.public_model_params, manifest=plan.manifest
+        )
         return {
             "__wire__": ("regular_model_params", "capacity"),
             "client_id": client_id,
@@ -415,7 +421,7 @@ class ptFL(ptFL_SharedMethods, tFL):
                         f"client {client_id} {name}: shape {tuple(local.shape)}; "
                         f"expected {expected_shape}"
                     )
-                grid = self._pt_index_grid(indices)
+                grid = self._pt_index_grid(indices=indices)
                 if not grid:
                     accum[name].add_(local)
                     counts[name].add_(1.0)
@@ -432,7 +438,7 @@ class ptFL(ptFL_SharedMethods, tFL):
             count = counts[name]
             updated = accum[name] / count.clamp_min(1.0).to(accum[name].dtype)
             new_parameters[name] = torch.where(count > 0, updated, original)
-        self._commit_global(new_parameters)
+        self._commit_global(new_params=new_parameters)
 
 
 class ptFL_Client(ptFL_SharedMethods, tFL_Client):
@@ -441,19 +447,28 @@ class ptFL_Client(ptFL_SharedMethods, tFL_Client):
     def set_parameters(self, package: Mapping[str, object]) -> None:
         self.id = int(package["client_id"])
         self.current_iter = int(package["current_iter"])
-        self._load_private(self.id)
+        self._load_private(client_id=self.id)
 
         capacity = float(package["capacity"])
-        self.model = self._pt_build_client_model(self.configs, capacity)
+        self.model = self._pt_build_client_model(
+            configs=self.configs, capacity=capacity
+        )
         self.model.load_state_dict(package["regular_model_params"], strict=True)
-        self.optimizer = self._build("optimizers", self.configs.optimizer)(
+        self.optimizer = self._build(kind="optimizers", name=self.configs.optimizer)(
             params=self.model.parameters(),
             configs=self.configs,
         )
-        self.scheduler = self._build("schedulers", self.configs.scheduler)(
-            optimizer=self.optimizer,
-            configs=self.configs,
-        )
+        self._scheduler_base_lrs = [
+            float(group["lr"]) for group in self.optimizer.param_groups
+        ]
+        self.initialize_scheduler()
+        if self.scheduler_mode == "iteration" and package["scheduler_state"]:
+            self.restore_scheduler(
+                scheduler=self.scheduler,
+                optimizer=self.optimizer,
+                state=package["scheduler_state"],
+                mode=self.scheduler_mode,
+            )
         self.regular_params_name = [name for name, _ in self.model.named_parameters()]
         self.personal_params_name = []
 
@@ -468,7 +483,7 @@ class ptFL_Client(ptFL_SharedMethods, tFL_Client):
             "regular_model_params": regular,
             "personal_model_params": {},
             "optimizer_state": {},
-            "scheduler_state": {},
+            "scheduler_state": copy.deepcopy(self.scheduler.state_dict()),
             "score": self.train_samples,
         }
 
@@ -480,12 +495,12 @@ class ptFL_Client(ptFL_SharedMethods, tFL_Client):
         current_iter: int,
     ) -> float:
         self.id = client_id
-        self._load_private(client_id)
-        model_class = self._build("models", self.configs.model)
+        self._load_private(client_id=client_id)
+        model_class = self._build(kind="models", name=self.configs.model)
         self.model = model_class(configs=self.configs)
         return super().evaluate_global(
-            client_id,
-            global_params,
-            dataset_type,
-            current_iter,
+            client_id=client_id,
+            global_params=global_params,
+            dataset_type=dataset_type,
+            current_iter=current_iter,
         )

@@ -1,97 +1,93 @@
+from argparse import Namespace
 from collections import OrderedDict
+from typing import Any
 
-import ray
+import torch
 
-from .base import SharedMethods
 from .tFL import tFL, tFL_Client
 
 
 class Centralized(tFL):
-    """Centralized baseline: server trains directly on all clients' data each round.
-
-    Clients send their data loaders; the server runs gradient steps on them
-    sequentially (or in parallel via Ray). No federation — this measures the
-    upper-bound performance of a central aggregator with full data access.
-    """
+    """Oracle baseline that trains one server model over every client's data."""
 
     compulsory = {"exclude_server_model_processes": False}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, configs: Namespace, times: int) -> None:
+        super().__init__(configs=configs, times=times)
         self.initialize_loss()
         self.initialize_optimizer()
         self.initialize_scheduler()
 
-    def aggregate_client_updates(self, packages) -> None:
-        if self.parallel:
-            futures = []
-            for cid, pkg in packages.items():
-                train_loader = pkg["train_loader"]
-                future = train_one_epoch_remote.remote(
-                    model=self.model,
-                    dataloader=train_loader,
-                    optimizer=self.optimizer,
-                    criterion=self.loss,
-                    scheduler=self.scheduler,
-                    device=self.device,
-                    epochs=self.epochs,
-                )
-                futures.append(future)
+    def select_clients(self) -> None:
+        self.selected_clients = [
+            client_id
+            for client_id in range(self.num_clients)
+            if not self.is_new[client_id]
+        ]
+        self.current_num_join_clients = len(self.selected_clients)
 
-            for future in futures:
-                model_state, optimizer_state = ray.get(future)
-                self.model.load_state_dict(model_state)
-                self.optimizer.load_state_dict(optimizer_state)
-        else:
-            for cid, pkg in packages.items():
-                train_loader = pkg["train_loader"]
-                for _ in range(self.epochs):
-                    self.train_one_epoch(
-                        model=self.model,
-                        dataloader=train_loader,
-                        optimizer=self.optimizer,
-                        criterion=self.loss,
-                        scheduler=self.scheduler,
-                        device=self.device,
-                    )
+    @classmethod
+    def _train_centralized_epoch(
+        cls,
+        model: Any,
+        dataloaders: Any,
+        optimizer: Any,
+        criterion: Any,
+        scheduler: Any,
+        device: Any,
+    ) -> None:
+        model.to(device)
+        Centralized._move_optimizer_state_to_param_devices(optimizer=optimizer)
+        model.train()
+        for dataloader in dataloaders:
+            for batch_x, batch_y, x_mark, y_mark in dataloader:
+                optimizer.zero_grad(set_to_none=True)
+                batch_x = batch_x.to(device=device, dtype=torch.float32)
+                batch_y = batch_y.to(device=device, dtype=torch.float32)
+                x_mark = x_mark.to(device=device, dtype=torch.float32)
+                y_mark = y_mark.to(device=device, dtype=torch.float32)
+                outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
+                criterion(outputs, batch_y).backward()
+                optimizer.step()
+                cls.step_scheduler_batch(
+                    scheduler=scheduler,
+                    batch_data=batch_x,
+                )
+        cls.step_scheduler_epoch(scheduler=scheduler)
+
+    def aggregate_client_updates(self, packages: Any) -> None:
+        dataloaders = [package["train_loader"] for package in packages.values()]
+        self.initialize_scheduler(
+            steps_per_epoch=sum(len(dataloader) for dataloader in dataloaders)
+        )
+        for _ in range(self.epochs):
+            self._train_centralized_epoch(
+                model=self.model,
+                dataloaders=dataloaders,
+                optimizer=self.optimizer,
+                criterion=self.loss,
+                scheduler=self.scheduler,
+                device=self.device,
+            )
 
         self._commit_global(
-            OrderedDict(
+            new_params=OrderedDict(
                 (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
             )
         )
 
-    def evaluate_generalization(self, *args, **kwargs):
-        pass  # no personalization in centralized training
+    def _compute_send_mb(self, packages: Any) -> tuple:
+        return {}, 0.0
 
 
 class Centralized_Client(tFL_Client):
     def fit(self) -> None:
-        pass  # server trains on collected client data; no client-side training
+        """Leave training to the centralized server."""
 
     def package(self) -> dict:
-        result = super().package()
-        result["train_loader"] = self.load_train_data()
-        return result
-
-
-@ray.remote
-def train_one_epoch_remote(
-    model, dataloader, optimizer, criterion, scheduler, device, epochs
-):
-    model.to(device)
-    SharedMethods._move_optimizer_state_to_param_devices(optimizer)
-    model.train()
-    for _ in range(epochs):
-        for batch_x, batch_y, x_mark, y_mark in dataloader:
-            optimizer.zero_grad()
-            batch_x = batch_x.to(device)
-            batch_y = batch_y.to(device)
-            x_mark = x_mark.to(device)
-            y_mark = y_mark.to(device)
-            outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
-        scheduler.step()
-    return model.state_dict(), optimizer.state_dict()
+        package = super().package()
+        package["train_loader"] = self.load_train_data()
+        package["regular_model_params"] = OrderedDict()
+        package["personal_model_params"] = OrderedDict()
+        package["__wire__"] = ()
+        return package

@@ -4,8 +4,14 @@ import torch.nn.functional as F
 
 
 class AutoAttention(nn.Module):
+    """Apply period-aware autoregressive attention."""
 
-    def __init__(self, P, d_model, proj_dropout=0.2):
+    def __init__(
+        self,
+        P: int,
+        d_model: int,
+        proj_dropout: float = 0.2,
+    ) -> None:
         """
         Initialize the Auto-Attention module.
 
@@ -22,7 +28,7 @@ class AutoAttention(nn.Module):
         self.P = P
         self.scale = nn.Parameter(torch.tensor(d_model**-0.5), requires_grad=False)
 
-    def auto_attention(self, inp):
+    def auto_attention(self, inp: torch.Tensor) -> torch.Tensor:
         """
         Perform auto-attention mechanism on the input.
 
@@ -48,7 +54,7 @@ class AutoAttention(nn.Module):
 
         return output
 
-    def forward(self, inp):
+    def forward(self, inp: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the Auto-Attention module.
 
@@ -82,7 +88,7 @@ class AutoAttention(nn.Module):
         output = output.permute(0, 1, 3, 2)
 
         # Apply autoregressive self-attention
-        output = self.auto_attention(output).squeeze(-2)
+        output = self.auto_attention(inp=output).squeeze(-2)
         output = self.out_projector(output).permute(0, 2, 1)
 
         return output

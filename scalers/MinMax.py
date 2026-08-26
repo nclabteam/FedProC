@@ -1,26 +1,25 @@
 import numpy as np
 
-from .BaseScaler import BaseScaler
+from .BaseScaler import BaseScaler, ScalerStats
 
 
 class MinMax(BaseScaler):
-    def __init__(self, stat=None):
-        super().__init__()
-        if stat is not None:
-            self.min = []
-            self.max = []
-            for key in stat.keys():
-                self.min.append(stat[key]["min"])
-                self.max.append(stat[key]["max"])
-            self.min = np.array(self.min)
-            self.max = np.array(self.max)
+    """Scale each feature to its observed minimum and maximum."""
 
-    def fit(self, data):
+    def __init__(self, stat: ScalerStats | None = None) -> None:
+        super().__init__(stat=stat)
+        if stat is not None:
+            self.min, self.max = self.extract_statistics(
+                stat=stat,
+                names=("min", "max"),
+            )
+
+    def fit(self, data: np.ndarray) -> None:
         self.min = data.min(axis=0)
         self.max = data.max(axis=0)
 
-    def transform(self, data):
+    def transform(self, data: np.ndarray) -> np.ndarray:
         return (data - self.min) / (self.max - self.min)
 
-    def inverse_transform(self, data):
+    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
         return data * (self.max - self.min) + self.min

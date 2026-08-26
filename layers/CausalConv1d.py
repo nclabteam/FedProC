@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 
@@ -9,7 +10,7 @@ class CausalConv1d(nn.Module):
     size of 0 turns the layer into a no-op, as in the reference implementation.
     """
 
-    def __init__(self, hidden_size, kernel_size=4):
+    def __init__(self, hidden_size: int, kernel_size: int = 4) -> None:
         super().__init__()
         assert kernel_size >= 0, "kernel_size must be >= 0"
         self.kernel_size = kernel_size
@@ -25,7 +26,7 @@ class CausalConv1d(nn.Module):
             else None
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.conv is None:
             return x
         # (batch, seq_len, channels) -> conv over time -> drop the right pad so

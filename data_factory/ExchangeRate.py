@@ -14,7 +14,7 @@ class ExchangeRate(BaseDataset):
     Data is preprocessed with weekends/holidays already removed.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "ExchangeRate")
         self.path_raw = os.path.join("datasets", "ExchangeRate", "raw")
@@ -27,9 +27,12 @@ class ExchangeRate(BaseDataset):
         self.url = "https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/refs/heads/master/exchange_rate/exchange_rate.txt.gz"
         self.split_files = True
 
-    def download(self):
+    def download(self) -> None:
+        """Download, timestamp, and optionally split exchange-rate series."""
         os.makedirs(self.path_raw, exist_ok=True)
-        extracted_path = self.download_and_extract_gz(url=self.url, save_dir=self.path_temp)
+        extracted_path = self.download_and_extract_gz(
+            url=self.url, save_dir=self.path_temp
+        )
         df = pl.scan_csv(extracted_path, separator=",", has_header=False).collect()
         start_date = datetime(1990, 1, 1)
         df = df.with_columns(
@@ -50,7 +53,9 @@ class ExchangeRate(BaseDataset):
 
 
 class ExchangeRateOG(ExchangeRate):
-    def __init__(self, *args, **kwargs):
+    """Multivariate form of the exchange-rate dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "ExchangeRateOG")
         self.path_raw = os.path.join("datasets", "ExchangeRateOG", "raw")

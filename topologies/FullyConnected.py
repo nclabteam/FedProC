@@ -2,9 +2,10 @@ from .base import Topology
 
 
 class FullyConnected(Topology):
-    def _gen(self):
-        neighbors = {}
-        for node in range(self.num_nodes):
-            neighbors[node] = list(range(self.num_nodes))
-            neighbors[node].remove(node)
-        return neighbors
+    """Connect every node to every other node."""
+
+    def _gen(self) -> dict[int, list[int]]:
+        return {
+            node: [peer for peer in range(self.num_nodes) if peer != node]
+            for node in range(self.num_nodes)
+        }

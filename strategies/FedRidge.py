@@ -27,21 +27,12 @@ class _LinearWeightsMixin:
 
 
 class FedRidge(_LinearWeightsMixin, tFL):
-    """
-    FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF.
-
-    Clients upload sufficient statistics G_k = X_k^T X_k and h_k = X_k^T Y_k.
-    Server aggregates G = Σ G_k, h = Σ h_k and solves w = (G + γI)^{-1} h
-    in one round — exact recovery of the centralised solution (paper Alg. 1).
-
-    Multi-output target (H steps) is a standard extension of the univariate
-    paper formulation.
-    """
+    """FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF."""
 
     optional = {"gamma": 0.1}
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> Any:
         parser.add_argument(
             "--gamma",
             type=float,
@@ -56,20 +47,22 @@ class FedRidge(_LinearWeightsMixin, tFL):
         )
         round_start = time.time()
         self.current_iter = 0
-        self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
+        self.selected_clients = [
+            i for i in range(self.num_clients) if not self.is_new[i]
+        ]
         packages = self.trainer.train(self.selected_clients)
-        uplink, downlink = self._compute_send_mb(packages)
+        uplink, downlink = self._compute_send_mb(packages=packages)
         self.metrics["downlink_mb"].append(downlink)
         for cid, mb in uplink.items():
             self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
-        self.aggregate_client_updates(packages)
+        self.aggregate_client_updates(packages=packages)
 
         for dataset_type in ["train", "test"]:
             if dataset_type == "train" and self.skip_eval_train:
                 continue
             if not self.exclude_server_model_processes:
-                self.evaluate_generalization(dataset_type)
-            self._pre_eval_hook(dataset_type)
+                self.evaluate_generalization(dataset_type=dataset_type)
+            self._pre_eval_hook(dataset_type=dataset_type)
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
         self._save_best_hook()
@@ -84,7 +77,7 @@ class FedRidge(_LinearWeightsMixin, tFL):
         except Exception:
             pass
 
-    def aggregate_client_updates(self, packages) -> None:
+    def aggregate_client_updates(self, packages: Any) -> None:
         L = self.input_len
         H = self.output_len
 
@@ -98,28 +91,22 @@ class FedRidge(_LinearWeightsMixin, tFL):
         W = torch.linalg.solve(sigma_xx_g + self.gamma * torch.eye(L), sigma_xy_g)
         self.sigma_xx_g = sigma_xx_g
         self.sigma_xy_g = sigma_xy_g
-        self._load_linear_weights(self.model, W)
+        self._load_linear_weights(model=self.model, W=W)
         self._commit_global(
-            OrderedDict(
+            new_params=OrderedDict(
                 (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
             )
         )
 
 
 class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
-    """Client for FedRidge.
-
-    Computes the local sufficient statistics Sigma_xx (L × L) and
-    Sigma_xy (L × H) from the training data and uploads them to the
-    server.  The server aggregates the weighted statistics and solves the
-    global ridge regression in one round.
-    """
+    """Client for FedRidge."""
 
     _sigma_xx: Optional[torch.Tensor] = None
     _sigma_xy: Optional[torch.Tensor] = None
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len

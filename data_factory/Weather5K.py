@@ -4,7 +4,9 @@ from .base import BaseDataset
 
 
 class Weather5K(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Hourly measurements from the WEATHER-5K station collection."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "Weather5K", "raw")
         self.save_path = os.path.join("datasets", "Weather5K")
@@ -14,7 +16,7 @@ class Weather5K(BaseDataset):
         self.granularity = 1
         self.granularity_unit = "hour"
 
-    def download(self):
+    def download(self) -> None:
         """
         Download: https://github.com/taohan10200/WEATHER-5K
         """
@@ -22,7 +24,9 @@ class Weather5K(BaseDataset):
 
 
 class TinyWeather5K(Weather5K, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Reduced WEATHER-5K station collection."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "TinyWeather5K", "raw")
         self.save_path = os.path.join("datasets", "TinyWeather5K")

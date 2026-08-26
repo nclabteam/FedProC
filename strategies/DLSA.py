@@ -7,27 +7,11 @@ from .FedRidge import FedRidge, FedRidge_Client
 
 
 class DLSA(FedRidge):
-    """DLSA: Distributed Least Squares Approximation (Zhu et al. JCGS 2021).
-
-    Applies the Gaussian-NLL specialisation of the paper's WLSE (Eq. 2.4) to
-    federated LTSF.  Each client uploads its local OLS solution W_i and the
-    normalised precision matrix Sigma_k^{-1} = Sigma_xx_i / (n_i * sigma_i^2).
-    The server aggregates via:
-
-        W_g = (Σ_k α_k Σ_k^{-1})^{-1} (Σ_k α_k Σ_k^{-1} W_k)
-            where α_k = n_k / N
-
-    No personalisation — global model only.
-
-    References
-    ----------
-    Zhu et al., "Least-Square Approximation for a Distributed System,"
-    JCGS 2021. https://doi.org/10.1080/10618600.2021.1923517
-    """
+    """DLSA: Distributed Least Squares Approximation (Zhu et al. JCGS 2021)."""
 
     optional = {"gamma": 0.0}
 
-    def aggregate_client_updates(self, packages) -> None:
+    def aggregate_client_updates(self, packages: Any) -> None:
         L = self.input_len
         H = self.output_len
 
@@ -41,27 +25,23 @@ class DLSA(FedRidge):
             hw_sum.add_(h_k @ packages[cid]["w_i"], alpha=alpha_k)
 
         W_g = torch.linalg.solve(h_sum + self.gamma * torch.eye(L), hw_sum)
-        self._load_linear_weights(self.model, W_g)
+        self._load_linear_weights(model=self.model, W=W_g)
         self._commit_global(
-            OrderedDict(
+            new_params=OrderedDict(
                 (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
             )
         )
 
 
 class DLSA_Client(FedRidge_Client):
-    """Client for DLSA.
-
-    Computes local OLS solution W_i and normalised precision matrix
-    Sigma_k^{-1} = Sigma_xx_i / (n_i * sigma_i^2) per paper Eq. 2.4.
-    """
+    """Client for DLSA."""
 
     _w_i: Optional[torch.Tensor] = None
     _h_i: Optional[torch.Tensor] = None
     _n_i: int = 0
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len

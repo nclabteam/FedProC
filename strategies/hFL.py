@@ -1,80 +1,158 @@
 import copy
 import json
 import os
+from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
 
-from .base import SharedMethods
 from .pFL import pFL, pFL_Client
+from .tFL import Trainer, tFL_Client
 
 
-class hFL_Trainer:
-    """Per-client worker pool for heterogeneous-architecture FL.
+class hFLShared:
+    """Utilities shared by heterogeneous-model strategies."""
 
-    Unlike the standard Trainer (one reusable worker), hFL needs one worker per
-    client because each client has a fixed model architecture that cannot be
-    hot-swapped on a single worker. Workers are created once at __init__ with
-    configs already patched to the correct model architecture.
-    """
+    @staticmethod
+    def load_public_data(
+        configs: Namespace, dataset_name: str, batch_size: int
+    ) -> DataLoader:
+        import data_factory
 
-    def __init__(self, server, client_cls, configs, times) -> None:
+        public_configs = copy.deepcopy(configs)
+        public_configs.dataset = dataset_name
+        dataset = getattr(data_factory, dataset_name)(public_configs)
+        dataset.execute()
+
+        arrays: dict[str, list[np.ndarray]] = {
+            name: [] for name in ("x", "y", "x_mark", "y_mark")
+        }
+        for entry in dataset.info:
+            with np.load(entry["paths"]["train"]) as data:
+                for name in arrays:
+                    arrays[name].append(data[name])
+        tensors = [
+            torch.as_tensor(np.concatenate(arrays[name]), dtype=torch.float32)
+            for name in arrays
+        ]
+        return DataLoader(
+            dataset=TensorDataset(*tensors),
+            batch_size=batch_size,
+            shuffle=True,
+        )
+
+
+class hFL_Trainer(Trainer):
+    """Reuse one stateless worker per model prototype."""
+
+    def __init__(
+        self,
+        server: "hFL",
+        client_cls: type[tFL_Client],
+        configs: Namespace,
+        times: int,
+    ) -> None:
         self.server = server
-        self.workers: dict = {}
-        for entry in server.model_map:
-            cid = entry["client"]
-            client_cfg = copy.deepcopy(configs)
-            client_cfg.model = entry["model"]
-            for k, v in entry.get("params", {}).items():
-                setattr(client_cfg, k, v)
-            self.workers[cid] = client_cls(
-                configs=client_cfg, times=times, device=client_cfg.device
-            )
+        self.client_cls = client_cls
+        self.parallel = False
+        self.workers: dict[int, tFL_Client] = {}
+        self.client_prototypes: dict[int, int] = {}
+        self.prototype_clients: dict[int, list[int]] = {}
+        self.prototype_workers: dict[int, tFL_Client] = {}
 
-    def train(self, selected) -> OrderedDict:
-        packages: OrderedDict = OrderedDict()
-        for cid in selected:
-            pkg = self.server.package(cid)
-            self.server._downlink_sizes[cid] = self.server.get_size(pkg)
-            out = self.workers[cid].train(pkg)
-            self.server._uplink_sizes[cid] = self.server.get_size(out)
-            self._write_back(cid, out)
-            packages[cid] = out
+        with open(server.path_info, encoding="utf-8") as stream:
+            client_info = json.load(stream)
+        prototype_ids: dict[tuple[str, str, str], int] = {}
+        for entry in server.model_map:
+            client_id = int(entry["client"])
+            params = entry.get("params", {})
+            dimensions = {
+                name: client_info[client_id][name]
+                for name in ("input_channels", "output_channels")
+            }
+            key = (
+                entry["model"],
+                json.dumps(params, sort_keys=True, default=str),
+                json.dumps(dimensions, sort_keys=True, default=str),
+            )
+            if key not in prototype_ids:
+                prototype_id = len(prototype_ids)
+                prototype_ids[key] = prototype_id
+                client_configs = copy.deepcopy(configs)
+                client_configs.model = entry["model"]
+                client_configs._worker_client_id = client_id
+                for name, value in params.items():
+                    setattr(client_configs, name, value)
+                self.prototype_workers[prototype_id] = client_cls(
+                    configs=client_configs,
+                    times=times,
+                    device=client_configs.device,
+                )
+                self.prototype_clients[prototype_id] = []
+            prototype_id = prototype_ids[key]
+            self.client_prototypes[client_id] = prototype_id
+            self.prototype_clients[prototype_id].append(client_id)
+            self.workers[client_id] = self.prototype_workers[prototype_id]
+
+    def worker_for(self, client_id: int) -> tFL_Client:
+        return self.workers[client_id]
+
+    def train(self, selected: Sequence[int]) -> OrderedDict[int, dict[str, Any]]:
+        packages: OrderedDict[int, dict[str, Any]] = OrderedDict()
+        for client_id in selected:
+            output = self._receive(
+                cid=client_id,
+                out=self.worker_for(client_id=client_id).train(
+                    package=self._dispatch(cid=client_id)
+                ),
+            )
+            self._write_back(cid=client_id, out=output)
+            packages[client_id] = output
         return packages
 
-    def evaluate(self, ids, global_params, dataset_type, current_iter):
+    def evaluate(
+        self,
+        ids: list[int],
+        global_params: Mapping[str, torch.Tensor],
+        dataset_type: str,
+        current_iter: int,
+    ) -> list[float]:
         return [
-            self.workers[cid].evaluate_global(
-                cid, global_params, dataset_type, current_iter
+            self.worker_for(client_id=client_id).evaluate_global(
+                client_id=client_id,
+                global_params=global_params,
+                dataset_type=dataset_type,
+                current_iter=current_iter,
             )
-            for cid in ids
+            for client_id in ids
         ]
 
-    def evaluate_personalized(self, ids, global_params, personal_map, dataset_type, current_iter):
+    def evaluate_personalized(
+        self,
+        ids: list[int],
+        global_params: Mapping[str, torch.Tensor],
+        personal_map: Mapping[int, Mapping[str, Any]],
+        dataset_type: str,
+        current_iter: int,
+    ) -> list[float]:
         return [
-            self.workers[cid].evaluate_personalized(
-                cid, global_params, personal_map[cid], dataset_type, current_iter
+            self.worker_for(client_id=client_id).evaluate_personalized(
+                client_id=client_id,
+                global_params=global_params,
+                personal_params=personal_map[client_id],
+                dataset_type=dataset_type,
+                current_iter=current_iter,
             )
-            for cid in ids
+            for client_id in ids
         ]
 
-    def _write_back(self, cid, out) -> None:
-        self.server.client_optimizer_states[cid] = out["optimizer_state"]
-        self.server.client_scheduler_states[cid] = out["scheduler_state"]
-        self.server.clients_personal_model_params[cid].update(out["personal_model_params"])
 
-
-class hFL(pFL):
-    """
-    Base class for federated learning with heterogeneous models.
-
-    Clients can use different model architectures. Model assignment
-    supports round-robin, wrap-around, and random modes with optional
-    ratio specification.
-
-    No global aggregation — each client trains its own model independently
-    (nFL-style per-client storage).
-    """
+class hFL(hFLShared, pFL):
+    """Base branch for client-specific model architectures."""
 
     optional = {
         "models": "DLinear,TSMixer",
@@ -83,7 +161,7 @@ class hFL(pFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--models", type=str, default=None)
         parser.add_argument("--model_config", type=str, default=None)
         parser.add_argument(
@@ -93,154 +171,174 @@ class hFL(pFL):
             choices=["robin", "wrap", "random"],
         )
 
-    def __init__(self, configs, times):
+    def __init__(self, configs: Namespace, times: int) -> None:
         self.set_configs(configs=configs, times=times)
-        self.model_map = self._build_model_map(configs)
-        configs._hfl_model_map = self.model_map
-        super().__init__(configs, times)
-        # Replace standard single-worker Trainer with per-client-worker Trainer.
-        # super().__init__() created a Trainer with one worker (wrong architecture for
-        # non-default clients); we discard it here and rebuild with per-client configs.
-        self.trainer = hFL_Trainer(self, self._client_cls(), configs, times)
+        self.model_map = self._build_model_map(configs=configs)
+        super().__init__(configs=configs, times=times)
+        for client_id, worker in self.trainer.workers.items():
+            self.clients_personal_model_params[client_id] = OrderedDict(
+                (name, value.detach().cpu().clone())
+                for name, value in worker.model.state_dict().items()
+            )
         self._export_model_config()
-        self.get_model_info()
 
-    def _parse_models_str(self, models_str):
-        result = {}
+    def _make_trainer(self) -> hFL_Trainer:
+        return hFL_Trainer(
+            server=self,
+            client_cls=self._client_cls(),
+            configs=self.configs,
+            times=self.times,
+        )
+
+    @staticmethod
+    def _parse_models_str(models_str: str) -> dict[str, int]:
+        result: dict[str, int] = {}
         for part in models_str.split(","):
-            part = part.strip()
-            if ":" in part:
-                name, count = part.split(":", 1)
-                result[name.strip()] = int(count.strip())
-            else:
-                result[part] = 1
+            name, separator, count = part.strip().partition(":")
+            if not name:
+                raise ValueError("models cannot contain an empty name")
+            result[name] = int(count) if separator else 1
+            if result[name] <= 0:
+                raise ValueError("model counts must be positive")
         return result
 
-    def _build_model_map(self, configs):
+    def _build_model_map(self, configs: Namespace) -> list[dict[str, Any]]:
         if self.model_config:
-            with open(self.model_config, encoding="utf-8") as f:
-                return json.load(f)
+            with open(self.model_config, encoding="utf-8") as stream:
+                return json.load(stream)
 
-        models_dict = self._parse_models_str(self.models)
-        model_list = []
-        for name, count in models_dict.items():
-            model_list.extend([name] * count)
-
-        n = configs.num_clients
-        if self.model_assign == "robin":
-            assignments = [model_list[i % len(model_list)] for i in range(n)]
-        elif self.model_assign == "wrap":
-            assignments = [model_list[i % len(model_list)] for i in range(n)]
+        models = self._parse_models_str(models_str=self.models)
+        model_list = [name for name, count in models.items() for _ in range(count)]
+        if self.model_assign in {"robin", "wrap"}:
+            assignments = [
+                model_list[index % len(model_list)]
+                for index in range(configs.num_clients)
+            ]
         elif self.model_assign == "random":
-            rng = np.random.default_rng(configs.seed)
-            assignments = rng.choice(model_list, size=n).tolist()
+            assignments = (
+                np.random.default_rng(configs.seed)
+                .choice(model_list, size=configs.num_clients)
+                .tolist()
+            )
         else:
-            assignments = [configs.model] * n
+            raise ValueError(f"unsupported model assignment: {self.model_assign}")
 
         result = []
-        for i, m in enumerate(assignments):
-            model_cls = self._get_objective_function("models", m)
-            params = dict(getattr(model_cls, "optional", {}))
-            result.append({"client": i, "model": m, "params": params})
+        for client_id, model_name in enumerate(assignments):
+            model_class = self._get_objective_function(
+                func_type="models", func_name=model_name
+            )
+            result.append(
+                {
+                    "client": client_id,
+                    "model": model_name,
+                    "params": dict(getattr(model_class, "optional", {})),
+                }
+            )
         return result
 
-    def _export_model_config(self):
-        path = os.path.join(self.save_path, "model_config.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.model_map, f, indent=2)
+    def _export_model_config(self) -> None:
+        with open(
+            os.path.join(self.save_path, "model_config.json"),
+            "w",
+            encoding="utf-8",
+        ) as stream:
+            json.dump(self.model_map, stream, indent=2)
 
-    def package(self, client_id: int) -> dict:
-        result = super().package(client_id)
-        personal = self.clients_personal_model_params[client_id]
-        if personal:
-            # Send client's own trained params; global model irrelevant (wrong arch)
-            result["regular_model_params"] = dict(personal)
-        else:
-            # First round: send empty dict so worker uses its own random-initialized weights
-            result["regular_model_params"] = {}
-        return result
+    def package(self, client_id: int) -> dict[str, Any]:
+        package = super().package(client_id=client_id)
+        package["regular_model_params"] = copy.deepcopy(
+            self.clients_personal_model_params[client_id]
+        )
+        package["personal_model_params"] = {}
+        package["__wire__"] = ()
+        return package
 
-    def aggregate_client_updates(self, packages) -> None:
-        # nFL-style: store each client's trained params; no cross-client aggregation
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
+    def aggregate_client_updates(self, packages: Mapping[int, dict[str, Any]]) -> None:
+        for client_id, package in packages.items():
+            self.clients_personal_model_params[client_id].update(
+                package["regular_model_params"]
+            )
 
-    def evaluate_generalization(self, *args, **kwargs) -> None:
-        """No generalization eval — no shared server model in hFL."""
+    def evaluate_generalization(self, dataset_type: str) -> None:
+        """No shared model exists in the hFL branch."""
 
     def save_models(self, save_type: str) -> None:
-        if save_type not in ["last", "best"]:
+        if save_type not in {"last", "best"}:
             raise ValueError("save_type must be 'last' or 'best'")
-
         if save_type == "best":
-            vals = [v for v in self.metrics.get("personalization_avg_test_loss", []) if v != self.default_value]
-            if not vals or vals[-1] != min(vals):
+            losses = [
+                value
+                for value in self.metrics.get("personalization_avg_test_loss", [])
+                if value != self.default_value
+            ]
+            if not losses or losses[-1] != min(losses):
                 return
 
-        for cid, worker in self.trainer.workers.items():
-            personal = self.clients_personal_model_params[cid]
+        for client_id, personal in self.clients_personal_model_params.items():
             if not personal:
                 continue
-            worker.model.load_state_dict(personal, strict=False)
+            worker = self.trainer.worker_for(client_id=client_id)
+            worker.model.load_state_dict(state_dict=personal, strict=False)
             self.save_model(
                 model=worker.model,
                 path=self.model_path,
-                name=f"client_{cid}_{worker.model.__class__.__name__}",
+                name=f"client_{client_id}_{worker.model.__class__.__name__}",
                 postfix=save_type,
                 configs=worker.configs,
-                metadata={"save_type": save_type, "owner": f"client_{cid}"},
+                metadata={
+                    "save_type": save_type,
+                    "owner": f"client_{client_id}",
+                },
                 verbose=self.logger,
             )
 
     def _save_best_hook(self) -> None:
-        self.save_models("best")
+        self.save_models(save_type="best")
 
     def _save_last_hook(self) -> None:
-        SharedMethods.save_model(
-            self.model, self.model_path, self.name.strip(), "last",
-            configs=self.configs, verbose=self.logger,
-        )
-        self.save_models("last")
-
-    def early_stopping(self) -> bool:
-        metric = self.metrics["personalization_avg_test_loss"]
-        if not self.patience or len(metric) < self.patience:
-            return False
-        if min(metric) not in metric[-self.patience:]:
-            self.logger.info("Early stopping activated.")
-            return True
-        return False
+        self.save_models(save_type="last")
 
     def get_model_info(self) -> None:
-        if not isinstance(self.trainer, hFL_Trainer):
+        if self.exclude_server_model_processes or not isinstance(
+            getattr(self, "trainer", None), hFL_Trainer
+        ):
             return
-        if not self.exclude_server_model_processes:
-            first_cid = next(iter(self.trainer.workers))
-            w = self.trainer.workers[first_cid]
-            w._load_private(first_cid)
-            w.id = first_cid
-            w.current_iter = 0
-            dl = w.load_train_data()
-            self.summarize_model(dataloader=dl)
-        seen_archs = set()
-        for cid, worker in self.trainer.workers.items():
-            arch = worker.model.__class__.__name__
-            if arch in seen_archs:
-                continue
-            seen_archs.add(arch)
-            worker.id = cid
-            worker._load_private(cid)
+        for prototype_id, worker in self.trainer.prototype_workers.items():
+            client_id = self.trainer.prototype_clients[prototype_id][0]
+            worker._load_private(client_id=client_id)
+            worker.id = client_id
             worker.current_iter = 0
-            worker.name = f"client_{cid}_{arch}"
+            worker.name = f"client_{client_id}_{worker.model.__class__.__name__}"
             worker.models_info_path = self.models_info_path
-            dl = worker.load_train_data()
-            worker.summarize_model(dataloader=dl)
+            worker.summarize_model(dataloader=worker.load_train_data())
 
 
 class hFL_Client(pFL_Client):
-    """Client pre-configured with its assigned model architecture.
+    """Stateless worker for one heterogeneous model prototype."""
 
-    Architecture is injected via configs.model in hFL_Trainer before
-    worker construction — no per-client logic needed here.
-    """
-    pass
+    def __init__(self, configs: Namespace, times: int, device: str) -> None:
+        super().__init__(configs=configs, times=times, device=device)
+        self.regular_params_name = list(self.model.state_dict())
+
+    def package(self) -> dict[str, Any]:
+        package = super().package()
+        package["__wire__"] = ()
+        return package
+
+    def evaluate_personalized(
+        self,
+        client_id: int,
+        global_params: Mapping[str, torch.Tensor],
+        personal_params: Mapping[str, torch.Tensor],
+        dataset_type: str,
+        current_iter: int,
+    ) -> float:
+        return tFL_Client.evaluate_personalized(
+            self=self,
+            client_id=client_id,
+            global_params=OrderedDict(personal_params),
+            personal_params={},
+            dataset_type=dataset_type,
+            current_iter=current_iter,
+        )

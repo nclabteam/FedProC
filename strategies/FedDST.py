@@ -1,81 +1,102 @@
 # -*- coding: utf-8 -*-
-"""FedDST — Federated Dynamic Sparse Training.
+"""FedDST client topology updates and sparse weighted aggregation."""
 
-Paper: https://arxiv.org/abs/2112.09824  |  AAAI '22
-
-Client-local mask update: train A_epochs → compute local gradient → call
-    sparse_update_step locally → continue training remaining epochs.
-Server: OR-union of client masks → magnitude re-prune to target density.
-"""
+from collections.abc import Mapping
 from typing import Any, Dict
-
-import torch
 
 from .spFL import spFL, spFL_Client
 
 
 class FedDST(spFL):
-    """FedDST server — reconciles diverged client masks via OR-union + magnitude re-prune."""
-
-    def _sp_update_mask(self, packages: Dict[int, Any]) -> None:
-        client_masks = [pkg["_sp_extra"]["mask_dict"] for pkg in packages.values()
-                        if "_sp_extra" in pkg and "mask_dict" in pkg["_sp_extra"]]
-        if not client_masks:
-            return
-        unioned = self.union_masks(client_masks)
-        self._sp_mask_dict = self.magnitude_reprune(self.model, unioned, self._sp_layer_density)
-        self.apply_mask(self.model, self._sp_mask_dict)
-
-
-class FedDST_Client(spFL_Client):
-    """FedDST client — local dynamic sparse training with A_epochs split."""
+    """FedDST server."""
 
     optional = {"A_epochs": None}
 
-    def fit(self) -> None:
-        from .base import SharedMethods
-        SharedMethods._set_worker_seed(self._loader_seed("train"))
-        loader = self.load_train_data()
-        offload = self.efficiency == "low"
-        self.apply_mask(self.model, self._sp_mask_dict)
-
-        total_epochs = self.epochs
-        a_epochs = self.A_epochs if self.A_epochs is not None else total_epochs // 2
-
-        def _run_epochs(n):
-            for _ in range(n):
-                self.train_one_epoch(
-                    model=self.model,
-                    dataloader=loader,
-                    optimizer=self.optimizer,
-                    criterion=self.loss,
-                    scheduler=self.scheduler,
-                    device=self.device,
-                    offload_after=offload,
+    def aggregate_client_updates(
+        self,
+        packages: Mapping[int, Dict[str, Any]],
+    ) -> None:
+        if not self._sp_is_adj():
+            super().aggregate_client_updates(packages=packages)
+            return
+        client_masks = []
+        client_models = []
+        client_scores = []
+        for package in packages.values():
+            mask = package.get("_sp_extra", {}).get("mask_dict")
+            if not mask:
+                raise ValueError(
+                    "FedDST adjustment uploads require one mask per client"
                 )
-                self.apply_mask(self.model, self._sp_mask_dict)
+            client_masks.append(mask)
+            client_models.append(package["regular_model_params"])
+            client_scores.append(package["score"])
+        # Paper Eq. (4): average each coordinate only over clients retaining it.
+        averaged = self.sparse_weighted_mean(
+            models=client_models,
+            masks=client_masks,
+            weights=client_scores,
+        )
+        self._commit_global(new_params=averaged)
+        union = self.union_masks(masks=client_masks)
+        self._sp_mask_dict = self.magnitude_reprune(
+            parameters=self.public_model_params,
+            candidate_mask=union,
+            layer_densities=self._sp_layer_density,
+        )
+        self._sp_commit_mask()
 
-        if self._sp_is_adj:
-            _run_epochs(min(a_epochs, total_epochs))
-            grads = self._collect_gradients()
-            self._sp_mask_dict = self.sparse_update_step(
-                self.model, grads, self._sp_mask_dict,
-                self._sp_t, self._sp_T_end, self._sp_alpha,
+
+class FedDST_Client(spFL_Client):
+    """FedDST worker."""
+
+    def fit(self) -> None:
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
+        loader = self.load_train_data()
+        self.initialize_scheduler(steps_per_epoch=len(loader))
+        self.apply_mask(model=self.model, mask_dict=self._sp_mask_dict)
+        if not self._sp_is_adj:
+            self._train_masked_epochs(
+                dataloader=loader,
+                epochs=self.epochs,
+                offload_after_epoch=self.efficiency == "low",
             )
-            self.apply_mask(self.model, self._sp_mask_dict)
-            remaining = total_epochs - min(a_epochs, total_epochs)
-            if remaining > 0:
-                _run_epochs(remaining)
         else:
-            _run_epochs(total_epochs)
-
+            before = max(self.epochs - 1, 0) if self.A_epochs is None else self.A_epochs
+            if not 0 <= before <= self.epochs:
+                raise ValueError("A_epochs must be between zero and epochs")
+            self._train_masked_epochs(
+                dataloader=loader,
+                epochs=before,
+                offload_after_epoch=self.efficiency == "low",
+            )
+            gradients = self._collect_gradients()
+            parameters = dict(self.model.named_parameters())
+            # Paper schedule: alpha_r = alpha/2 * (1 + cos((r-1)pi/R_end)).
+            fraction = self.f_decay(
+                t=max(self.current_iter - 1, 0),
+                alpha=self.adjust_alpha,
+                T_end=self.T_end,
+            )
+            self._sp_mask_dict = self.swap_mask(
+                parameters=parameters,
+                gradients=gradients,
+                mask_dict=self._sp_mask_dict,
+                fraction=fraction,
+            )
+            self.apply_mask(model=self.model, mask_dict=self._sp_mask_dict)
+            self._train_masked_epochs(
+                dataloader=loader,
+                epochs=self.epochs - before,
+                offload_after_epoch=self.efficiency == "low",
+            )
         if self.efficiency == "med":
             self.model.to("cpu")
 
     def package(self) -> Dict[str, Any]:
-        result = super().package()
-        result["_sp_extra"] = (
-            {"mask_dict": {n: m.cpu() for n, m in self._sp_mask_dict.items()}}
-            if self._sp_is_adj else {}
+        extra = (
+            {"mask_dict": self.clone_mask(mask_dict=self._sp_mask_dict)}
+            if self._sp_is_adj
+            else {}
         )
-        return result
+        return self._package_sparse_extra(extra=extra)

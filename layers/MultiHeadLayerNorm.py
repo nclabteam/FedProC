@@ -14,7 +14,14 @@ class MultiHeadLayerNorm(nn.Module):
     there is no bias by default.
     """
 
-    def __init__(self, ndim, num_heads, weight=True, bias=False, eps=1e-5):
+    def __init__(
+        self,
+        ndim: int,
+        num_heads: int,
+        weight: bool = True,
+        bias: bool = False,
+        eps: float = 1e-5,
+    ) -> None:
         super().__init__()
         assert ndim % num_heads == 0, "ndim must be divisible by num_heads"
         self.ndim = ndim
@@ -24,16 +31,16 @@ class MultiHeadLayerNorm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
 
     @property
-    def weight_proxy(self):
+    def weight_proxy(self) -> torch.Tensor | None:
         return None if self.weight is None else 1.0 + self.weight
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         if self.weight is not None:
             nn.init.zeros_(self.weight)
         if self.bias is not None:
             nn.init.zeros_(self.bias)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         *leading, ndim = x.shape
         # group_norm over (N, C) normalizes within each group of channels; all
         # leading dims are folded into N so no statistics are shared across them
@@ -46,5 +53,5 @@ class MultiHeadLayerNorm(nn.Module):
         )
         return out.view(*leading, ndim)
 
-    def extra_repr(self):
+    def extra_repr(self) -> str:
         return f"ndim={self.ndim}, num_heads={self.num_heads}, eps={self.eps}"

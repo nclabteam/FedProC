@@ -3,7 +3,15 @@ import torch.nn as nn
 
 
 class LoRALinear(nn.Module):
-    def __init__(self, original_layer, r=8, lora_alpha=32, lora_dropout=0.1):
+    """Add a low-rank adaptation branch to a frozen linear layer."""
+
+    def __init__(
+        self,
+        original_layer: nn.Linear,
+        r: int = 8,
+        lora_alpha: float = 32,
+        lora_dropout: float = 0.1,
+    ) -> None:
         super().__init__()
         self.original_layer = original_layer
         self.r = r
@@ -29,7 +37,7 @@ class LoRALinear(nn.Module):
         # Dropout
         self.dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Original forward: x @ W + b
         original_output = self.original_layer(x)
 

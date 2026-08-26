@@ -1,230 +1,269 @@
-import copy
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
-from typing import Any, Dict, List
+from collections.abc import Mapping
+from typing import Any
 
-import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 from .pFL import pFL, pFL_Client
 
 
-class FedSelect(pFL):
-    """
-    FedSelect: Personalized Federated Learning with Customized Selection of
-    Parameters for Fine-Tuning.
+class FedSelectShared:
+    """Mask operations shared by the FedSelect server and worker."""
 
-    Each client maintains a binary mask per parameter element (0=global,
-    1=local).  Initially all parameters are global.  Every `delta_interval`
-    rounds the client's training delta |w_after - w_before| is computed for
-    each global element; the top `prune_percent` fraction (largest delta) are
-    promoted to local, up to a maximum sparsity of `sparsity_bound`.
+    @staticmethod
+    def blended_state(
+        global_state: Mapping[str, torch.Tensor],
+        local_state: Mapping[str, torch.Tensor],
+        mask: Mapping[str, torch.Tensor],
+    ) -> OrderedDict[str, torch.Tensor]:
+        return OrderedDict(
+            (
+                name,
+                torch.where(
+                    mask[name].bool(),
+                    local_state[name].to(global_value),
+                    global_value,
+                ),
+            )
+            for name, global_value in global_state.items()
+        )
 
-    Aggregation is per-element: for each position only clients whose mask is 0
-    (global) contribute.  Clients receive the server's global values only for
-    their mask-0 positions; local positions are carried forward from the
-    previous round.
+    @staticmethod
+    def global_values(
+        state: Mapping[str, torch.Tensor],
+        mask: Mapping[str, torch.Tensor],
+    ) -> OrderedDict[str, torch.Tensor]:
+        return OrderedDict(
+            (name, value[~mask[name].bool()].clone()) for name, value in state.items()
+        )
 
-    Reference: Tamirisa et al., "FedSelect: Personalized Federated Learning
-    with Customized Selection of Parameters for Fine-Tuning", CVPR 2024.
-    arXiv 2404.02478.
-    """
+    @staticmethod
+    def updated_mask(
+        mask: Mapping[str, torch.Tensor],
+        trained_state: Mapping[str, torch.Tensor],
+        initial_state: Mapping[str, torch.Tensor],
+        personalization_rate: float,
+        personalization_limit: float,
+    ) -> OrderedDict[str, torch.Tensor]:
+        if not 0 <= personalization_rate <= 1:
+            raise ValueError("prune_percent must be between 0 and 1")
+        if not 0 <= personalization_limit <= 1:
+            raise ValueError("sparsity_bound must be between 0 and 1")
+
+        updated = OrderedDict(
+            (name, value.bool().clone()) for name, value in mask.items()
+        )
+        if personalization_rate == 0:
+            return updated
+
+        for name, current in updated.items():
+            if "weight" not in name:
+                continue
+            local_count = int(current.count_nonzero())
+            budget = int(personalization_limit * current.numel()) - local_count
+            global_indices = (~current).flatten().nonzero().flatten()
+            if budget <= 0 or global_indices.numel() == 0:
+                continue
+            promote = min(
+                max(1, round(personalization_rate * global_indices.numel())),
+                budget,
+            )
+            # Paper Algorithm 3: m+ selects the largest p% of
+            # abs(u_L - u_0), then m_next = m OR m+.
+            delta = (
+                (trained_state[name].float() - initial_state[name].float())
+                .abs()
+                .flatten()
+            )
+            selected = delta[global_indices].topk(k=promote, sorted=False).indices
+            updated[name].view(-1)[global_indices[selected]] = True
+        return updated
+
+
+class FedSelect(FedSelectShared, pFL):
+    """FedSelect: grow personalized masks and average remaining global entries."""
 
     optional = {
         "prune_percent": 0.1,
         "delta_interval": 1,
         "sparsity_bound": 0.5,
     }
+    compulsory = {
+        "optimizer": "SGD",
+        "momentum": 0.0,
+        "dampening": 0.0,
+        "weight_decay": 0.0,
+        "nesterov": False,
+    }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--prune_percent", type=float, default=None)
         parser.add_argument("--delta_interval", type=int, default=None)
         parser.add_argument("--sparsity_bound", type=float, default=None)
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
-        self.parallel = False
-        self._round = 0
-        self._pending_sent_params: Dict[int, Dict[str, torch.Tensor]] = {}
-        self._pending_masks: Dict[int, Dict[str, torch.Tensor]] = {}
-        init_mask = {
-            name: torch.zeros_like(p.cpu(), dtype=torch.float32)
-            for name, p in self.public_model_params.items()
+        if self.delta_interval <= 0:
+            raise ValueError("delta_interval must be positive")
+        self.updated_mask(
+            mask={},
+            trained_state={},
+            initial_state={},
+            personalization_rate=self.prune_percent,
+            personalization_limit=self.sparsity_bound,
+        )
+        initial_mask = {
+            name: torch.zeros_like(value, dtype=torch.bool)
+            for name, value in self.public_model_params.items()
         }
-        init_local_state = {name: p.cpu().clone() for name, p in self.model.named_parameters()}
-        for cid in range(self.num_clients):
-            self.clients_personal_model_params[cid]["mask"] = {
-                name: t.clone() for name, t in init_mask.items()
-            }
-            self.clients_personal_model_params[cid]["local_model_state"] = {
-                name: t.clone() for name, t in init_local_state.items()
-            }
-
-    def package(self, client_id: int) -> dict:
-        pkg = super().package(client_id)
-        pm = self.clients_personal_model_params[client_id]
-        current_mask = copy.deepcopy(pm["mask"])
-        self._pending_masks[client_id] = current_mask
-        self._pending_sent_params[client_id] = {
-            name: p.clone().cpu() for name, p in self.public_model_params.items()
+        initial_state = {
+            name: value.detach().cpu().clone()
+            for name, value in self.model.named_parameters()
         }
-        pkg["mask"] = current_mask
-        return pkg
+        for personal in self.clients_personal_model_params.values():
+            personal["mask"] = {
+                name: value.clone() for name, value in initial_mask.items()
+            }
+            personal["local_model_state"] = {
+                name: value.clone() for name, value in initial_state.items()
+            }
 
-    def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
-        self._round += 1
+    def select_clients(self) -> None:
+        self._select_all_clients()
 
-        # Update masks if delta interval
-        if self._round % self.delta_interval == 0:
-            for cid, pkg in packages.items():
-                self._update_mask(cid, pkg["regular_model_params"], self._pending_sent_params[cid])
-
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
-        cids = list(packages.keys())
-
-        new_global = OrderedDict()
-        for name, server_p in self.public_model_params.items():
-            sum_val = torch.zeros_like(server_p.float())
-            sum_count = torch.zeros_like(server_p.float())
-            for cid, pkg in packages.items():
-                weight = packages[cid]["score"] / total
-                mask = self._pending_masks[cid][name]
-                global_w = 1.0 - mask
-                trained = pkg["regular_model_params"][name].float()
-                sum_val.add_(trained * global_w, alpha=weight)
-                sum_count.add_(global_w * weight)
-
-            has_contrib = sum_count > 0
-            new_global[name] = torch.where(
-                has_contrib,
-                sum_val / sum_count.clamp(min=1e-8),
-                server_p.float(),
-            ).to(server_p.dtype)
-
-        self._commit_global(new_global)
-
-    def _update_mask(
-        self,
-        client_id: int,
-        trained_state: Dict[str, torch.Tensor],
-        sent_params: Dict[str, torch.Tensor],
-    ) -> None:
+    def package(self, client_id: int) -> dict[str, Any]:
+        package = super().package(client_id=client_id)
         mask = self.clients_personal_model_params[client_id]["mask"]
-        total_elem = sum(m.numel() for m in mask.values())
-        local_elem = sum(m.sum().item() for m in mask.values())
-        if total_elem == 0 or (local_elem / total_elem) >= self.sparsity_bound:
-            return
+        package["global_model_params"] = self.global_values(
+            state=self.public_model_params,
+            mask=mask,
+        )
+        package["__wire__"] = ("global_model_params",)
+        return package
 
-        # Collect deltas for currently-global elements
-        global_deltas: List[torch.Tensor] = []
-        for name, trained_p in trained_state.items():
-            if name not in mask or name not in sent_params:
-                continue
-            global_mask = mask[name] == 0
-            if not global_mask.any():
-                continue
-            delta = (trained_p.float() - sent_params[name].float()).abs()
-            global_deltas.append(delta[global_mask].flatten())
-
-        if not global_deltas:
-            return
-
-        all_deltas = torch.cat(global_deltas)
-        k = max(1, int(self.prune_percent * all_deltas.numel()))
-        threshold = all_deltas.topk(k).values.min()
-
-        remaining_budget = int(self.sparsity_bound * total_elem - local_elem)
-        promoted = 0
-        for name, trained_p in trained_state.items():
-            if name not in mask or promoted >= remaining_budget:
-                break
-            global_m = mask[name] == 0
-            delta = (trained_p.float() - sent_params[name].float()).abs()
-            to_promote = global_m & (delta >= threshold)
-            can_promote = min(int(to_promote.sum().item()), remaining_budget - promoted)
-            if can_promote <= 0:
-                continue
-            if int(to_promote.sum().item()) > can_promote:
-                flat_delta = delta.flatten()
-                flat_mask = global_m.flatten()
-                eligible = flat_delta * flat_mask.float()
-                top_positions = eligible.topk(can_promote).indices
-                flat_new = mask[name].flatten().clone()
-                flat_new[top_positions] = 1.0
-                self.clients_personal_model_params[client_id]["mask"][name] = (
-                    flat_new.view(mask[name].shape)
-                )
-            else:
-                self.clients_personal_model_params[client_id]["mask"][name] = (
-                    torch.where(to_promote, torch.ones_like(mask[name]), mask[name])
-                )
-            promoted += can_promote
+    def aggregate_client_updates(self, packages: Mapping[int, dict[str, Any]]) -> None:
+        models = []
+        masks = []
+        for package in packages.values():
+            models.append(package["regular_model_params"])
+            masks.append(package["personal_model_params"]["mask"])
+        new_global = OrderedDict()
+        for name, current in self.public_model_params.items():
+            values = torch.stack([model[name].float() for model in models])
+            shared = torch.stack([~mask[name].bool() for mask in masks])
+            counts = shared.sum(dim=0)
+            # Paper Algorithm 1: theta_g[j] =
+            # sum_i((not m_i[j]) theta_i[j]) / sum_i(not m_i[j]).
+            summed = (values * shared.to(values.dtype)).sum(dim=0)
+            new_global[name] = torch.where(
+                counts > 0,
+                summed / counts.clamp_min(1).to(summed.dtype),
+                current.float(),
+            ).to(current.dtype)
+        self._commit_global(new_params=new_global)
 
 
-class FedSelect_Client(pFL_Client):
-    """
-    Client for FedSelect. Receives the server's global model plus a per-element
-    mask; mask=1 positions are overwritten with the client's previous local params
-    before training.  Sends back the fully trained model; the server handles
-    the per-element global aggregation and mask updates.
-    """
+class FedSelect_Client(FedSelectShared, pFL_Client):
+    """FedSelect worker with personalized-then-global alternating SGD passes."""
 
-    def set_parameters(self, package: dict) -> None:
-        super().set_parameters(package)
-        pm = package["personal_model_params"]
-        self._mask = pm["mask"]
-        local_state = pm["local_model_state"]
-        with torch.no_grad():
-            for name, param in self.model.named_parameters():
-                if name not in self._mask:
-                    continue
-                lw = self._mask[name].to(param.device)
-                param.data = (
-                    (1 - lw) * param.data + lw * local_state[name].to(param.device)
-                )
-
-    def package(self) -> dict:
-        out = super().package()
-        out["personal_model_params"]["local_model_state"] = {
-            name: p.detach().cpu().clone()
-            for name, p in self.model.named_parameters()
+    def set_parameters(self, package: dict[str, Any]) -> None:
+        personal = package["personal_model_params"]
+        local_package = dict(package)
+        local_package["personal_model_params"] = {}
+        super().set_parameters(package=local_package)
+        state = self.blended_state(
+            global_state=package["regular_model_params"],
+            local_state=personal["local_model_state"],
+            mask=personal["mask"],
+        )
+        self.model.load_state_dict(state_dict=state, strict=False)
+        self._mask = {
+            name: value.bool().clone() for name, value in personal["mask"].items()
         }
-        return out
+        self._initial_state = OrderedDict(
+            (name, value.detach().cpu().clone())
+            for name, value in self.model.named_parameters()
+        )
 
-    def evaluate_personalized(
+    def _train_partition(
         self,
-        client_id: int,
-        global_params: "OrderedDict[str, torch.Tensor]",
-        personal_params: Dict[str, Any],
-        dataset_type: str,
-        current_iter: int,
-    ) -> float:
-        self.id = client_id
-        self.current_iter = current_iter
-        self._load_private(client_id)
-        self.model.load_state_dict(global_params, strict=False)
-        mask = personal_params["mask"]
-        local_state = personal_params["local_model_state"]
-        with torch.no_grad():
-            for name, param in self.model.named_parameters():
-                if name not in mask:
-                    continue
-                lw = mask[name].to(param.device)
-                param.data = (
-                    (1 - lw) * param.data + lw * local_state[name].to(param.device)
+        dataloader: DataLoader,
+        personalized: bool,
+        scheduler: Any | None,
+        offload_after: bool,
+    ) -> None:
+        handles = []
+        for name, parameter in self.model.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            selected = self._mask[name].to(parameter.device)
+            if not personalized:
+                selected = ~selected
+            handles.append(
+                parameter.register_hook(
+                    lambda gradient, selected=selected: gradient * selected
                 )
-        loader = (
-            self.load_test_data()
-            if dataset_type == "test"
-            else self.load_train_data()
+            )
+        try:
+            self.train_one_epoch(
+                model=self.model,
+                dataloader=dataloader,
+                optimizer=self.optimizer,
+                criterion=self.loss,
+                scheduler=scheduler,
+                device=self.device,
+                offload_after=offload_after,
+            )
+        finally:
+            for handle in handles:
+                handle.remove()
+
+    def fit(self) -> None:
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
+        dataloader = self.load_train_data()
+        self.initialize_scheduler(steps_per_epoch=2 * len(dataloader))
+        offload_after = self.efficiency == "low"
+        for _ in range(self.epochs):
+            # Paper Algorithm 2: first update v, then update u.
+            self._train_partition(
+                dataloader=dataloader,
+                personalized=True,
+                scheduler=(self.scheduler if self.scheduler_mode == "batch" else None),
+                offload_after=False,
+            )
+            self._train_partition(
+                dataloader=dataloader,
+                personalized=False,
+                scheduler=self.scheduler,
+                offload_after=offload_after,
+            )
+        if self.efficiency == "med":
+            self.model.to(device="cpu")
+
+    def package(self) -> dict[str, Any]:
+        package = super().package()
+        trained = package["regular_model_params"]
+        mask = self._mask
+        if self.current_iter % self.delta_interval == 0:
+            mask = self.updated_mask(
+                mask=mask,
+                trained_state=trained,
+                initial_state=self._initial_state,
+                personalization_rate=self.prune_percent,
+                personalization_limit=self.sparsity_bound,
+            )
+        package["personal_model_params"] = {
+            "mask": mask,
+            "local_model_state": {
+                name: value.clone() for name, value in trained.items()
+            },
+        }
+        package["global_model_params"] = self.global_values(
+            state=trained,
+            mask=mask,
         )
-        losses = self.calculate_loss(
-            model=self.model,
-            dataloader=loader,
-            criterion=self.loss,
-            device=self.device,
-            offload_after=self.efficiency != "high",
-        )
-        return float(np.mean(losses))
+        package["__wire__"] = ("global_model_params",)
+        return package

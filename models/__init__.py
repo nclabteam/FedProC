@@ -1,8 +1,15 @@
 import importlib
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from pathlib import Path
+from types import ModuleType
 from typing import Any, Callable, Dict
+
+CHECKPOINT_DIR = Path(__file__).resolve().parent.parent / "ckpt"
+CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("HF_HOME", str(CHECKPOINT_DIR))
+os.environ.setdefault("TORCH_HOME", str(CHECKPOINT_DIR))
 
 
 def _discover_module_names() -> list[str]:
@@ -20,7 +27,7 @@ __all__ = list(MODELS)
 _MODULE_CACHE: Dict[str, Any] = {}
 
 
-def _load_module(module_name: str):
+def _load_module(module_name: str) -> ModuleType:
     module = _MODULE_CACHE.get(module_name)
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
@@ -31,39 +38,50 @@ def _load_module(module_name: str):
     return module
 
 
-def _load_model_class(model_name: str):
+def _load_model_class(model_name: str) -> type:
     if model_name not in MODELS:
         raise AttributeError(f"module {__name__!r} has no attribute {model_name!r}")
-    module = _load_module(model_name)
+    module = _load_module(module_name=model_name)
     if not hasattr(module, model_name):
         raise AttributeError(f"module {module.__name__!r} has no class {model_name!r}")
     return getattr(module, model_name)
 
 
-class _LazyModuleRegistry(Mapping):
-    def __init__(self, attribute_name: str, default: Any):
+class _LazyModuleRegistry(Mapping[str, Any]):
+    def __init__(self, attribute_name: str, default: Any) -> None:
         self.attribute_name = attribute_name
         self.default = default
 
     def _resolve(self, key: str, fallback: Any) -> Any:
-        cls = _load_model_class(key)
-        return getattr(cls, self.attribute_name, fallback)
+        cls = _load_model_class(model_name=key)
+        sample = getattr(cls, self.attribute_name, fallback)
+        if isinstance(sample, dict):
+            merged: dict[Any, Any] = {}
+            for base in reversed(cls.__mro__):
+                value = base.__dict__.get(self.attribute_name)
+                if isinstance(value, dict):
+                    merged.update(value)
+            return merged if merged else fallback
+        return sample
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         if key not in MODELS:
             raise KeyError(key)
-        return self._resolve(key, self.default)
+        return self._resolve(key=key, fallback=self.default)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(MODELS)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(MODELS)
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         if key not in MODELS:
             return default
-        return self._resolve(key, self.default if default is None else default)
+        return self._resolve(
+            key=key,
+            fallback=self.default if default is None else default,
+        )
 
 
 optional: Mapping[Any, dict] = _LazyModuleRegistry("optional", {})
@@ -71,5 +89,5 @@ compulsory: Mapping[Any, dict] = _LazyModuleRegistry("compulsory", {})
 args_update_functions: Mapping[str, Callable] = _LazyModuleRegistry("args_update", None)
 
 
-def __getattr__(name: str):
-    return _load_model_class(name)
+def __getattr__(name: str) -> type:
+    return _load_model_class(model_name=name)

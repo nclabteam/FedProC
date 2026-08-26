@@ -1,30 +1,13 @@
-"""
-Selective Learning (SL) — dynamic dual-mask training strategy.
+"""Selective Learning (SL) — dynamic dual-mask training strategy."""
 
-Paper: Selective Learning for Deep Time Series Forecasting
-Venue: NeurIPS 2025
-Link : https://openreview.net/forum?id=kgzRy6nD6D
-
-The strategy applies two complementary masks to the per-timestep loss:
-
-1. **Uncertainty mask (Mᵤ)** — tracks prediction residuals across a sliding
-   window of epochs on CPU, computes differential entropy (approximated as
-   variance for Gaussian residuals), and masks out the top ``r_u`` fraction
-   of high-entropy timesteps.
-2. **Anomaly mask (Mₐ)** — uses a lightweight auxiliary DLinear estimator
-   (auto-bootstrapped for ``estimator_epochs``) to predict a residual lower
-   bound.  Timesteps closest to that bound are masked out at ratio ``r_a``.
-
-Both masks default to *None* (disabled); set ``--r_u`` and/or ``--r_a`` to
-activate.  SL is **model-agnostic** and works with any registered forecaster.
-"""
-
-from typing import Optional
+from types import SimpleNamespace
+from typing import Any, Optional
 
 import torch
-from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
+
+from models.DLinear import DLinear
 
 from .nFL import nFL, nFL_Client
 
@@ -33,13 +16,7 @@ from .nFL import nFL, nFL_Client
 # DataLoader wrapper — yields batches with an extra ``idx`` field
 # ---------------------------------------------------------------------------
 class _DataLoaderWithIndex:
-    """Wrap an existing DataLoader so every batch includes dataset indices.
-
-    If the underlying collate returns a tuple ``(batch_x, batch_y, …)`` an
-    extra ``idx`` tensor is appended.  This wrapper deliberately bypasses
-    ``num_workers`` to avoid pickling issues with the index injection; it
-    reuses the original ``batch_sampler`` and ``collate_fn``.
-    """
+    """Wrap an existing DataLoader so every batch includes dataset indices."""
 
     def __init__(self, dataloader: DataLoader) -> None:
         self._dataloader = dataloader
@@ -47,7 +24,7 @@ class _DataLoaderWithIndex:
         self.collate_fn = dataloader.collate_fn or default_collate
         self.batch_sampler = dataloader.batch_sampler
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         for batch_indices in self.batch_sampler:
             batch = [self.dataset[i] for i in batch_indices]
             collated = self.collate_fn(batch)
@@ -62,73 +39,28 @@ class _DataLoaderWithIndex:
             else:
                 yield collated, idx_tensor
 
-    def __len__(self):
+    def __len__(self) -> Any:
         return len(self._dataloader)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: Any) -> Any:
         return getattr(self._dataloader, name)
-
-
-# ---------------------------------------------------------------------------
-# Lightweight DLinear estimator (self-contained, no external dependency)
-# ---------------------------------------------------------------------------
-class _SimpleMovingAvgDecomp(nn.Module):
-    """Moving-average series decomposition."""
-
-    def __init__(self, kernel_size: int) -> None:
-        super().__init__()
-        self.kernel_size = kernel_size
-        padding = (kernel_size - 1) // 2
-        self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=1, padding=padding)
-
-    def forward(self, x: torch.Tensor):
-        # x: [B, L, D]
-        trend = self.avg(x.permute(0, 2, 1)).permute(0, 2, 1)
-        seasonal = x - trend
-        return seasonal, trend
-
-
-class _DLinearEstimator(nn.Module):
-    """Minimal DLinear used as the anomaly-mask estimator.
-
-    This is a self-contained re-implementation so SL does not depend on the
-    registered ``models.DLinear`` (which requires the full model-init pipeline).
-    """
-
-    def __init__(self, input_len: int, output_len: int, channels: int) -> None:
-        super().__init__()
-        self.decomposition = _SimpleMovingAvgDecomp(kernel_size=25)
-        self.linear_seasonal = nn.Linear(input_len, output_len)
-        self.linear_trend = nn.Linear(input_len, output_len)
-
-    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
-        # x: [B, L, D]
-        seasonal, trend = self.decomposition(x)
-        seasonal = self.linear_seasonal(seasonal.permute(0, 2, 1))
-        trend = self.linear_trend(trend.permute(0, 2, 1))
-        return (seasonal + trend).permute(0, 2, 1)  # [B, output_len, D]
 
 
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 class SL(nFL):
-    """
-    Selective Learning — model-agnostic dual-mask training strategy.
+    """Selective Learning — model-agnostic dual-mask training strategy."""
 
-    Each client trains independently using uncertainty
-    and/or anomaly masks to exclude noisy timesteps from the loss computation.
-    Personalized evaluation uses each client's locally-trained model.
-    """
-
+    compulsory = {"sample_ratio": 1.0}
     optional = {
-        "r_u": None,
-        "r_a": None,
-        "estimator_epochs": 5,
+        "r_u": 0.3,
+        "r_a": 0.3,
+        "estimator_epochs": 100,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument(
             "--r_u",
             type=float,
@@ -148,13 +80,6 @@ class SL(nFL):
             help="Epochs to pre-train the DLinear anomaly estimator.",
         )
 
-    def aggregate_client_updates(self, packages) -> None:
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
-
-    def evaluate_generalization(self, *args, **kwargs) -> None:
-        pass  # no shared global model in SL; only personalised evaluation is meaningful
-
 
 # ---------------------------------------------------------------------------
 # Client
@@ -162,43 +87,68 @@ class SL(nFL):
 class SL_Client(nFL_Client):
     """Client-side Selective Learning logic."""
 
-    # Class-level defaults for the ``optional`` hyper-parameters. The framework
-    # strips None-valued args (Options._clean_none_args), so optionals whose
-    # default is None never land on the instance; these class attributes provide
-    # the fallback without a getattr guard.
-    r_u: Optional[float] = None
-    r_a: Optional[float] = None
-    estimator_epochs: int = 5
+    r_u: Optional[float] = 0.3
+    r_a: Optional[float] = 0.3
+    estimator_epochs: int = 100
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
 
         train_loader = self.load_train_data()
+        self.initialize_scheduler(steps_per_epoch=len(train_loader))
+
+        for name, ratio in (("r_u", self.r_u), ("r_a", self.r_a)):
+            if ratio is not None and not 0 < ratio < 1:
+                raise ValueError(f"{name} must be between 0 and 1")
+        if self.estimator_epochs <= 0:
+            raise ValueError("estimator_epochs must be positive")
 
         # Move model to device
         self.model.to(self.device)
-        self._move_optimizer_state_to_param_devices(self.optimizer)
+        self._move_optimizer_state_to_param_devices(optimizer=self.optimizer)
 
         # ---- index-aware loader ----
         idx_loader = _DataLoaderWithIndex(train_loader)
         num_samples = len(train_loader.dataset)
 
         # ---- state for uncertainty mask ----
-        history_residual: Optional[torch.Tensor] = None
-        uncertainty_mask: Optional[torch.Tensor] = None
+        history_residual = self.auxiliary_state.get("sl_history_residual")
+        expected_history_shape = (
+            num_samples,
+            self.output_len,
+            self.output_channels,
+        )
+        if (
+            history_residual is not None
+            and tuple(history_residual.shape) != expected_history_shape
+        ):
+            history_residual = None
+        uncertainty_mask = self.auxiliary_state.get("sl_uncertainty_mask")
 
         # ---- anomaly estimator ----
         estimator = None
         if self.r_a is not None:
-            estimator = _DLinearEstimator(
-                input_len=self.input_len,
-                output_len=self.output_len,
-                channels=self.input_channels,
+            estimator = DLinear(
+                SimpleNamespace(
+                    input_len=self.input_len,
+                    output_len=self.output_len,
+                    moving_avg=25,
+                    stride=1,
+                )
             ).to(self.device)
-            self._pretrain_estimator(estimator, train_loader, self.estimator_epochs)
+            estimator_state = self.auxiliary_state.get("sl_estimator")
+            if estimator_state:
+                estimator.load_state_dict(estimator_state)
+                estimator.eval()
+            else:
+                self._pretrain_estimator(
+                    estimator=estimator,
+                    train_loader=train_loader,
+                    epochs=self.estimator_epochs,
+                )
 
         # ---- main training loop ----
-        for epoch in range(self.epochs):
+        for _ in range(self.epochs):
             self.model.train()
             for batch_x, batch_y, x_mark, y_mark, idx in idx_loader:
                 batch_x = batch_x.to(
@@ -216,7 +166,8 @@ class SL_Client(nFL_Client):
 
                 self.optimizer.zero_grad(set_to_none=True)
                 outputs = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
-                residual = torch.abs(outputs - batch_y)
+                signed_residual = batch_y - outputs
+                residual = signed_residual.abs()
 
                 # --- build combined mask (True = keep, False = discard) ---
                 # Paper Eq. 3: M = M_u ∨ M_a (OR — discard only if BOTH say discard)
@@ -232,7 +183,7 @@ class SL_Client(nFL_Client):
                             device="cpu",
                         )
                     # Update history on CPU
-                    history_residual[idx] = residual.detach().cpu()
+                    history_residual[idx] = signed_residual.detach().cpu()
                     # Apply previous epoch's mask
                     if uncertainty_mask is not None:
                         expanded_idx = idx.unsqueeze(-1) + torch.arange(
@@ -260,24 +211,36 @@ class SL_Client(nFL_Client):
                     mask = torch.ones_like(batch_y, dtype=torch.bool)
 
                 # Masked loss — only penalise generalizable timesteps
-                masked_outputs = outputs * mask
-                masked_targets = batch_y * mask
-                # Scale by kept fraction so gradient magnitude is stable
                 kept = mask.sum().clamp(min=1)
-                loss = self.loss(masked_outputs, masked_targets) * mask.numel() / kept
+                loss = (signed_residual.square() * mask).sum() / kept
                 loss.backward()
                 self.optimizer.step()
+                self.step_scheduler_batch(
+                    scheduler=self.scheduler,
+                    batch_data=batch_x,
+                )
 
             # End-of-epoch: recompute uncertainty mask for next epoch
             if self.r_u is not None and history_residual is not None:
-                res_entropy = self._compute_entropy(history_residual)
-                thresholds = torch.quantile(res_entropy, 1 - self.r_u, dim=0, keepdim=True)
+                res_entropy = self._compute_entropy(residual=history_residual)
+                thresholds = torch.quantile(
+                    res_entropy, 1 - self.r_u, dim=0, keepdim=True
+                )
                 uncertainty_mask = res_entropy < thresholds  # [N+H-1, C]
 
-            self.scheduler.step()
+            self.step_scheduler_epoch(scheduler=self.scheduler)
 
         if self.efficiency != "high":
             self.model.to("cpu")
+        if history_residual is not None:
+            self.auxiliary_state["sl_history_residual"] = history_residual
+        if uncertainty_mask is not None:
+            self.auxiliary_state["sl_uncertainty_mask"] = uncertainty_mask
+        if estimator is not None:
+            self.auxiliary_state["sl_estimator"] = {
+                name: value.detach().cpu().clone()
+                for name, value in estimator.state_dict().items()
+            }
 
     # ------------------------------------------------------------------
     # helpers
@@ -285,13 +248,12 @@ class SL_Client(nFL_Client):
 
     def _pretrain_estimator(
         self,
-        estimator: _DLinearEstimator,
+        estimator: DLinear,
         train_loader: DataLoader,
         epochs: int,
     ) -> None:
-        """Bootstrap the DLinear anomaly estimator for a few epochs."""
-        opt = torch.optim.Adam(estimator.parameters(), lr=1e-3)
-        criterion = nn.MSELoss()
+        """Train the paper's DLinear residual-lower-bound estimator first."""
+        opt = torch.optim.Adam(estimator.parameters(), lr=5e-4)
         estimator.train()
         for _ in range(epochs):
             for batch_x, batch_y, x_mark, y_mark in train_loader:
@@ -303,24 +265,14 @@ class SL_Client(nFL_Client):
                 )
                 opt.zero_grad(set_to_none=True)
                 out = estimator(batch_x)
-                loss = criterion(out, batch_y)
+                loss = (out - batch_y).square().mean()
                 loss.backward()
                 opt.step()
         estimator.eval()
 
     @staticmethod
     def _compute_entropy(residual: torch.Tensor) -> torch.Tensor:
-        """Compute per-timestep residual entropy (variance proxy).
-
-        Given a residual tensor of shape ``(N, H, C)`` where N is dataset size,
-        H is the output/prediction length, and C is the number of features, this
-        computes the variance of residuals along the *anti-diagonals* of the
-        ``(sample, timestep)`` matrix — exactly following the NeurIPS 2025 paper.
-
-        Returns:
-            Tensor of shape ``(N + H - 1, C)`` — one entropy value per
-            virtual timestep per feature.
-        """
+        """Compute per-timestep residual entropy (variance proxy)."""
         num_samples, output_len, num_features = residual.shape
 
         # Diagonal indices: sample i, offset j → virtual timestep i + j
@@ -347,5 +299,4 @@ class SL_Client(nFL_Client):
         counts = counts.unsqueeze(-1).expand(-1, num_features)
 
         mean = sum_per_id / counts
-        var = (sum_sq_per_id / counts) - mean.pow(2)
-        return var
+        return ((sum_sq_per_id / counts) - mean.pow(2)).clamp_min_(0)

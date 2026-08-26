@@ -1,14 +1,11 @@
 import torch
+from torch import Tensor
 
 from .RMSLE import RMSLE
 
 
 class ERMSLE(RMSLE):
-    """
-    Exponential Root Mean Squared Log Error
-    ERMSLE = exp(RMSLE)
-    """
+    """Compute exponentiated root mean squared log error."""
 
-    def forward(self, input, target):
-        rmsle = super().forward(input=input, target=target)
-        return torch.exp(rmsle)
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return torch.exp(super().forward(input=input, target=target))

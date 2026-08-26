@@ -8,7 +8,9 @@ from .base import BaseDataset
 
 
 class PeMS07(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Five-minute PeMS07 sensor series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "PeMS07", "raw")
         self.path_temp = os.path.join("datasets", "PeMS07", "temp")
@@ -20,7 +22,8 @@ class PeMS07(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "https://raw.githubusercontent.com/guoshnBJTU/ASTGNN/refs/heads/main/data/PEMS07/PEMS07.npz"
 
-    def download(self):
+    def download(self) -> None:
+        """Download PeMS07 arrays and write one CSV per sensor."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

@@ -1,18 +1,23 @@
-import numpy as np
 import torch
 
 
 class cutout:
-    def __init__(self, perc=0.1):
+    """Zero one random contiguous temporal window."""
+
+    def __init__(self, perc: float = 0.1) -> None:
         self.perc = perc
 
-    def __call__(self, x):
-        # x: [B, T, D]
-        T = x.size(1)
-        new_x = x.clone()
-        win_len = int(self.perc * T)
-        if win_len <= 0 or win_len >= T:
-            return new_x
-        start = np.random.randint(0, T - win_len)
-        new_x[:, start : start + win_len, :] = 0.0
-        return new_x
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        sequence_length = x.size(1)
+        window_length = int(self.perc * sequence_length)
+        if window_length <= 0 or window_length >= sequence_length:
+            return x.clone()
+        start = torch.randint(
+            low=0,
+            high=sequence_length - window_length + 1,
+            size=(),
+            device=x.device,
+        )
+        positions = torch.arange(end=sequence_length, device=x.device)
+        keep = (positions < start) | (positions >= start + window_length)
+        return x * keep.view(1, -1, 1)

@@ -4,7 +4,14 @@ import torch
 import torch.nn as nn
 
 
-def PositionalEncoding(pe, learn_pe, q_len, d_model):
+def PositionalEncoding(
+    pe: str | None,
+    learn_pe: bool,
+    q_len: int,
+    d_model: int,
+) -> nn.Parameter:
+    """Create a positional-encoding parameter."""
+
     # Positional encoding
     if pe == None or pe == "no":
         # pe = None and learn_pe = False can be used to measure impact of pe
@@ -24,15 +31,37 @@ def PositionalEncoding(pe, learn_pe, q_len, d_model):
         W_pos = torch.zeros((q_len, 1))
         nn.init.uniform_(W_pos, a=0.0, b=0.1)
     elif pe == "lin1d":
-        W_pos = Coord1dPosEncoding(q_len, exponential=False, normalize=True)
+        W_pos = Coord1dPosEncoding(
+            q_len=q_len,
+            exponential=False,
+            normalize=True,
+        )
     elif pe == "exp1d":
-        W_pos = Coord1dPosEncoding(q_len, exponential=True, normalize=True)
+        W_pos = Coord1dPosEncoding(
+            q_len=q_len,
+            exponential=True,
+            normalize=True,
+        )
     elif pe == "lin2d":
-        W_pos = Coord2dPosEncoding(q_len, d_model, exponential=False, normalize=True)
+        W_pos = Coord2dPosEncoding(
+            q_len=q_len,
+            d_model=d_model,
+            exponential=False,
+            normalize=True,
+        )
     elif pe == "exp2d":
-        W_pos = Coord2dPosEncoding(q_len, d_model, exponential=True, normalize=True)
+        W_pos = Coord2dPosEncoding(
+            q_len=q_len,
+            d_model=d_model,
+            exponential=True,
+            normalize=True,
+        )
     elif pe == "sincos":
-        W_pos = SinCosPosEncoding(q_len, d_model, normalize=True)
+        W_pos = SinCosPosEncoding(
+            q_len=q_len,
+            d_model=d_model,
+            normalize=True,
+        )
     else:
         raise ValueError(
             f"{pe} is not a valid pe (positional encoder. Available types: 'gauss'=='normal', \
@@ -41,7 +70,13 @@ def PositionalEncoding(pe, learn_pe, q_len, d_model):
     return nn.Parameter(W_pos, requires_grad=learn_pe)
 
 
-def Coord1dPosEncoding(q_len, exponential=False, normalize=True):
+def Coord1dPosEncoding(
+    q_len: int,
+    exponential: bool = False,
+    normalize: bool = True,
+) -> torch.Tensor:
+    """Create a one-dimensional coordinate positional encoding."""
+
     cpe = (
         2 * (torch.linspace(0, 1, q_len).reshape(-1, 1) ** (0.5 if exponential else 1))
         - 1
@@ -53,7 +88,15 @@ def Coord1dPosEncoding(q_len, exponential=False, normalize=True):
     return cpe
 
 
-def Coord2dPosEncoding(q_len, d_model, exponential=False, normalize=True, eps=1e-3):
+def Coord2dPosEncoding(
+    q_len: int,
+    d_model: int,
+    exponential: bool = False,
+    normalize: bool = True,
+    eps: float = 1e-3,
+) -> torch.Tensor:
+    """Create a normalized two-dimensional coordinate encoding."""
+
     x = 0.5 if exponential else 1
     i = 0
     for i in range(100):
@@ -77,7 +120,13 @@ def Coord2dPosEncoding(q_len, d_model, exponential=False, normalize=True, eps=1e
     return cpe
 
 
-def SinCosPosEncoding(q_len, d_model, normalize=True):
+def SinCosPosEncoding(
+    q_len: int,
+    d_model: int,
+    normalize: bool = True,
+) -> torch.Tensor:
+    """Create a sinusoidal positional encoding."""
+
     pe = torch.zeros(q_len, d_model)
     position = torch.arange(0, q_len).unsqueeze(1)
     div_term = torch.exp(torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))

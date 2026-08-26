@@ -1,13 +1,4 @@
-"""FedRolex with manuscript-faithful rolling submodel extraction.
-
-The rolling window for layer ``i`` in round ``j`` starts at ``j mod K_i`` and
-contains ``floor(beta_n K_i)`` consecutive cyclic node indices.  The physical
-submodel and selective per-coordinate aggregation are provided by ``ptFL``.
-
-Reference: Alam et al., "FedRolex: Model-Heterogeneous Federated Learning with
-Rolling Sub-Model Extraction," NeurIPS 2022, arXiv:2212.01548, Eq. (3) and
-Algorithm 1.  Tensor-axis mechanics follow the authors' official repository.
-"""
+"""FedRolex with manuscript-faithful rolling submodel extraction."""
 
 import torch
 

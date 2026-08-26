@@ -11,7 +11,7 @@ from losses import LOSSES
 from models import MODELS
 from optimizers import OPTIMIZERS
 from scalers import SCALERS
-from schedulers import SCHEDULERS
+from schedulers import SCHEDULER_MODES, SCHEDULERS
 from strategies import STRATEGIES
 
 from .general import increment_path
@@ -27,6 +27,13 @@ class CustomHelpFormatter(argparse.HelpFormatter):
 
 
 class Options:
+    COMPONENTS: dict[str, str] = {
+        "strategy": "strategies",
+        "scheduler": "schedulers",
+        "optimizer": "optimizers",
+        "model": "models",
+    }
+
     def __init__(self, root):
         self.root = root
         self.dup = {}
@@ -136,7 +143,6 @@ class Options:
             help="sample ratio to downsample the dataset",
         )
 
-
         # server
         parser.add_argument(
             "--strategy",
@@ -228,6 +234,13 @@ class Options:
             help="learning rate adjustment",
         )
         parser.add_argument(
+            "--scheduler_mode",
+            type=str,
+            default=None,
+            choices=SCHEDULER_MODES,
+            help="scheduler lifecycle",
+        )
+        parser.add_argument(
             "--exclude_server_model_processes",
             action="store_true",
             default=False,
@@ -242,6 +255,7 @@ class Options:
 
         # first parse to capture --config_file (and minimal early flags)
         temp = parser.parse_known_args()[0]
+        cfg = {}
 
         # If a config file was provided, load it and apply as parser defaults.
         # CLI flags still override these defaults because we call parse_args() later.
@@ -256,7 +270,7 @@ class Options:
                 except Exception as e:
                     raise RuntimeError(f"Failed to parse config file {cfg_path}: {e}")
 
-            # Keep only keys that the parser understands
+            # Apply known keys now so config-selected components register their flags.
             valid_keys = {action.dest for action in parser._actions}
             defaults = {k: v for k, v in cfg.items() if k in valid_keys}
             if defaults:
@@ -265,19 +279,55 @@ class Options:
             # re-parse to refresh temp (so module-specific arg updates use config values)
             temp = parser.parse_known_args()[0]
 
-        for key, value in {
-            "strategies": temp.strategy,
-            "schedulers": temp.scheduler,
-            "optimizers": temp.optimizer,
-            "models": temp.model,
-        }.items():
-            self.apply_args_update(
-                parser=parser,
-                update_func=getattr(__import__(key), "args_update_functions")[value],
+        self._apply_component_args(parser=parser, args=temp)
+
+        if cfg:
+            # Reapply after dynamic registration so component defaults are retained.
+            valid_keys = {action.dest for action in parser._actions}
+            parser.set_defaults(
+                **{key: value for key, value in cfg.items() if key in valid_keys}
             )
 
         self.args = parser.parse_args()
         return self
+
+    def _apply_component_args(
+        self,
+        parser: argparse.ArgumentParser,
+        args: argparse.Namespace,
+    ) -> None:
+        """Register arguments after resolving compulsory component choices."""
+        resolved_args = vars(args).copy()
+        for option_name, module_name in self.COMPONENTS.items():
+            module = __import__(module_name)
+            component = resolved_args[option_name]
+            resolved_args.update(module.compulsory.get(component, {}))
+            component = resolved_args[option_name]
+            self.apply_args_update(
+                parser=parser,
+                update_func=module.args_update_functions[component],
+            )
+            self._expose_primitive_options(
+                parser=parser,
+                params=module.optional[component],
+            )
+
+    @staticmethod
+    def _expose_primitive_options(
+        parser: argparse.ArgumentParser,
+        params: dict[str, object],
+    ) -> None:
+        """Expose primitive defaults that have no explicit parser action."""
+        exposed = {action.dest for action in parser._actions}
+        for name, value in params.items():
+            if name in exposed or type(value) not in (bool, int, float, str):
+                continue
+            parser.add_argument(
+                f"--{name}",
+                type=str2bool if type(value) is bool else type(value),
+                default=None,
+            )
+            exposed.add(name)
 
     # Function to apply args_update to a parser
     def apply_args_update(self, parser, update_func):
@@ -397,10 +447,11 @@ class Options:
     def fix_args(self):
         self._fix_save_path()
         self._fix_device()
-        self._fix_specific_param("strategies", "strategy")
-        self._fix_specific_param("schedulers", "scheduler")
-        self._fix_specific_param("optimizers", "optimizer")
-        self._fix_specific_param("models", "model")
+        for option_name, module_name in self.COMPONENTS.items():
+            self._fix_specific_param(
+                category=module_name,
+                attr_name=option_name,
+            )
         self.args.__dict__["max_epochs"] = self.args.iterations * self.args.epochs
         self.args.__dict__ = self._clean_none_args(args=self.args.__dict__)
         return self

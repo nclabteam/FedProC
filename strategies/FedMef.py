@@ -1,158 +1,205 @@
 # -*- coding: utf-8 -*-
-"""FedMef - Towards Memory-efficient Federated Dynamic Pruning.
+"""FedMef budget-aware extrusion and sparse topology adjustment."""
 
-Paper: https://arxiv.org/abs/2403.14737  |  CVPR '24
-
-Extends FedTiny with BAE (Bias-Aware Estimation) regularization:
-    L_total = L_task + lambda ||w_{low-mag active}||^2
-Server optionally filters client gradients to top-k inactive (enable_topk_grad).
-"""
+from collections.abc import Mapping
 from typing import Any, Dict
 
 import torch
+import torch.nn as nn
 
+from .FedTiny import FedTinyShared
 from .spFL import spFL, spFL_Client
 
 
-class FedMef(spFL):
-    """FedMef server - FedTiny mask update with optional topk gradient filtering."""
+class FedMefShared(FedTinyShared):
+    """FedMef math shared by its server and worker."""
+
+    @staticmethod
+    def extrusion_terms(
+        model: nn.Module,
+        marked: Mapping[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return squared L2 penalty and L2 status of marked parameters."""
+        squared = torch.zeros((), device=next(model.parameters()).device)
+        for name, param in model.named_parameters():
+            if name in marked:
+                indices = marked[name].to(device=param.device)
+                squared = squared + param.flatten()[indices].square().sum()
+        return squared, squared.sqrt()
+
+    @staticmethod
+    def budget_learning_rate(
+        initial_lr: float,
+        scheduled_lr: float,
+        low_norm: torch.Tensor,
+        step: int,
+        budget: int,
+    ) -> float:
+        """Return the REX-based BaE learning rate."""
+        if budget <= 0:
+            raise ValueError("budget must be positive")
+        # Paper Eqs. (3-5): beta_t = p(t)(2 sigma(||theta_low||)-1) eta_0,
+        # p(t) = (2T-2t)/(2T-t), and mu_t = max(eta_t, beta_t).
+        rex = (2 * budget - 2 * step) / (2 * budget - step)
+        beta = rex * (2 * torch.sigmoid(low_norm.detach()).item() - 1) * initial_lr
+        return max(scheduled_lr, beta)
+
+
+class FedMef(FedMefShared, spFL):
+    """FedMef server."""
 
     optional = {
-        **spFL.optional,
-        "enable_topk_grad": False,
-    }
-
-    def _sp_update_mask(self, packages: Dict[int, Any]) -> None:
-        total = sum(p["train_samples"] for p in packages.values())
-        avg_grad: Dict[str, torch.Tensor] = {}
-        for pkg in packages.values():
-            w = pkg["train_samples"] / total
-            grads = pkg["_sp_extra"]
-            if self.enable_topk_grad:
-                grads = self._topk_inactive_filter(grads)
-            for name, g in grads.items():
-                if name not in avg_grad:
-                    avg_grad[name] = g.float() * w
-                else:
-                    avg_grad[name] += g.float() * w
-
-        self._sp_mask_dict = self.sparse_update_step(
-            self.model, avg_grad,
-            self._sp_mask_dict,
-            self._sp_t, self.T_end, self.adjust_alpha,
-        )
-        self.apply_mask(self.model, self._sp_mask_dict)
-
-    def _topk_inactive_filter(self, grads: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """Zero-out all inactive gradients except top-k (by magnitude)."""
-        k = int(self.f_decay(self._sp_t, self.adjust_alpha, self.T_end) * sum(
-            (self._sp_mask_dict[n] == 1).sum().item()
-            for n in self._sp_mask_dict
-        ) / max(len(self._sp_mask_dict), 1))
-        filtered = {}
-        for name, g in grads.items():
-            if name not in self._sp_mask_dict:
-                filtered[name] = g
-                continue
-            g_f = g.clone().float()
-            inactive_idx = (self._sp_mask_dict[name].view(-1) == 0).nonzero(as_tuple=False).view(-1)
-            if len(inactive_idx) > k:
-                layer_k = min(k, len(inactive_idx))
-                vals = g_f.abs().view(-1)[inactive_idx]
-                threshold = torch.topk(vals, layer_k, largest=True).values.min()
-                mask_inactive = g_f.abs() < threshold
-                g_f[mask_inactive & (self._sp_mask_dict[name].to(g_f.device) == 0)] = 0.0
-            filtered[name] = g_f
-        return filtered
-
-
-class FedMef_Client(spFL_Client):
-    """FedMef client - BAE regularization + post-training gradient collection."""
-
-    optional = {
+        "delta_T": 10,
+        "T_end": 300,
+        "adjust_alpha": 0.4,
         "lambda_l2": 1e-4,
-        "psi": 1e-4,
-        "xi": 1.0,
-        "gamma": 0.3,
-        "enable_dynamic_lowest_k": True,
     }
+
+    def aggregate_client_updates(
+        self,
+        packages: Mapping[int, Dict[str, Any]],
+    ) -> None:
+        if not self._sp_is_adj():
+            super().aggregate_client_updates(packages=packages)
+            return
+        names = set(self._sp_mask_dict)
+        counts = self.adjustment_counts(
+            mask_dict=self._sp_mask_dict,
+            names=names,
+            current_iter=self.current_iter,
+            adjust_alpha=self.adjust_alpha,
+            T_end=self.T_end,
+        )
+        marked = self.lowest_active_indices(
+            parameters=self.public_model_params,
+            mask_dict=self._sp_mask_dict,
+            counts=counts,
+        )
+        client_models = []
+        client_extras = []
+        client_scores = []
+        for package in packages.values():
+            client_models.append(package["regular_model_params"])
+            client_extras.append(package.get("_sp_extra", {}))
+            client_scores.append(package["score"])
+        self._commit_global(
+            new_params=self.mean_models(
+                models=client_models,
+                weights=client_scores,
+            )
+        )
+        # Paper: clients upload only top-K gradients; omitted coordinates are zero.
+        gradients = self.mean_sparse_gradients(
+            extras=client_extras,
+            weights=client_scores,
+            mask_dict=self._sp_mask_dict,
+            names=names,
+        )
+        self._sp_mask_dict = self.swap_topology(
+            parameters=self.public_model_params,
+            gradients=gradients,
+            mask_dict=self._sp_mask_dict,
+            counts=counts,
+            prune_indices=marked,
+        )
+        self._sp_commit_mask()
+
+
+class FedMef_Client(FedMefShared, spFL_Client):
+    """FedMef worker."""
 
     def fit(self) -> None:
-        from .base import SharedMethods
-        SharedMethods._set_worker_seed(self._loader_seed("train"))
+        if not self._sp_is_adj:
+            super().fit()
+            return
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
-        self.apply_mask(self.model, self._sp_mask_dict)
-        self.model.to(self.device)
-        self.model.train()
-        init_lr = self.optimizer.param_groups[0]["lr"]
-        total_batches = len(loader)
-
-        if not self.enable_dynamic_lowest_k:
-            self._penalty_indices = self._compute_penalty_indices()
-
-        for epoch in range(self.epochs):
-            for b_idx, (batch_x, batch_y, x_mark, y_mark) in enumerate(loader):
-                batch_x = batch_x.to(self.device, dtype=torch.float32)
-                batch_y = batch_y.to(self.device, dtype=torch.float32)
-                x_mark = x_mark.to(self.device)
-                y_mark = y_mark.to(self.device)
-                self.optimizer.zero_grad()
-                pred = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
-                task_loss = self.loss(pred, batch_y)
-                total_loss, l1_loss = self._bae_loss(task_loss)
-                self._adjust_lr(init_lr, l1_loss, self.epochs, epoch, b_idx, total_batches)
-                total_loss.backward()
+        self.initialize_scheduler(steps_per_epoch=len(loader))
+        names = set(self._sp_mask_dict)
+        counts = self.adjustment_counts(
+            mask_dict=self._sp_mask_dict,
+            names=names,
+            current_iter=self.current_iter,
+            adjust_alpha=self.adjust_alpha,
+            T_end=self.T_end,
+        )
+        marked = self.lowest_active_indices(
+            parameters=dict(self.model.named_parameters()),
+            mask_dict=self._sp_mask_dict,
+            counts=counts,
+        )
+        initial_lrs = [group["lr"] for group in self.optimizer.param_groups]
+        budget = max(1, self.epochs * len(loader))
+        step = 0
+        self.apply_mask(model=self.model, mask_dict=self._sp_mask_dict)
+        for _ in range(self.epochs):
+            self.model.to(self.device)
+            self._move_optimizer_state_to_param_devices(optimizer=self.optimizer)
+            self.model.train()
+            for batch_x, batch_y, x_mark, y_mark in loader:
+                scheduled_lrs = [group["lr"] for group in self.optimizer.param_groups]
+                self.optimizer.zero_grad(set_to_none=True)
+                batch_x = batch_x.to(device=self.device, dtype=torch.float32)
+                batch_y = batch_y.to(device=self.device, dtype=torch.float32)
+                x_mark = x_mark.to(device=self.device)
+                y_mark = y_mark.to(device=self.device)
+                prediction = self.model(batch_x, x_mark=x_mark, y_mark=y_mark)
+                task_loss = self.loss(prediction, batch_y)
+                penalty, low_norm = self.extrusion_terms(
+                    model=self.model,
+                    marked=marked,
+                )
+                for group, initial_lr, scheduled_lr in zip(
+                    self.optimizer.param_groups, initial_lrs, scheduled_lrs
+                ):
+                    group["lr"] = self.budget_learning_rate(
+                        initial_lr=initial_lr,
+                        scheduled_lr=scheduled_lr,
+                        low_norm=low_norm,
+                        step=step,
+                        budget=budget,
+                    )
+                # Paper Eq. (2): L_s = L_task + lambda * ||theta_low||_2^2.
+                (task_loss + self.lambda_l2 * penalty).backward()
+                for name, param in self.model.named_parameters():
+                    if name in self._sp_mask_dict and param.grad is not None:
+                        param.grad.mul_(
+                            self._sp_mask_dict[name].to(device=param.grad.device)
+                        )
                 self.optimizer.step()
-                if self.scheduler:
-                    self.scheduler.step()
-            self.apply_mask(self.model, self._sp_mask_dict)
-
-        if self.efficiency in ("low", "med"):
+                for group, scheduled_lr in zip(
+                    self.optimizer.param_groups,
+                    scheduled_lrs,
+                ):
+                    group["lr"] = scheduled_lr
+                self.step_scheduler_batch(
+                    scheduler=self.scheduler,
+                    batch_data=batch_x,
+                )
+                self.apply_mask(model=self.model, mask_dict=self._sp_mask_dict)
+                step += 1
+            self.step_scheduler_epoch(scheduler=self.scheduler)
+            if self.efficiency == "low":
+                self.model.to("cpu")
+        if self.efficiency == "med":
             self.model.to("cpu")
 
-    def _compute_penalty_indices(self) -> Dict[str, torch.Tensor]:
-        indices = {}
-        for name, param in self.model.named_parameters():
-            if name in self._sp_mask_dict:
-                active = int((self._sp_mask_dict[name] == 1).sum().item())
-                k = int(self.f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
-                _, idx = torch.topk(param.data.abs().flatten(), k, largest=False)
-                indices[name] = idx
-        return indices
-
-    def _bae_loss(self, task_loss: torch.Tensor):
-        low_params = []
-        for name, param in self.model.named_parameters():
-            if name not in self._sp_mask_dict:
-                continue
-            if self.enable_dynamic_lowest_k:
-                active = int((self._sp_mask_dict[name] == 1).sum().item())
-                k = int(self.f_decay(self._sp_t, self.gamma, self._sp_T_end) * active)
-                sorted_vals = param.data.abs().flatten().sort()[0]
-                if k > 0 and k < len(sorted_vals):
-                    threshold = sorted_vals[k]
-                    mask_low = (param.abs() <= threshold).float()
-                    low_params.append(param * mask_low)
-            else:
-                low_params.append(param.flatten()[self._penalty_indices[name]])
-
-        if not low_params:
-            return task_loss, torch.tensor(0.0)
-        l2 = sum(torch.norm(p, 2) for p in low_params)
-        l1 = sum(torch.norm(p, 1) for p in low_params)
-        return task_loss + self.lambda_l2 * l2, l1
-
-    def _adjust_lr(self, init_lr: float, l1_loss: torch.Tensor,
-                   total_rounds: int, epoch: int, step: int, steps_per_epoch: int) -> None:
-        B = steps_per_epoch * total_rounds
-        b = step + steps_per_epoch * epoch
-        decay = (2 * B - 2 * b) / max(2 * B - b, 1)
-        sig = 2 * torch.sigmoid(l1_loss).item() - 1
-        adjusted = decay * sig * init_lr
-        for pg in self.optimizer.param_groups:
-            pg["lr"] = float(min(self.xi, max(pg["lr"], self.psi * adjusted)))
-
     def package(self) -> Dict[str, Any]:
-        result = super().package()
-        result["_sp_extra"] = self._collect_gradients() if self._sp_is_adj else {}
-        return result
+        if not self._sp_is_adj:
+            return self._package_sparse_extra(extra={})
+        names = set(self._sp_mask_dict)
+        counts = self.adjustment_counts(
+            mask_dict=self._sp_mask_dict,
+            names=names,
+            current_iter=self.current_iter,
+            adjust_alpha=self.adjust_alpha,
+            T_end=self.T_end,
+        )
+        gradients = self._collect_gradients(names=names)
+        return self._package_sparse_extra(
+            extra=self.topk_inactive_gradients(
+                gradients=gradients,
+                mask_dict=self._sp_mask_dict,
+                counts=counts,
+            )
+        )

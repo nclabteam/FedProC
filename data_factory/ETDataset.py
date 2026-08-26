@@ -4,7 +4,9 @@ from .base import BaseDataset, CustomDataset
 
 
 class ETDatasetMinute(CustomDataset):
-    def __init__(self, *args, **kwargs):
+    """Combine the two minute-frequency ETT datasets."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "ETDataset", "ETDatasetMinute")
         self.sets = [
@@ -18,7 +20,9 @@ class ETDatasetMinute(CustomDataset):
 
 
 class ETDatasetHour(ETDatasetMinute, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Combine the two hourly ETT datasets."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "ETDataset", "ETDatasetHour")
         self.sets = [
@@ -32,7 +36,9 @@ class ETDatasetHour(ETDatasetMinute, BaseDataset):
 
 
 class ETTm1(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """First 15-minute Electricity Transformer Temperature dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "ETDataset", "raw", "ETTm1")
         self.save_path = os.path.join("datasets", "ETDataset", "ETTm1")
@@ -43,7 +49,8 @@ class ETTm1(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "https://raw.githubusercontent.com/zhouhaoyi/ETDataset/refs/heads/main/ETT-small/ETTm1.csv"
 
-    def download(self):
+    def download(self) -> None:
+        """Download the configured ETT CSV file."""
         os.makedirs(self.path_raw, exist_ok=True)
         file_name = self.url.split("/")[-1]
         file_path = os.path.join(self.path_raw, file_name)
@@ -51,7 +58,9 @@ class ETTm1(BaseDataset):
 
 
 class ETTm2(ETTm1, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Second 15-minute Electricity Transformer Temperature dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "ETDataset", "raw", "ETTm2")
         self.save_path = os.path.join("datasets", "ETDataset", "ETTm2")
@@ -64,7 +73,9 @@ class ETTm2(ETTm1, BaseDataset):
 
 
 class ETTh1(ETTm1, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """First hourly Electricity Transformer Temperature dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "ETDataset", "raw", "ETTh1")
         self.save_path = os.path.join("datasets", "ETDataset", "ETTh1")
@@ -77,7 +88,9 @@ class ETTh1(ETTm1, BaseDataset):
 
 
 class ETTh2(ETTm1, BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Second hourly Electricity Transformer Temperature dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "ETDataset", "raw", "ETTh2")
         self.save_path = os.path.join("datasets", "ETDataset", "ETTh2")

@@ -5,8 +5,9 @@ import torch.nn as nn
 
 
 class PositionalEmbedding(nn.Module):
+    """Provide fixed sinusoidal positional embeddings."""
 
-    def __init__(self, d_model, max_len=5000):
+    def __init__(self, d_model: int, max_len: int = 5000) -> None:
         super().__init__()
         # Compute the positional encodings once in log space.
         # pe: (max_len, d_model) -> expanded to (1, max_len, d_model) before register
@@ -29,7 +30,7 @@ class PositionalEmbedding(nn.Module):
         pe = pe.unsqueeze(0)
         self.register_buffer("pe", pe)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: expected shape (batch, seq_len, ...)
         # returned tensor: pe[:, : x.size(1)] has shape (1, seq_len, d_model)
         # typically you will broadcast or add this to input embeddings of shape (batch, seq_len, d_model)

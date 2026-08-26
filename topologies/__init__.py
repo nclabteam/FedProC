@@ -1,40 +1,18 @@
 import importlib
-import os
-from typing import Any, Callable, Dict
+from pathlib import Path
+from typing import Any
 
-# Get the directory of the current file
-current_dir = os.path.dirname(os.path.abspath(__file__))
+topologies: dict[str, type[Any]] = {}
 
-# Initialize empty dictionaries to store the imported classes, optional dictionaries, and compulsory dictionaries
-topologies = {}
-optional: Dict[Any, dict] = {}
-compulsory: Dict[Any, dict] = {}
-args_update_functions: Dict[str, Callable] = {}
+for path in sorted(Path(__file__).parent.glob("*.py"), key=lambda item: item.stem):
+    name = path.stem
+    if name in {"__init__", "base"}:
+        continue
+    module = importlib.import_module(name=f".{name}", package=__name__)
+    topology_type = getattr(module, name, None)
+    if isinstance(topology_type, type):
+        topologies[name] = topology_type
 
-for filename in os.listdir(current_dir):
-    if filename.endswith(".py") and filename != "__init__.py":
-        module_name = filename[:-3]  # Remove the .py extension
-        module = importlib.import_module(f".{module_name}", package=__package__)
-
-        # Import the main class
-        class_name = module_name
-        if hasattr(module, class_name):
-            class_obj = getattr(module, class_name)
-            topologies[class_name] = class_obj
-
-            # Import optional dictionary
-            optional[class_name] = getattr(class_obj, "optional", {})
-
-            # Import compulsory dictionary
-            compulsory[class_name] = getattr(class_obj, "compulsory", {})
-
-            # Import args_update function
-            args_update_functions[class_name] = getattr(class_obj, "args_update", None)
-
-# Add the imported classes to the module's namespace
 globals().update(topologies)
-
-
-# Optionally, define __all__ to control what gets imported with "from strategies import *"
-__all__ = list(topologies.keys())
-TOPOLOGIES = list(topologies.keys())
+TOPOLOGIES = list(topologies)
+__all__ = TOPOLOGIES

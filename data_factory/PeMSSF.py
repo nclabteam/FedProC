@@ -9,7 +9,9 @@ from .base import BaseDataset
 
 
 class PeMSSF(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Ten-minute San Francisco freeway occupancy series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "PeMSSF", "raw")
         self.path_temp = os.path.join("datasets", "PeMSSF", "temp")
@@ -22,8 +24,13 @@ class PeMSSF(BaseDataset):
         self.url = "https://archive.ics.uci.edu/static/public/204/pems+sf.zip"
 
     @staticmethod
-    def create_dataframe(file_path, stations_list_file_path):
-        def parse_matrix(matrix_str):
+    def create_dataframe(
+        file_path: str,
+        stations_list_file_path: str,
+    ) -> pl.DataFrame:
+        """Parse a PeMS-SF matrix file into a wide DataFrame."""
+
+        def parse_matrix(matrix_str: str) -> np.ndarray:
             # Remove leading/trailing brackets and split by semicolon to separate rows
             rows = matrix_str.strip()[1:-1].split(";")
 
@@ -34,7 +41,7 @@ class PeMSSF(BaseDataset):
 
         # Read data file
         with open(file_path, "r") as file:
-            data = [parse_matrix(line) for line in file]
+            data = [parse_matrix(matrix_str=line) for line in file]
 
         data = np.array(data)
 
@@ -64,7 +71,8 @@ class PeMSSF(BaseDataset):
 
         return data
 
-    def download(self):
+    def download(self) -> None:
+        """Download and reshape PeMS-SF into per-station CSV files."""
         # Create the directories
         os.makedirs(self.path_temp, exist_ok=True)
         os.makedirs(self.path_raw, exist_ok=True)

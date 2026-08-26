@@ -1,7 +1,11 @@
+from argparse import ArgumentParser, Namespace
+
 from torch.optim import Adam
+from torch.optim.optimizer import ParamsT
 
 
 class Adam(Adam):
+    """Adapt PyTorch Adam to FedProC configuration objects."""
 
     optional = {
         "beta1": 0.9,
@@ -12,15 +16,15 @@ class Adam(Adam):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
         parser.add_argument("--epsilon", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--amsgrad", default=None, action="store_true")
 
-    def __init__(self, params, configs):
-        super(Adam, self).__init__(
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
+        super().__init__(
             params=params,
             lr=configs.learning_rate,
             betas=(configs.beta1, configs.beta2),

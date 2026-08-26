@@ -13,8 +13,13 @@ class Decomposition(nn.Module):
     """
 
     def __init__(
-        self, input_length, pred_length, wavelet_name="db2", level=1, **kwargs
-    ):
+        self,
+        input_length: int,
+        pred_length: int,
+        wavelet_name: str = "db2",
+        level: int = 1,
+        **kwargs: object,
+    ) -> None:
         super().__init__()
         self.input_length = input_length
         self.pred_length = pred_length
@@ -24,10 +29,10 @@ class Decomposition(nn.Module):
         self.dwt = DWT1DForward(wave=wavelet_name, J=level)
         self.idwt = DWT1DInverse(wave=wavelet_name)
 
-        self.input_w_dim = self._coeff_lengths(input_length)
-        self.pred_w_dim = self._coeff_lengths(pred_length)
+        self.input_w_dim = self._coeff_lengths(length=input_length)
+        self.pred_w_dim = self._coeff_lengths(length=pred_length)
 
-    def _coeff_lengths(self, length):
+    def _coeff_lengths(self, length: int) -> list[int]:
         wav = pywt.Wavelet(self.wavelet_name)
         filter_len = wav.dec_len
         lengths = []
@@ -38,12 +43,19 @@ class Decomposition(nn.Module):
         # returns [yl_len, yh[0]_len, yh[1]_len, ...]
         return [lengths[-1]] + lengths
 
-    def transform(self, x):
-        yl, yh = self.dwt(x)
+    def transform(
+        self,
+        x: torch.Tensor,
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        yl, yh = self.dwt(x=x)
         return yl, yh
 
-    def inv_transform(self, yl, yh):
-        return self.idwt((yl, yh))
+    def inv_transform(
+        self,
+        yl: torch.Tensor,
+        yh: list[torch.Tensor | None],
+    ) -> torch.Tensor:
+        return self.idwt(coeffs=(yl, yh))
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +64,15 @@ class Decomposition(nn.Module):
 
 
 class DWT1DForward(nn.Module):
-    def __init__(self, J=1, wave="db1", mode="zero", use_amp=False):
+    """Apply a one-dimensional discrete wavelet transform."""
+
+    def __init__(
+        self,
+        J: int = 1,
+        wave: str | pywt.Wavelet | tuple | list = "db1",
+        mode: str = "zero",
+        use_amp: bool = False,
+    ) -> None:
         super().__init__()
         self.use_amp = use_amp
         if isinstance(wave, str):
@@ -61,17 +81,20 @@ class DWT1DForward(nn.Module):
             h0, h1 = wave.dec_lo, wave.dec_hi
         else:
             h0, h1 = wave[0], wave[1]
-        filts = _prep_filt_afb1d(h0, h1)
+        filts = _prep_filt_afb1d(h0=h0, h1=h1)
         self.register_buffer("h0", filts[0])
         self.register_buffer("h1", filts[1])
         self.J = J
         self.mode = mode
 
-    def forward(self, x):
+    def forward(
+        self,
+        x: torch.Tensor,
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         assert x.ndim == 3, "Expected (N, C, L)"
         highs = []
         x0 = x
-        mode = _mode_to_int(self.mode)
+        mode = _mode_to_int(mode=self.mode)
         for j in range(self.J):
             x0, x1 = AFB1D.apply(x0, self.h0, self.h1, mode, self.use_amp)
             highs.append(x1)
@@ -79,7 +102,14 @@ class DWT1DForward(nn.Module):
 
 
 class DWT1DInverse(nn.Module):
-    def __init__(self, wave="db1", mode="zero", use_amp=False):
+    """Reconstruct a signal from one-dimensional wavelet coefficients."""
+
+    def __init__(
+        self,
+        wave: str | pywt.Wavelet | tuple | list = "db1",
+        mode: str = "zero",
+        use_amp: bool = False,
+    ) -> None:
         super().__init__()
         self.use_amp = use_amp
         if isinstance(wave, str):
@@ -88,15 +118,18 @@ class DWT1DInverse(nn.Module):
             g0, g1 = wave.rec_lo, wave.rec_hi
         else:
             g0, g1 = wave[0], wave[1]
-        filts = _prep_filt_sfb1d(g0, g1)
+        filts = _prep_filt_sfb1d(g0=g0, g1=g1)
         self.register_buffer("g0", filts[0])
         self.register_buffer("g1", filts[1])
         self.mode = mode
 
-    def forward(self, coeffs):
+    def forward(
+        self,
+        coeffs: tuple[torch.Tensor, list[torch.Tensor | None]],
+    ) -> torch.Tensor:
         x0, highs = coeffs
         assert x0.ndim == 3, "Expected (N, C, L)"
-        mode = _mode_to_int(self.mode)
+        mode = _mode_to_int(mode=self.mode)
         for x1 in highs[::-1]:
             if x1 is None:
                 x1 = torch.zeros_like(x0)
@@ -112,9 +145,11 @@ class DWT1DInverse(nn.Module):
 
 
 class AFB1D(Function):
+    """Autograd analysis filter bank for one-dimensional wavelets."""
+
     @staticmethod
     def forward(ctx, x, h0, h1, mode, use_amp):
-        mode_str = _int_to_mode(mode)
+        mode_str = _int_to_mode(mode=mode)
         x = x[:, :, None, :]
         h0 = h0[:, :, None, :]
         h1 = h1[:, :, None, :]
@@ -122,7 +157,14 @@ class AFB1D(Function):
         ctx.shape = x.shape[3]
         ctx.mode = mode_str
         ctx.use_amp = use_amp
-        lohi = _afb1d(x, h0, h1, use_amp, mode=mode_str, dim=3)
+        lohi = _afb1d(
+            x=x,
+            h0=h0,
+            h1=h1,
+            use_amp=use_amp,
+            mode=mode_str,
+            dim=3,
+        )
         x0 = lohi[:, ::2, 0].contiguous()
         x1 = lohi[:, 1::2, 0].contiguous()
         return x0, x1
@@ -134,16 +176,26 @@ class AFB1D(Function):
             h0, h1 = ctx.saved_tensors
             dx0 = dx0[:, :, None, :]
             dx1 = dx1[:, :, None, :]
-            dx = _sfb1d(dx0, dx1, h0, h1, ctx.use_amp, mode=ctx.mode, dim=3)[:, :, 0]
+            dx = _sfb1d(
+                lo=dx0,
+                hi=dx1,
+                g0=h0,
+                g1=h1,
+                use_amp=ctx.use_amp,
+                mode=ctx.mode,
+                dim=3,
+            )[:, :, 0]
             if dx.shape[2] > ctx.shape:
                 dx = dx[:, :, : ctx.shape]
         return dx, None, None, None, None, None
 
 
 class SFB1D(Function):
+    """Autograd synthesis filter bank for one-dimensional wavelets."""
+
     @staticmethod
     def forward(ctx, low, high, g0, g1, mode, use_amp):
-        mode_str = _int_to_mode(mode)
+        mode_str = _int_to_mode(mode=mode)
         low = low[:, :, None, :]
         high = high[:, :, None, :]
         g0 = g0[:, :, None, :]
@@ -151,7 +203,15 @@ class SFB1D(Function):
         ctx.mode = mode_str
         ctx.save_for_backward(g0, g1)
         ctx.use_amp = use_amp
-        return _sfb1d(low, high, g0, g1, use_amp, mode=mode_str, dim=3)[:, :, 0]
+        return _sfb1d(
+            lo=low,
+            hi=high,
+            g0=g0,
+            g1=g1,
+            use_amp=use_amp,
+            mode=mode_str,
+            dim=3,
+        )[:, :, 0]
 
     @staticmethod
     def backward(ctx, dy):
@@ -159,7 +219,14 @@ class SFB1D(Function):
         if ctx.needs_input_grad[0]:
             g0, g1 = ctx.saved_tensors
             dy = dy[:, :, None, :]
-            dx = _afb1d(dy, g0, g1, ctx.use_amp, mode=ctx.mode, dim=3)
+            dx = _afb1d(
+                x=dy,
+                h0=g0,
+                h1=g1,
+                use_amp=ctx.use_amp,
+                mode=ctx.mode,
+                dim=3,
+            )
             dlow = dx[:, ::2, 0].contiguous()
             dhigh = dx[:, 1::2, 0].contiguous()
         return dlow, dhigh, None, None, None, None, None
@@ -170,7 +237,7 @@ class SFB1D(Function):
 # ---------------------------------------------------------------------------
 
 
-def _mode_to_int(mode):
+def _mode_to_int(mode: str) -> int:
     return {
         "zero": 0,
         "symmetric": 1,
@@ -183,7 +250,7 @@ def _mode_to_int(mode):
     }[mode]
 
 
-def _int_to_mode(mode):
+def _int_to_mode(mode: int) -> str:
     return {
         0: "zero",
         1: "symmetric",
@@ -195,7 +262,7 @@ def _int_to_mode(mode):
     }[mode]
 
 
-def _roll(x, n, dim):
+def _roll(x: torch.Tensor, n: int, dim: int) -> torch.Tensor:
     if n < 0:
         n = x.shape[dim] + n
     if dim == 2 or dim == -2:
@@ -205,17 +272,30 @@ def _roll(x, n, dim):
     raise ValueError(f"Unsupported dim: {dim}")
 
 
-def _mypad(x, pad, mode="constant", value=0):
+def _mypad(
+    x: torch.Tensor,
+    pad: tuple[int, int, int, int],
+    mode: str = "constant",
+    value: float = 0,
+) -> torch.Tensor:
     if mode == "symmetric":
         if pad[2] == 0 and pad[3] == 0:
             m1, m2 = pad[0], pad[1]
             l = x.shape[-1]
-            xe = _reflect(np.arange(-m1, l + m2, dtype="int32"), -0.5, l - 0.5)
+            xe = _reflect(
+                x=np.arange(-m1, l + m2, dtype="int32"),
+                minx=-0.5,
+                maxx=l - 0.5,
+            )
             return x[:, :, :, xe]
         elif pad[0] == 0 and pad[1] == 0:
             m1, m2 = pad[2], pad[3]
             l = x.shape[-2]
-            xe = _reflect(np.arange(-m1, l + m2, dtype="int32"), -0.5, l - 0.5)
+            xe = _reflect(
+                x=np.arange(-m1, l + m2, dtype="int32"),
+                minx=-0.5,
+                maxx=l - 0.5,
+            )
             return x[:, :, xe]
     elif mode in ("constant", "reflect", "replicate"):
         return F.pad(x, pad, mode, value)
@@ -224,7 +304,14 @@ def _mypad(x, pad, mode="constant", value=0):
     raise ValueError(f"Unknown pad type: {mode}")
 
 
-def _afb1d(x, h0, h1, use_amp, mode="zero", dim=-1):
+def _afb1d(
+    x: torch.Tensor,
+    h0: torch.Tensor,
+    h1: torch.Tensor,
+    use_amp: bool,
+    mode: str = "zero",
+    dim: int = -1,
+) -> torch.Tensor:
     C = x.shape[1]
     d = dim % 4
     s = (2, 1) if d == 2 else (1, 2)
@@ -243,7 +330,7 @@ def _afb1d(x, h0, h1, use_amp, mode="zero", dim=-1):
         if x.shape[d] % 2 == 1:
             x = torch.cat((x, x[:, :, :, -1:] if d == 3 else x[:, :, -1:, :]), dim=d)
             N += 1
-        x = _roll(x, -L2, dim=d)
+        x = _roll(x=x, n=-L2, dim=d)
         pad = (L - 1, 0) if d == 2 else (0, L - 1)
         lohi = F.conv2d(x, h, padding=pad, stride=s, groups=C)
         N2 = N // 2
@@ -266,14 +353,22 @@ def _afb1d(x, h0, h1, use_amp, mode="zero", dim=-1):
             pad = (
                 (0, 0, p // 2, (p + 1) // 2) if d == 2 else (p // 2, (p + 1) // 2, 0, 0)
             )
-            x = _mypad(x, pad=pad, mode=mode)
+            x = _mypad(x=x, pad=pad, mode=mode)
             lohi = F.conv2d(x, h, stride=s, groups=C)
         else:
             raise ValueError(f"Unknown pad type: {mode}")
     return lohi
 
 
-def _sfb1d(lo, hi, g0, g1, use_amp, mode="zero", dim=-1):
+def _sfb1d(
+    lo: torch.Tensor,
+    hi: torch.Tensor,
+    g0: torch.Tensor,
+    g1: torch.Tensor,
+    use_amp: bool,
+    mode: str = "zero",
+    dim: int = -1,
+) -> torch.Tensor:
     C = lo.shape[1]
     d = dim % 4
     s = (2, 1) if d == 2 else (1, 2)
@@ -298,7 +393,7 @@ def _sfb1d(lo, hi, g0, g1, use_amp, mode="zero", dim=-1):
         else:
             y[:, :, :, : L - 2] += y[:, :, :, N : N + L - 2]
             y = y[:, :, :, :N]
-        y = _roll(y, 1 - L // 2, dim=dim)
+        y = _roll(x=y, n=1 - L // 2, dim=dim)
     else:
         pad = (L - 2, 0) if d == 2 else (0, L - 2)
         y = F.conv_transpose2d(
@@ -307,7 +402,11 @@ def _sfb1d(lo, hi, g0, g1, use_amp, mode="zero", dim=-1):
     return y
 
 
-def _prep_filt_afb1d(h0, h1, device=None):
+def _prep_filt_afb1d(
+    h0: list[float] | tuple[float, ...] | np.ndarray,
+    h1: list[float] | tuple[float, ...] | np.ndarray,
+    device: torch.device | str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
     h0 = np.array(h0[::-1]).ravel()
     h1 = np.array(h1[::-1]).ravel()
     t = torch.get_default_dtype()
@@ -316,7 +415,11 @@ def _prep_filt_afb1d(h0, h1, device=None):
     return h0, h1
 
 
-def _prep_filt_sfb1d(g0, g1, device=None):
+def _prep_filt_sfb1d(
+    g0: list[float] | tuple[float, ...] | np.ndarray,
+    g1: list[float] | tuple[float, ...] | np.ndarray,
+    device: torch.device | str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
     g0 = np.array(g0).ravel()
     g1 = np.array(g1).ravel()
     t = torch.get_default_dtype()
@@ -325,7 +428,7 @@ def _prep_filt_sfb1d(g0, g1, device=None):
     return g0, g1
 
 
-def _reflect(x, minx, maxx):
+def _reflect(x: np.ndarray, minx: float, maxx: float) -> np.ndarray:
     x = np.asanyarray(x)
     rng = maxx - minx
     rng_by_2 = 2 * rng

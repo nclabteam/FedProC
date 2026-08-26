@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Any, List
+from typing import Any
 
 
 class Attack:
@@ -13,10 +13,10 @@ class Attack:
 
     def craft(
         self,
-        packages: "OrderedDict[int, dict]",
-        malicious_ids: List[int],
+        packages: OrderedDict[int, dict[str, Any]],
+        malicious_ids: list[int],
         ctx: Any,
-    ) -> "OrderedDict[int, dict]":
+    ) -> OrderedDict[int, dict[str, Any]]:
         """Modify malicious clients' packages before aggregation.
 
         Args:

@@ -3,7 +3,11 @@ import torch
 import torch.nn as nn
 
 
-def get_frequency_modes(seq_len, modes=64, mode_select_method="random"):
+def get_frequency_modes(
+    seq_len: int,
+    modes: int = 64,
+    mode_select_method: str = "random",
+) -> list[int]:
     """
     get modes on frequency domain:
     'random' means sampling randomly;
@@ -28,16 +32,18 @@ class FourierBlock(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        out_channels,
-        seq_len,
-        modes=0,
-        mode_select_method="random",
-        n_heads=8,
-    ):
+        in_channels: int,
+        out_channels: int,
+        seq_len: int,
+        modes: int = 0,
+        mode_select_method: str = "random",
+        n_heads: int = 8,
+    ) -> None:
         super().__init__()
         self.index = get_frequency_modes(
-            seq_len, modes=modes, mode_select_method=mode_select_method
+            seq_len=seq_len,
+            modes=modes,
+            mode_select_method=mode_select_method,
         )
         self.n_heads = n_heads
         self.scale = 1 / (in_channels * out_channels)
@@ -48,10 +54,20 @@ class FourierBlock(nn.Module):
             * torch.rand(n_heads, d_keys, d_values, len(self.index), dtype=torch.cfloat)
         )
 
-    def compl_mul1d(self, input, weights):
+    def compl_mul1d(
+        self,
+        input: torch.Tensor,
+        weights: torch.Tensor,
+    ) -> torch.Tensor:
         return torch.einsum("bhi,hio->bho", input, weights)
 
-    def forward(self, q, k, v, mask):
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, None]:
         B, L, H, E = q.shape
         x = q.permute(0, 2, 3, 1)
         x_ft = torch.fft.rfft(x, dim=-1)
@@ -60,7 +76,8 @@ class FourierBlock(nn.Module):
             if i >= x_ft.shape[3] or wi >= out_ft.shape[3]:
                 continue
             out_ft[:, :, :, wi] = self.compl_mul1d(
-                x_ft[:, :, :, i], self.weights1[:, :, :, wi]
+                input=x_ft[:, :, :, i],
+                weights=self.weights1[:, :, :, wi],
             )
         x = torch.fft.irfft(out_ft, n=x.size(-1))
         return (x, None)
@@ -74,25 +91,29 @@ class FourierCrossAttention(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        out_channels,
-        seq_len_q,
-        seq_len_kv,
-        modes=64,
-        mode_select_method="random",
-        activation="tanh",
-        n_heads=8,
-    ):
+        in_channels: int,
+        out_channels: int,
+        seq_len_q: int,
+        seq_len_kv: int,
+        modes: int = 64,
+        mode_select_method: str = "random",
+        activation: str = "tanh",
+        n_heads: int = 8,
+    ) -> None:
         super().__init__()
         self.activation = activation
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_heads = n_heads
         self.index_q = get_frequency_modes(
-            seq_len_q, modes=modes, mode_select_method=mode_select_method
+            seq_len=seq_len_q,
+            modes=modes,
+            mode_select_method=mode_select_method,
         )
         self.index_kv = get_frequency_modes(
-            seq_len_kv, modes=modes, mode_select_method=mode_select_method
+            seq_len=seq_len_kv,
+            modes=modes,
+            mode_select_method=mode_select_method,
         )
         self.scale = 1 / (in_channels * out_channels)
         d_keys = in_channels // n_heads
@@ -104,10 +125,20 @@ class FourierCrossAttention(nn.Module):
             )
         )
 
-    def compl_mul1d(self, input, weights):
+    def compl_mul1d(
+        self,
+        input: torch.Tensor,
+        weights: torch.Tensor,
+    ) -> torch.Tensor:
         return torch.einsum("bhi,hio->bho", input, weights)
 
-    def forward(self, q, k, v, mask):
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, None]:
         B, L, H, E = q.shape
         xq = q.permute(0, 2, 3, 1)
         xk = k.permute(0, 2, 3, 1)

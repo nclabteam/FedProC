@@ -1,21 +1,10 @@
-# -*- coding: utf-8 -*-
-"""FedPSA: Parameter Sensitivity-based Asynchronous Federated Learning.
+"""FedPSA behavioral-staleness aggregation."""
 
-Behavioral staleness metric: cosine similarity of parameter-sensitivity sketches.
-Training thermometer: queue of update magnitudes adjusts softmax temperature.
-
-Paper: arxiv.org/abs/2602.15337 (ID 08958)
-
-Algorithm (paper Alg. 1):
-  Client: LocalUpdate → compute sensitivity s_i on shared calib batch D_b →
-          sketch s̃_i = R s_i → upload (Δw_i, s̃_i, m_i)
-  Server: on buffer full → compute s̃_g → κ_i = cos(s̃_i, s̃_g) →
-          Temp from thermometer queue → Weight_i = softmax(κ_i / Temp) →
-          w_g += Σ Weight_i Δw_i
-"""
 import math
-from collections import deque
-from typing import Any, Dict
+from argparse import Namespace
+from collections import OrderedDict, deque
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -24,150 +13,300 @@ from .aFL import aFL
 from .tFL import tFL_Client
 
 
-def _sensitivity_sketch(model: torch.nn.Module, calib_x: torch.Tensor,
-                        calib_y: torch.Tensor, R: torch.Tensor) -> torch.Tensor:
-    """Compute sensitivity vector and project to sketch space.
+class FedPSAShared:
+    """FedPSA operations shared by the server and reusable workers."""
 
-    Sensitivity (eq 9): s_j = |g_j θ_j - 0.5 F_jj θ_j²|
-    Fisher diagonal approximated as g_j² (single-batch squared gradient).
-    Sketch: s̃ = R s  (R ∈ R^{k×d})
-    Returns k-dim CPU tensor.
-    """
-    device = next(model.parameters()).device
-    x = calib_x.to(device)
-    y = calib_y.to(device)
-    params = [p for p in model.parameters() if p.requires_grad]
+    @staticmethod
+    def projection_matrix(
+        num_params: int,
+        sketch_dim: int,
+        seed: int,
+    ) -> torch.Tensor:
+        if num_params <= 0 or sketch_dim <= 0:
+            raise ValueError("num_params and sketch_dim must be positive")
+        generator = torch.Generator().manual_seed(seed)
+        return torch.randn(
+            sketch_dim,
+            num_params,
+            generator=generator,
+        ) / math.sqrt(sketch_dim)
 
-    model.zero_grad()
-    try:
-        out = model(x)
-    except TypeError:
-        # Some models need extra args; fall back to zeros sensitivity
-        return torch.zeros(R.shape[0])
-    loss = F.mse_loss(out, y)
-    loss.backward()
+    @staticmethod
+    def calibration_batch(
+        batch_size: int,
+        input_len: int,
+        input_channels: int,
+        output_len: int,
+        output_channels: int,
+        seed: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        dimensions = (
+            batch_size,
+            input_len,
+            input_channels,
+            output_len,
+            output_channels,
+        )
+        if any(dimension <= 0 for dimension in dimensions):
+            raise ValueError("calibration dimensions must be positive")
+        generator = torch.Generator().manual_seed(seed)
+        return (
+            torch.randn(
+                batch_size,
+                input_len,
+                input_channels,
+                generator=generator,
+            ),
+            torch.randn(
+                batch_size,
+                output_len,
+                output_channels,
+                generator=generator,
+            ),
+        )
 
-    grad = torch.cat([
-        p.grad.detach().flatten() if p.grad is not None
-        else torch.zeros(p.numel(), device=device)
-        for p in params
-    ])
-    theta = torch.cat([p.detach().flatten() for p in params])
-    fisher = grad.pow(2)  # diagonal Fisher approx via squared batch gradient
+    @staticmethod
+    def sensitivity_sketch(
+        model: torch.nn.Module,
+        calibration_x: torch.Tensor,
+        calibration_y: torch.Tensor,
+        projection: torch.Tensor,
+        criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    ) -> torch.Tensor:
+        parameters = [
+            parameter for parameter in model.parameters() if parameter.requires_grad
+        ]
+        if not parameters:
+            raise ValueError("FedPSA requires trainable model parameters")
 
-    s = (grad * theta - 0.5 * fisher * theta.pow(2)).abs()
-    model.zero_grad()
-    return (R.to(device) @ s).detach().cpu()
+        device = parameters[0].device
+        was_training = model.training
+        model.eval()
+        try:
+            output = model(calibration_x.to(device=device))
+            loss = criterion(output, calibration_y.to(device=device))
+            gradients = torch.autograd.grad(
+                outputs=loss,
+                inputs=parameters,
+                allow_unused=True,
+            )
+        finally:
+            model.train(mode=was_training)
+
+        flat_parameters = torch.cat(
+            [parameter.detach().flatten() for parameter in parameters]
+        )
+        flat_gradients = torch.cat(
+            [
+                (
+                    gradient.detach().flatten()
+                    if gradient is not None
+                    else torch.zeros_like(parameter).flatten()
+                )
+                for parameter, gradient in zip(parameters, gradients)
+            ]
+        )
+        if projection.ndim != 2 or projection.shape[1] != flat_parameters.numel():
+            raise ValueError(
+                "projection width must match the trainable parameter count"
+            )
+
+        # Paper sensitivity: s = |gθ - 1/2 Fθ²|, with F approximated by g².
+        sensitivity = (
+            flat_gradients * flat_parameters
+            - 0.5 * flat_gradients.square() * flat_parameters.square()
+        ).abs()
+        # Paper sketch: s_tilde = R s.
+        return (
+            projection.to(device=device, dtype=sensitivity.dtype)
+            .mv(sensitivity)
+            .detach()
+            .cpu()
+        )
+
+    @staticmethod
+    def similarity_weights(
+        sketches: Sequence[torch.Tensor],
+        global_sketch: torch.Tensor,
+        temperature: float | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not sketches:
+            raise ValueError("at least one client sketch is required")
+        matrix = torch.stack(list(sketches)).to(dtype=global_sketch.dtype)
+        reference = global_sketch.unsqueeze(dim=0)
+        # Paper behavioral similarity: kappa_i = cos(s_tilde_i, s_tilde_g).
+        similarities = F.cosine_similarity(matrix, reference, dim=1, eps=1e-8)
+        if temperature is None:
+            weights = torch.full_like(similarities, 1.0 / len(sketches))
+        else:
+            if not math.isfinite(temperature) or temperature <= 0:
+                raise ValueError("temperature must be positive and finite")
+            # Paper aggregation weight: Weight_i = softmax(kappa_i / Temp).
+            weights = F.softmax(similarities / temperature, dim=0)
+        return weights, similarities
 
 
-class FedPSA(aFL):
-    """FedPSA server.
-
-    Inherits the buffered-async training loop from aFL and overrides
-    aggregate_client_updates with the sensitivity-based softmax weighting.
-    """
+class FedPSA(FedPSAShared, aFL):
+    """Parameter-sensitivity asynchronous FL (Lu et al., 2026)."""
 
     optional = {
-        "buffer_size": 10,
-        "queue_len": 20,
-        "sketch_dim": 256,
-        "gamma": 1.0,
-        "delta": 0.1,
+        "buffer_size": 5,
+        "queue_len": 50,
+        "sketch_dim": 16,
+        "gamma": 5.0,
+        "delta": 0.5,
         "calib_size": 32,
     }
+    compulsory = {"return_diff": True}
+    _projection_seed = 0
+    _calibration_seed = 1
 
-    def __init__(self, configs, times) -> None:
-        super().__init__(configs, times)
-        d = sum(p.numel() for p in self.model.parameters())
-        # Fixed projection matrix R ∈ R^{k×d}, shared via seed
-        self._R_seed = 0
-        gen = torch.Generator().manual_seed(self._R_seed)
-        self._R = torch.randn(self.sketch_dim, d, generator=gen) / math.sqrt(self.sketch_dim)
-        # Synthetic calibration batch (channel-independent: batch × input_len)
-        gen2 = torch.Generator().manual_seed(1)
-        self._calib_x = torch.randn(self.calib_size, self.input_len, generator=gen2)
-        self._calib_y = torch.randn(self.calib_size, self.output_len, generator=gen2)
-        # Thermometer
-        self._thermo: deque = deque(maxlen=self.queue_len)
-        self._M0: float = None
+    def __init__(self, configs: Namespace, times: int) -> None:
+        super().__init__(configs=configs, times=times)
+        if int(self.queue_len) <= 0:
+            raise ValueError("queue_len must be positive")
+        if self.gamma < 0 or self.delta <= 0:
+            raise ValueError("gamma must be nonnegative and delta must be positive")
 
-    def package(self, client_id: int) -> dict:
-        pkg = super().package(client_id)
-        pkg["_psa_R_seed"] = self._R_seed
-        pkg["_psa_sketch_dim"] = self.sketch_dim
-        pkg["_psa_calib_x"] = self._calib_x
-        pkg["_psa_calib_y"] = self._calib_y
-        return pkg
+        num_params = sum(
+            parameter.numel()
+            for parameter in self.model.parameters()
+            if parameter.requires_grad
+        )
+        self._projection = self.projection_matrix(
+            num_params=num_params,
+            sketch_dim=int(self.sketch_dim),
+            seed=self._projection_seed,
+        )
+        self._calibration_x, self._calibration_y = self.calibration_batch(
+            batch_size=int(self.calib_size),
+            input_len=int(self.input_len),
+            input_channels=int(self.input_channels),
+            output_len=int(self.output_len),
+            output_channels=int(self.output_channels),
+            seed=self._calibration_seed,
+        )
+        self._criterion = self._get_objective_function(
+            func_type="losses",
+            func_name=configs.loss,
+        )()
+        self._thermometer: deque[float] = deque(maxlen=int(self.queue_len))
+        self._initial_magnitude: float | None = None
 
-    def aggregate_client_updates(self, packages) -> None:
-        # --- thermometer update ---
-        for pkg in packages.values():
-            self._thermo.append(pkg["_psa_m_i"])
+    def aggregate_client_updates(
+        self,
+        packages: Mapping[int, dict[str, Any]],
+    ) -> None:
+        if not packages:
+            raise ValueError("at least one client update is required")
 
-        M_cur = sum(self._thermo) / len(self._thermo)
-        if self._M0 is None and len(self._thermo) >= self.queue_len:
-            self._M0 = M_cur
+        model_diffs = []
+        client_sketches = []
+        for package in packages.values():
+            model_diff = package["model_params_diff"]
+            if not model_diff:
+                raise ValueError("FedPSA requires model parameter differences")
+            magnitude = float(
+                torch.stack(
+                    [value.float().square().sum() for value in model_diff.values()]
+                ).sum()
+            )
+            if not math.isfinite(magnitude):
+                raise ValueError("client update magnitude must be finite")
+            self._thermometer.append(magnitude)
+            if (
+                self._initial_magnitude is None
+                and len(self._thermometer) == self._thermometer.maxlen
+            ):
+                self._initial_magnitude = sum(self._thermometer) / len(
+                    self._thermometer
+                )
+            model_diffs.append(model_diff)
+            client_sketches.append(package["_psa_s_tilde"])
 
-        temp = None if self._M0 is None else (M_cur / self._M0) * self.gamma + self.delta
-
-        # --- server sensitivity sketch ---
-        s_g = _sensitivity_sketch(self.model, self._calib_x, self._calib_y, self._R)
-        s_g_norm = s_g.norm().clamp(min=1e-8)
-
-        # --- κ_i = cos(s̃_i, s̃_g) ---
-        kappas = [
-            (torch.dot(pkg["_psa_s_tilde"], s_g) / (pkg["_psa_s_tilde"].norm().clamp(min=1e-8) * s_g_norm)).item()
-            for pkg in packages.values()
-        ]
-
-        # --- softmax weights ---
-        if temp is None:
-            weights = [1.0 / len(packages)] * len(packages)
-        else:
-            weights = F.softmax(torch.tensor(kappas) / temp, dim=0).tolist()
-
-        # --- w_g^new = w_g^old + Σ weight_i Δw_i  (eq 13) ---
-        new_params = {k: v.clone() for k, v in self.public_model_params.items()}
-        for (_, pkg), w in zip(packages.items(), weights):
-            for k, dv in pkg["_psa_delta"].items():
-                new_params[k] = new_params[k] + w * dv
-        self._commit_global(new_params)
-
+        current_magnitude = sum(self._thermometer) / len(self._thermometer)
+        # Paper thermometer: Temp = (M_cur / M_0) gamma + delta.
+        temperature = (
+            None
+            if self._initial_magnitude is None
+            else current_magnitude
+            / max(self._initial_magnitude, torch.finfo(torch.float32).eps)
+            * self.gamma
+            + self.delta
+        )
+        global_sketch = self.sensitivity_sketch(
+            model=self.model,
+            calibration_x=self._calibration_x,
+            calibration_y=self._calibration_y,
+            projection=self._projection,
+            criterion=self._criterion,
+        )
+        weights, similarities = self.similarity_weights(
+            sketches=client_sketches,
+            global_sketch=global_sketch,
+            temperature=temperature,
+        )
+        mean_diff = self.mean_models(
+            models=model_diffs,
+            weights=weights,
+        )
+        # Paper update, using model_params_diff = w_dispatched - w_local.
+        self._commit_global(
+            new_params=OrderedDict(
+                (
+                    name,
+                    parameter
+                    - mean_diff[name].to(
+                        device=parameter.device,
+                        dtype=parameter.dtype,
+                    ),
+                )
+                for name, parameter in self.public_model_params.items()
+            )
+        )
         self.logger.info(
-            "FedPSA agg: temp=%.4f  κ=[%s]",
-            temp if temp is not None else -1.0,
-            " ".join(f"{k:.3f}" for k in kappas),
+            "FedPSA aggregation: temp=%s, kappa=%s",
+            "uniform" if temperature is None else f"{temperature:.4f}",
+            " ".join(f"{value:.3f}" for value in similarities.tolist()),
         )
 
 
-class FedPSA_Client(tFL_Client):
-    _R: torch.Tensor = None
-    _calib_x: torch.Tensor = None
-    _calib_y: torch.Tensor = None
-    _w0: Dict[str, torch.Tensor] = None
+class FedPSA_Client(FedPSAShared, tFL_Client):
+    """Reusable FedPSA worker with immutable shared sketch inputs."""
 
-    def set_parameters(self, package: dict) -> None:
-        super().set_parameters(package)
-        # Record global model before local training for delta computation
-        self._w0 = {k: v.detach().cpu().clone() for k, v in self.model.named_parameters()}
-        # Build R once from seed (avoids sending k×d matrix every round)
-        if self._R is None:
-            seed = package["_psa_R_seed"]
-            k = package["_psa_sketch_dim"]
-            d = sum(p.numel() for p in self.model.parameters())
-            gen = torch.Generator().manual_seed(seed)
-            self._R = torch.randn(k, d, generator=gen) / math.sqrt(k)
-        self._calib_x = package["_psa_calib_x"]
-        self._calib_y = package["_psa_calib_y"]
+    return_diff = True
+    return_diff_score = False
 
-    def package(self) -> Dict[str, Any]:
+    def __init__(self, configs: Namespace, times: int, device: str) -> None:
+        super().__init__(configs=configs, times=times, device=device)
+        num_params = sum(
+            parameter.numel()
+            for parameter in self.model.parameters()
+            if parameter.requires_grad
+        )
+        self._projection = self.projection_matrix(
+            num_params=num_params,
+            sketch_dim=int(self.sketch_dim),
+            seed=FedPSA._projection_seed,
+        )
+        self._calibration_x, self._calibration_y = self.calibration_batch(
+            batch_size=int(self.calib_size),
+            input_len=int(self.input_len),
+            input_channels=int(self.input_channels),
+            output_len=int(self.output_len),
+            output_channels=int(self.output_channels),
+            seed=FedPSA._calibration_seed,
+        )
+
+    def package(self) -> dict[str, Any]:
         result = super().package()
-        # Δw_i = w_after - w_before
-        delta = {k: v.detach().cpu() - self._w0[k] for k, v in self.model.named_parameters()}
-        flat_delta = torch.cat([v.flatten() for v in delta.values()])
-        result["_psa_delta"] = delta
-        result["_psa_m_i"] = float(flat_delta.pow(2).sum())
-        result["_psa_s_tilde"] = _sensitivity_sketch(
-            self.model, self._calib_x, self._calib_y, self._R
+        result["_psa_s_tilde"] = self.sensitivity_sketch(
+            model=self.model,
+            calibration_x=self._calibration_x,
+            calibration_y=self._calibration_y,
+            projection=self._projection,
+            criterion=self.loss,
         )
+        result["regular_model_params"] = {}
+        result["__wire__"] = ("model_params_diff", "_psa_s_tilde")
         return result

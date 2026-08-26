@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 
 
-def main():
+def main() -> None:
+    """Clean incomplete experiment directories."""
     parser = argparse.ArgumentParser(
         description="Clean run subdirectories that have no results.csv"
     )

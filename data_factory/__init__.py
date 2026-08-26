@@ -1,7 +1,8 @@
 import ast
 import importlib
 import os
-from typing import Any, Dict
+from types import ModuleType
+from typing import Dict
 
 
 def _discover_dataset_modules() -> list[str]:
@@ -14,11 +15,11 @@ def _discover_dataset_modules() -> list[str]:
 
 
 _MODULE_NAMES = _discover_dataset_modules()
-_MODULE_CACHE: Dict[str, Any] = {}
+_MODULE_CACHE: Dict[str, ModuleType] = {}
 _DATASET_TO_MODULE: Dict[str, str] = {}
 
 
-def _load_module(module_name: str):
+def _load_module(module_name: str) -> ModuleType:
     module = _MODULE_CACHE.get(module_name)
     if module is None:
         module = importlib.import_module(f".{module_name}", package=__name__)
@@ -38,7 +39,7 @@ def _load_module(module_name: str):
 
 
 def _discover_dataset_names() -> list[str]:
-    dataset_names = []
+    classes = {}
     for module_name in _MODULE_NAMES:
         module_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -47,19 +48,39 @@ def _discover_dataset_names() -> list[str]:
         with open(module_path, "r", encoding="utf-8") as handle:
             tree = ast.parse(handle.read(), filename=module_path)
         for node in tree.body:
-            if isinstance(node, ast.ClassDef) and node.name != "BaseDataset":
-                _DATASET_TO_MODULE[node.name] = module_name
-                dataset_names.append(node.name)
-    return sorted(dataset_names)
+            if isinstance(node, ast.ClassDef):
+                classes[node.name] = (
+                    module_name,
+                    {
+                        base.id if isinstance(base, ast.Name) else base.attr
+                        for base in node.bases
+                        if isinstance(base, (ast.Name, ast.Attribute))
+                    },
+                )
+
+    dataset_names = {"BaseDataset"}
+    while subclasses := {
+        name
+        for name, (_, bases) in classes.items()
+        if name not in dataset_names and bases & dataset_names
+    }:
+        dataset_names.update(subclasses)
+
+    base_module = classes["BaseDataset"][0]
+    for dataset_name in dataset_names:
+        module_name = classes[dataset_name][0]
+        if module_name != base_module and not dataset_name.startswith("_"):
+            _DATASET_TO_MODULE[dataset_name] = module_name
+    return sorted(_DATASET_TO_MODULE)
 
 
 DATASETS = _discover_dataset_names()
 __all__ = list(DATASETS)
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type:
     module_name = _DATASET_TO_MODULE.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module = _load_module(module_name)
+    module = _load_module(module_name=module_name)
     return getattr(module, name)

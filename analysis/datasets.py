@@ -1,3 +1,5 @@
+"""Plot per-client dataset statistics from a configured info.json file."""
+
 import json
 import os
 import re

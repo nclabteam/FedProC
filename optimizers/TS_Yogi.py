@@ -1,6 +1,10 @@
+from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
+
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
 
 
 class TS_Yogi(Optimizer):
@@ -25,14 +29,14 @@ class TS_Yogi(Optimizer):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
         parser.add_argument("--epsilon", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--initial_accumulator", type=float, default=None)
 
-    def __init__(self, params, configs):
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
         defaults = dict(
             lr=configs.learning_rate,
             betas=(configs.beta1, configs.beta2),
@@ -40,9 +44,12 @@ class TS_Yogi(Optimizer):
             weight_decay=configs.weight_decay,
             initial_accumulator=configs.initial_accumulator,
         )
-        super().__init__(params, defaults)
+        super().__init__(params=params, defaults=defaults)
 
-    def step(self, closure=None):
+    def step(
+        self,
+        closure: Callable[[], float] | None = None,
+    ) -> float | None:
         loss = None
         if closure is not None:
             loss = closure()

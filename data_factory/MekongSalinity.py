@@ -4,7 +4,9 @@ from .base import BaseDataset
 
 
 class MekongSalinity(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Daily average salinity measurements from the Mekong region."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "MekongSalinity", "raw")
         self.save_path = os.path.join("datasets", "MekongSalinity")
@@ -14,5 +16,6 @@ class MekongSalinity(BaseDataset):
         self.granularity = 1
         self.granularity_unit = "day"
 
-    def download(self):
+    def download(self) -> None:
+        """Indicate that automated download is unavailable."""
         raise NotImplementedError

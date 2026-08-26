@@ -48,7 +48,7 @@ class RWKV4TS(nn.Module):
         parser.add_argument("--d_model", type=int, default=None)
 
     def __init__(self, configs):
-        super(RWKV4TS, self).__init__()
+        super().__init__()
         self.patch_size = configs.patch_size
         self.stride = configs.stride
         self.patch_num = (configs.input_len - self.patch_size) // self.stride + 1

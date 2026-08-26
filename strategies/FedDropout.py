@@ -1,14 +1,4 @@
-"""Federated Dropout with fresh random physical submodels per client.
-
-Each selected client receives exactly ``floor(beta_n K_i)`` randomly selected
-hidden nodes from every layer.  Input and task-output dimensions stay fixed,
-and the server maps trained dense submodels back through retained manifests.
-
-References: Caldas et al., "Expanding the Reach of Federated Learning by
-Reducing Client Resource Requirements," arXiv:1812.07210, Section 3.2; and the
-``ResnetServerRandom``/``TransformerServerRandomSO`` baselines in the official
-FedRolex repository: https://github.com/AIoT-MLSys-Lab/FedRolex.
-"""
+"""Federated Dropout with fresh random physical submodels per client."""
 
 import zlib
 

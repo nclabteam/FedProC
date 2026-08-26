@@ -3,6 +3,7 @@ import torch.nn as nn
 from einops import rearrange
 from transformers import T5Config, T5ForConditionalGeneration
 
+from models import CHECKPOINT_DIR
 from utils.parsing import str2bool
 
 
@@ -41,7 +42,10 @@ class T54TS(nn.Module):
 
         if configs.is_gpt:
             if configs.pretrain:
-                self.t5 = T5ForConditionalGeneration.from_pretrained("t5-base")
+                self.t5 = T5ForConditionalGeneration.from_pretrained(
+                    pretrained_model_name_or_path="t5-base",
+                    cache_dir=str(CHECKPOINT_DIR),
+                )
             else:
                 self.t5 = T5ForConditionalGeneration(T5Config())
 

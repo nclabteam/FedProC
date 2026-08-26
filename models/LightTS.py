@@ -89,7 +89,7 @@ class LightTS(nn.Module):
 
 class IEBlock(nn.Module):
     def __init__(self, input_dim, hid_dim, output_dim, num_node):
-        super(IEBlock, self).__init__()
+        super().__init__()
 
         self.input_dim = input_dim
         self.hid_dim = hid_dim

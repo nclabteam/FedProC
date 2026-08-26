@@ -6,7 +6,9 @@ from .base import BaseDataset
 
 
 class SolarCSGREGFC(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Fifteen-minute solar-generation and weather station series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # Set the dataset name and path
@@ -43,7 +45,8 @@ class SolarCSGREGFC(BaseDataset):
             "https://raw.githubusercontent.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis/refs/heads/main/data_processed/solar_stations/Solar station site 8 (Nominal capacity-30MW).xlsx",
         ]
 
-    def download(self):
+    def download(self) -> None:
+        """Download each solar station workbook and convert it to CSV."""
         # Create the directory if it doesn't exist
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

@@ -3,8 +3,17 @@ import torch.nn as nn
 
 
 class FAN(nn.Module):
+    """Separate dominant frequencies from residual forecasting signals."""
 
-    def __init__(self, seq_len, pred_len, enc_in, freq_topk=20, rfft=True, **kwargs):
+    def __init__(
+        self,
+        seq_len: int,
+        pred_len: int,
+        enc_in: int,
+        freq_topk: int = 20,
+        rfft: bool = True,
+        **kwargs: object,
+    ) -> None:
         super().__init__()
         self.seq_len = seq_len
         self.pred_len = pred_len
@@ -19,27 +28,36 @@ class FAN(nn.Module):
         )
         self.weight = nn.Parameter(torch.ones(2, self.enc_in))
 
-    def loss(self, true):
+    def loss(self, true: torch.Tensor) -> torch.Tensor:
         # freq normalization
         B, O, N = true.shape
-        residual, pred_main = main_freq_part(true, self.freq_topk, self.rfft)
+        residual, pred_main = main_freq_part(
+            x=true,
+            k=self.freq_topk,
+            rfft=self.rfft,
+        )
 
         lf = nn.functional.mse_loss
         return lf(self.pred_main_freq_signal, pred_main) + lf(
             residual, self.pred_residual
         )
 
-    def normalize(self, input):
+    def normalize(self, input: torch.Tensor) -> torch.Tensor:
         # (B, T, N)
         bs, len, dim = input.shape
-        norm_input, x_filtered = main_freq_part(input, self.freq_topk, self.rfft)
+        norm_input, x_filtered = main_freq_part(
+            x=input,
+            k=self.freq_topk,
+            rfft=self.rfft,
+        )
         self.pred_main_freq_signal = self.model_freq(
-            x_filtered.transpose(1, 2), input.transpose(1, 2)
+            main_freq=x_filtered.transpose(1, 2),
+            x=input.transpose(1, 2),
         ).transpose(1, 2)
 
         return norm_input.reshape(bs, len, dim)
 
-    def denormalize(self, input_norm):
+    def denormalize(self, input_norm: torch.Tensor) -> torch.Tensor:
         # input:  (B, O, N)
         # station_pred: outputs of normalize
         bs, len, dim = input_norm.shape
@@ -49,14 +67,24 @@ class FAN(nn.Module):
 
         return output.reshape(bs, len, dim)
 
-    def forward(self, batch_x, mode="norm"):
+    def forward(
+        self,
+        batch_x: torch.Tensor,
+        mode: str = "norm",
+    ) -> torch.Tensor | None:
         if mode == "norm":
             return self.normalize(batch_x)
         elif mode == "denorm":
             return self.denormalize(batch_x)
 
 
-def main_freq_part(x, k, rfft=True):
+def main_freq_part(
+    x: torch.Tensor,
+    k: int,
+    rfft: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Split a signal into residual and top-frequency components."""
+
     # freq normalization
     if rfft:
         xf = torch.fft.rfft(x, dim=1)
@@ -81,8 +109,10 @@ def main_freq_part(x, k, rfft=True):
 
 
 class MLPfreq(nn.Module):
-    def __init__(self, seq_len, pred_len, enc_in):
-        super(MLPfreq, self).__init__()
+    """Forecast dominant frequencies with a compact MLP."""
+
+    def __init__(self, seq_len: int, pred_len: int, enc_in: int) -> None:
+        super().__init__()
         self.seq_len = seq_len
         self.pred_len = pred_len
         self.channels = enc_in
@@ -96,6 +126,10 @@ class MLPfreq(nn.Module):
             nn.Linear(64 + seq_len, 128), nn.ReLU(), nn.Linear(128, pred_len)
         )
 
-    def forward(self, main_freq, x):
+    def forward(
+        self,
+        main_freq: torch.Tensor,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
         inp = torch.concat([self.model_freq(main_freq), x], dim=-1)
         return self.model_all(inp)

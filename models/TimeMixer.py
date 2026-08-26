@@ -7,7 +7,7 @@ from layers.SeriesDecompMA import SeriesDecompMA
 
 
 class DFT_series_decomp(nn.Module):
-    def __init__(self, top_k: int = 5):
+    def __init__(self, top_k: int = 5) -> None:
         super().__init__()
         self.top_k = top_k
 

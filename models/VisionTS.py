@@ -11,10 +11,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 from timm.models.vision_transformer import Block, PatchEmbed
-from torch import nn
 from torchvision.transforms import Resize
 from tqdm import tqdm
 
+from models import CHECKPOINT_DIR
 from utils.parsing import str2bool
 
 
@@ -55,7 +55,7 @@ class VisionTS(nn.Module):
     optional = {
         "arch": "mae_base",
         "finetune_type": "ln",
-        "ckpt_dir": "./ckpt/",
+        "ckpt_dir": str(CHECKPOINT_DIR),
         "load_ckpt": True,
         "context_len": 1152,
         "periodicity": 24,
@@ -805,7 +805,10 @@ def norm_freq_str(freq_str: str) -> str:
     return base_freq
 
 
-def freq_to_seasonality_list(freq: str, mapping_dict=None) -> int:
+def freq_to_seasonality_list(
+    freq: str,
+    mapping_dict: dict[str, list[int]] | None = None,
+) -> list[int]:
     if mapping_dict is None:
         mapping_dict = POSSIBLE_SEASONALITIES
     offset = pd.tseries.frequencies.to_offset(freq)

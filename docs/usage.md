@@ -13,6 +13,51 @@ Load defaults from a JSON config file (CLI flags override):
 python main.py --config_file configs/my_experiment.json --iterations 200
 ```
 
+## Strategy Base Flow
+
+Every strategy inherits or specializes this `tFL` round. The server owns logical
+client state, while serial and Ray execution share the same package boundary.
+Common options are mapped to the numbered steps below; strategy-specific options
+apply inside the step overridden by that strategy.
+
+```mermaid
+flowchart TD
+    setup["1. Initialize strategy, model, and data"] --> start["2. tFL.train(): start round"]
+    start --> select["3. select_clients()"]
+    select --> pre["4. optional _pre_eval_hook()"]
+    pre --> trainer["5. Trainer.train(selected)"]
+    trainer --> down["6. Server package(client_id)<br/>global model + logical client state"]
+    down --> worker["7. Reusable tFL_Client.train(package)<br/>serial call or Ray actor"]
+    worker --> local["8. set_parameters() → fit() → package()"]
+    local --> writeback["9. Trainer._write_back()<br/>persist optimizer, scheduler, and personal state"]
+    writeback --> aggregate["10. aggregate_client_updates()"]
+    aggregate --> account["11. Account communication"]
+    account --> eval{"12. Evaluation round?"}
+    eval -- yes --> evaluate["13. evaluate_generalization()<br/>save best model"]
+    eval -- no --> flush["14. Flush round metrics"]
+    evaluate --> flush
+    flush --> stop{"15. early_stopping()?"}
+    stop -- no --> start
+    stop -- yes --> finish["16. _finish_training()"]
+```
+
+| Steps | Options | Effect |
+|-------|---------|--------|
+| 1 | `--config_file`, `--seed`, `--times`, `--prev`, `--dataset`, `--model`, `--strategy`, `--input_len`, `--offset_len`, `--output_len`, `--scaler`, `--train_ratio` | Build the run, data, model, and strategy. |
+| 1, 3 | `--exclude_ratio` | Mark held-out clients, then exclude them from round selection. |
+| 2 | `--iterations` | Set the maximum number of federation rounds. |
+| 3 | `--join_ratio`, `--random_join_ratio` | Choose how many incumbent clients participate. |
+| 5, 7 | `--num_workers`, `--device`, `--device_id` | Select serial/Ray execution and worker devices. |
+| 8 | `--sample_ratio`, `--batch_size`, `--epochs`, `--optimizer`, `--learning_rate`, `--loss`, `--scheduler`, `--scheduler_mode` | Configure local loading and optimization. |
+| 8, 10 | `--return_diff` | Change the client upload and matching aggregation contract. |
+| 8, 13 | `--efficiency` | Control model device residency during training and evaluation. |
+| 12 | `--eval_gap` | Choose which rounds evaluate. |
+| 13 | `--skip_eval_train`, `--exclude_server_model_processes` | Skip selected server-side evaluation work. |
+| 15 | `--patience` | Stop after the configured non-improving evaluation window. |
+| 1, 16 | `--project`, `--name`, `--sep` | Resolve output paths, then save final artifacts. |
+| After 16 | `--compact` | Compact completed run outputs. |
+| Interrupted run | `--keep_useless_run` | Keep partial output after `KeyboardInterrupt`. |
+
 ---
 
 ## Reference
@@ -78,6 +123,7 @@ python main.py --config_file configs/my_experiment.json --iterations 200
 | `--epochs` | int | `1` | Local update steps per round |
 | `--loss` | str | `MSE` | Loss function — see `docs/losses.md` |
 | `--scheduler` | str | `BaseScheduler` | LR scheduler — see `docs/schedulers.md` |
+| `--scheduler_mode` | str | `iteration` | Scheduler lifecycle — `batch` / `epoch` / `iteration` |
 
 ### Adversarial Eval
 
@@ -92,14 +138,16 @@ Applies only to `sFL`-based strategies. In benign mode (defaults) the behaviour 
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--num_malicious_clients` | int | `0` | f assumed by Krum when computing neighbor scores; `0` = derive from `--malicious_frac` |
-| `--num_clients_to_keep` | int | `0` | Multi-Krum: average the top-k lowest-score clients; `0` = classical Krum |
+| `--num_malicious_clients` | int | `0` | Per-round Byzantine upper bound f; `0` = derive the exact simulated malicious count among this round's clients |
+| `--num_clients_to_keep` | int | `0` | Multi-Krum m in `[1, n]`; `0` = classical Krum |
 
 **FedTrimmedAvg-specific**
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--beta` | float | `0.2` | Fraction trimmed from each tail per coordinate |
+
+Krum requires `2 * f + 2 < n` for the `n` clients participating in a round. FedTrimmedAvg requires `0 <= beta < 0.5`.
 
 ```bash
 # Krum under Sign-Flip attack, 20% Byzantine clients

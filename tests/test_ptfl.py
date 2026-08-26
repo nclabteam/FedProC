@@ -136,8 +136,8 @@ def test_selective_aggregation_averages_only_exact_updated_coordinates():
         0: OrderedDict(weight=(torch.tensor([0, 1]), torch.tensor([0, 1]))),
         1: OrderedDict(weight=(torch.tensor([1, 2]), torch.tensor([1, 2]))),
     }
-    server._commit_global = lambda parameters: setattr(
-        server, "public_model_params", OrderedDict(parameters)
+    server._commit_global = lambda new_params: setattr(
+        server, "public_model_params", OrderedDict(new_params)
     )
     packages = OrderedDict(
         {
@@ -154,7 +154,7 @@ def test_selective_aggregation_averages_only_exact_updated_coordinates():
         }
     )
 
-    server.aggregate_client_updates(packages)
+    server.aggregate_client_updates(packages=packages)
 
     assert torch.equal(
         server.public_model_params["weight"],

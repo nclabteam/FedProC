@@ -1,4 +1,4 @@
-import random
+import math
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -51,19 +51,19 @@ class _CausalCNNEncoder(nn.Module):
       - trend_repr: [B, repr_dim]      last-step summary
     """
 
-    def __init__(self, in_ch, repr_dim, kernel_list):
+    def __init__(self, in_ch, hidden_dim, repr_dim, kernel_list):
         super().__init__()
         self.kernel_list = kernel_list
-        self.input_fc = _CausalConvBlock(in_ch, repr_dim, 1, 1)
+        self.input_fc = _CausalConvBlock(in_ch, hidden_dim, 1, 1)
         self.repr_dropout = nn.Dropout(0.1)
         self.multi_cnn = nn.ModuleList(
-            [nn.Conv1d(repr_dim, repr_dim, k, padding=k - 1) for k in kernel_list]
+            [nn.Conv1d(hidden_dim, repr_dim, k, padding=k - 1) for k in kernel_list]
         )
 
     def _encode(self, x):
         # x: [B, T, C]
         x = x.transpose(2, 1)  # [B, C, T]
-        x = self.input_fc(x)  # [B, repr_dim, T]
+        x = self.input_fc(x)  # [B, hidden_dim, T]
         parts = []
         for idx, mod in enumerate(self.multi_cnn):
             out = mod(x)  # [B, repr_dim, T + pad]
@@ -93,7 +93,6 @@ class _Predictor(nn.Module):
         super().__init__()
         self.wl = nn.Linear(1, timestep)
         self.wl2 = nn.Linear(repr_dim, repr_dim)
-        self.drop = nn.Dropout(0.25)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -124,13 +123,15 @@ class SimTS(nn.Module):
     """
 
     optional = {
-        "simts_repr_dim": 64,
-        "simts_K": 50,
-        "simts_kernel_list": "1,2,4,8,16,32",
+        "simts_hidden_dim": 64,
+        "simts_repr_dim": 320,
+        "simts_K": 0,
+        "simts_kernel_list": "auto",
     }
 
     @classmethod
     def args_update(cls, parser):
+        parser.add_argument("--simts_hidden_dim", type=int, default=None)
         parser.add_argument("--simts_repr_dim", type=int, default=None)
         parser.add_argument("--simts_K", type=int, default=None)
         parser.add_argument("--simts_kernel_list", type=str, default=None)
@@ -142,16 +143,20 @@ class SimTS(nn.Module):
         seq_len = configs.input_len
         pred_len = configs.output_len
 
+        hidden_dim = configs.simts_hidden_dim
         repr_dim = configs.simts_repr_dim
-        kernel_list = [int(k) for k in configs.simts_kernel_list.split(",")]
-
-        # K must be strictly less than seq_len to leave room for the future segment
-        self.K = min(configs.simts_K, seq_len - 1)
+        self.K = configs.simts_K or seq_len // 2
+        if not 0 < self.K < seq_len:
+            raise ValueError("simts_K must be strictly between 0 and input_len")
+        if configs.simts_kernel_list == "auto":
+            kernel_list = [2**i for i in range(math.floor(math.log2(self.K)) + 2)]
+        else:
+            kernel_list = [int(k) for k in configs.simts_kernel_list.split(",")]
         self.timestep = seq_len - self.K
         self._pred_len = pred_len
         self._out_ch = out_ch
 
-        self.encoder = _CausalCNNEncoder(in_ch, repr_dim, kernel_list)
+        self.encoder = _CausalCNNEncoder(in_ch, hidden_dim, repr_dim, kernel_list)
         self.predictor = _Predictor(repr_dim, self.timestep)
         self.head = nn.Linear(repr_dim, pred_len * out_ch)
 
@@ -171,9 +176,7 @@ class SimTS(nn.Module):
         x2 = x[:, self.K :, :]  # future   [B, timestep, in_ch]
 
         z1, _, z2 = self.encoder(x1, x2, train=True)
-        # pick a random history timestep as the summary to predict from
-        rand_idx = random.randint(0, z1.shape[1] - 1)
-        summary = z1[:, rand_idx, :]  # [B, repr_dim]
+        summary = z1[:, -1, :]
 
         fcst = self.predictor(summary.unsqueeze(-1))  # [B, timestep, repr_dim]
         # negative cosine similarity averaged over timestep and batch
@@ -183,6 +186,9 @@ class SimTS(nn.Module):
     # Supervised forward pass
     # ------------------------------------------------------------------
 
+    def representation(self, x):
+        return self.encoder(x, train=False)[1]
+
     def forward(self, x, **kwargs):
         """Encode full context → forecast.
 
@@ -191,6 +197,6 @@ class SimTS(nn.Module):
         Returns:
             [B, pred_len, out_ch]
         """
-        _, repr_, _ = self.encoder(x, train=False)  # [B, repr_dim]
+        repr_ = self.representation(x)
         out = self.head(repr_)  # [B, pred_len * out_ch]
         return out.view(x.shape[0], self._pred_len, self._out_ch)

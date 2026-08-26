@@ -3,9 +3,17 @@ from argparse import Namespace
 
 import torch
 
-from augs import (cutout, jitter, magnitude_warp, scaling, subsequence,
-                  time_warp, window_slice, window_warp)
-from models.InfoTS import AutoAUG, InfoTS, TSEncoder
+from augs import (
+    cutout,
+    jitter,
+    magnitude_warp,
+    scaling,
+    subsequence,
+    time_warp,
+    window_slice,
+    window_warp,
+)
+from models.InfoTS import AutoAUG, InfoTS
 
 
 class TestInfoTSAugmentations(unittest.TestCase):
@@ -62,7 +70,7 @@ class TestInfoTSAugmentations(unittest.TestCase):
 
 class TestInfoTSModel(unittest.TestCase):
     def test_auto_aug(self):
-        aug = AutoAUG(aug_p1=1.0)
+        aug = AutoAUG()
         x = torch.randn(4, 16, 2)
         aug1, aug2 = aug(x)
         self.assertEqual(aug1.shape, x.shape)
@@ -78,8 +86,6 @@ class TestInfoTSModel(unittest.TestCase):
             infots_depth=3,
             infots_beta=1.0,
             infots_meta_beta=1.0,
-            infots_aug_p1=0.2,
-            infots_aug_p2=0.0,
             infots_k=4,
             batch_size=4,
         )
@@ -95,8 +101,10 @@ class TestInfoTSModel(unittest.TestCase):
         # Test meta_step
         meta_opt = torch.optim.AdamW(model.aug.parameters(), lr=0.01)
         meta_head_opt = torch.optim.AdamW(model.meta_unsup_head.parameters(), lr=0.01)
+        old_weights = model.aug.weight.detach().clone()
         meta_loss = model.meta_step(x, meta_opt, meta_head_opt)
         self.assertIsInstance(meta_loss, float)
+        self.assertFalse(torch.equal(old_weights, model.aug.weight))
 
         # Test forward pass (forecasting output shape)
         out = model(x)

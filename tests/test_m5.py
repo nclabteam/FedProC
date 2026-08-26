@@ -21,9 +21,7 @@ class TestM5(unittest.TestCase):
         self.dataset.save_path = str(temporary_path / "M5")
         self.dataset.path_raw = str(temporary_path / "M5" / "raw")
         self.dataset.path_temp = str(temporary_path / "M5" / "temp")
-        self.dataset.path_prepared = str(
-            temporary_path / "M5" / ".raw_ready"
-        )
+        self.dataset.path_prepared = str(temporary_path / "M5" / ".raw_ready")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -114,10 +112,7 @@ class TestM5(unittest.TestCase):
 
         self.dataset.prepare_raw()
 
-        client_path = (
-            Path(self.dataset.path_raw)
-            / "FOODS_1_001_CA_1_evaluation.csv"
-        )
+        client_path = Path(self.dataset.path_raw) / "FOODS_1_001_CA_1_evaluation.csv"
         self.assertEqual(
             client_path.read_text(encoding="utf-8").splitlines(),
             [

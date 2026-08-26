@@ -10,15 +10,12 @@ from typing import Iterator
 
 from .base import BaseDataset, CustomDataset
 
-
 SOURCE_URL = (
     "https://phmsociety.org/phm_competition/"
     "2011-phm-society-conference-data-challenge/"
 )
 STATISTIC_NAMES = ["Mean", "Std", "Max", "Min"]
-ENVIRONMENT_COLUMNS = [
-    f"WindDirection{name}" for name in STATISTIC_NAMES
-] + [
+ENVIRONMENT_COLUMNS = [f"WindDirection{name}" for name in STATISTIC_NAMES] + [
     f"Temperature{name}" for name in STATISTIC_NAMES
 ]
 
@@ -26,9 +23,7 @@ ENVIRONMENT_COLUMNS = [
 def _measurement_columns(sensor_count: int) -> list[str]:
     columns = []
     for sensor in range(1, sensor_count + 1):
-        columns.extend(
-            f"Anemometer{sensor}{name}" for name in STATISTIC_NAMES
-        )
+        columns.extend(f"Anemometer{sensor}{name}" for name in STATISTIC_NAMES)
     return columns + list(ENVIRONMENT_COLUMNS)
 
 
@@ -107,9 +102,14 @@ class AnemometerPaired(BaseDataset):
         self.url = SOURCE_URL
 
     def download(self) -> None:
-        _manual_download(self.path_temp, self.archive_name)
+        """Raise with instructions for obtaining the manual archive."""
+        _manual_download(
+            path_temp=self.path_temp,
+            archive_name=self.archive_name,
+        )
 
     def prepare_raw(self) -> None:
+        """Convert paired-anemometer text files to per-client CSV files."""
         archive_path = Path(self.path_temp) / self.archive_name
         if not archive_path.is_file():
             self.download()
@@ -130,23 +130,22 @@ class AnemometerPaired(BaseDataset):
                     rows = (
                         [
                             self.epoch
-                            + datetime.timedelta(
-                                minutes=self.granularity * index
-                            )
+                            + datetime.timedelta(minutes=self.granularity * index)
                         ]
                         + _values(row)
                         for index, row in enumerate(reader)
                         if row
                     )
                     _write_client(
-                        output_path,
-                        self.measurement_columns,
-                        rows,
+                        output_path=output_path,
+                        columns=self.measurement_columns,
+                        rows=rows,
                     )
 
         Path(self.path_prepared).touch()
 
     def execute(self) -> None:
+        """Prepare the manual archive before running the base pipeline."""
         if not Path(self.path_prepared).is_file():
             self.prepare_raw()
         super().execute()
@@ -179,7 +178,11 @@ class AnemometerShear3(BaseDataset):
         self.url = SOURCE_URL
 
     def download(self) -> None:
-        _manual_download(self.path_temp, self.archive_name)
+        """Raise with instructions for obtaining the manual archive."""
+        _manual_download(
+            path_temp=self.path_temp,
+            archive_name=self.archive_name,
+        )
 
     def _normalized_rows(
         self,
@@ -191,14 +194,14 @@ class AnemometerShear3(BaseDataset):
                 continue
             if len(row) != self.source_width:
                 raise ValueError(
-                    f"Expected {self.source_width} columns, "
-                    f"received {len(row)}"
+                    f"Expected {self.source_width} columns, " f"received {len(row)}"
                 )
             date = _parse_date(row[-1])
             measurements = row[self.sensor_count : -1]
             yield [date] + _values(measurements)
 
     def prepare_raw(self) -> None:
+        """Convert shear-array text files to per-client CSV files."""
         archive_path = Path(self.path_temp) / self.archive_name
         if not archive_path.is_file():
             self.download()
@@ -216,20 +219,22 @@ class AnemometerShear3(BaseDataset):
                     if len(first_row) != self.source_width:
                         continue
 
-                    output_path = (
-                        raw_dir / f"{Path(info.filename).stem}.csv"
-                    )
+                    output_path = raw_dir / f"{Path(info.filename).stem}.csv"
                     if output_path.is_file():
                         continue
                     _write_client(
-                        output_path,
-                        self.measurement_columns,
-                        self._normalized_rows(first_row, reader),
+                        output_path=output_path,
+                        columns=self.measurement_columns,
+                        rows=self._normalized_rows(
+                            first_row=first_row,
+                            reader=reader,
+                        ),
                     )
 
         Path(self.path_prepared).touch()
 
     def execute(self) -> None:
+        """Prepare the manual archive before running the base pipeline."""
         if not Path(self.path_prepared).is_file():
             self.prepare_raw()
         super().execute()

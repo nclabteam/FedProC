@@ -3,7 +3,15 @@ import torch.nn as nn
 
 
 class Inception_Block_V1(nn.Module):
-    def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
+    """Average parallel square convolutions with odd kernel sizes."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_kernels: int = 6,
+        init_weight: bool = True,
+    ) -> None:
         super().__init__()
         self.num_kernels = num_kernels
         self.kernels = nn.ModuleList(
@@ -15,19 +23,27 @@ class Inception_Block_V1(nn.Module):
         if init_weight:
             self._initialize_weights()
 
-    def _initialize_weights(self):
+    def _initialize_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.stack([k(x) for k in self.kernels], dim=-1).mean(-1)
 
 
 class Inception_Block_V2(nn.Module):
-    def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
+    """Average parallel horizontal and vertical odd-kernel convolutions."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_kernels: int = 6,
+        init_weight: bool = True,
+    ) -> None:
         super().__init__()
         self.num_kernels = num_kernels
         kernels = []
@@ -53,13 +69,13 @@ class Inception_Block_V2(nn.Module):
         if init_weight:
             self._initialize_weights()
 
-    def _initialize_weights(self):
+    def _initialize_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         n = self.num_kernels // 2 * 2 + 1
         return torch.stack([self.kernels[i](x) for i in range(n)], dim=-1).mean(-1)

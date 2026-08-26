@@ -1,14 +1,11 @@
 import gzip
 import os
-import re
 import shutil
 import tempfile
-import time
 import zipfile
 from pathlib import Path
 
 import gdown
-import numpy as np
 import polars as pl
 import requests
 
@@ -119,7 +116,10 @@ class FileManager:
                             handle.write(chunk)
 
             with zipfile.ZipFile(temp_path) as zip_ref:
-                FileManager._safe_extract_zip(zip_ref, save_path)
+                FileManager._safe_extract_zip(
+                    zip_file=zip_ref,
+                    destination=save_path,
+                )
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -157,8 +157,11 @@ class FileManager:
         extracted_path = os.path.join(
             save_dir, filename[:-3] if filename.endswith(".gz") else filename
         )
-        FileManager.download_file(url, compressed_path)
-        with gzip.open(compressed_path, "rb") as f_in, open(extracted_path, "wb") as f_out:
+        FileManager.download_file(url=url, save_path=compressed_path)
+        with (
+            gzip.open(compressed_path, "rb") as f_in,
+            open(extracted_path, "wb") as f_out,
+        ):
             shutil.copyfileobj(f_in, f_out)
         os.remove(compressed_path)
         return extracted_path
@@ -212,7 +215,7 @@ class FileManager:
             - Parent directory of save_path must be writable
             - Does not resume partial downloads
         """
-        FileManager._ensure_parent_dir(save_path)
+        FileManager._ensure_parent_dir(path=save_path)
         with tempfile.NamedTemporaryFile(
             delete=False,
             dir=os.path.dirname(save_path) or ".",
@@ -284,7 +287,7 @@ class FileManager:
             - For very large files, Google Drive may require email confirmation
         """
         url = f"https://drive.google.com/uc?id={file_id}"
-        FileManager._ensure_parent_dir(save_path)
+        FileManager._ensure_parent_dir(path=save_path)
         with tempfile.NamedTemporaryFile(
             delete=False,
             dir=os.path.dirname(save_path) or ".",
@@ -516,5 +519,3 @@ class FileManager:
         except pl.exceptions.NoDataError:
             print(f"Empty file: {path}")
             return None
-
-

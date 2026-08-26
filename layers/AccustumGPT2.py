@@ -4,9 +4,11 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 
 
 def gpt2_pca_embeddings(
-    model: "AccustumGPT2Model", n_components: int = 500, device=None
+    model: "AccustumGPT2Model",
+    n_components: int = 500,
+    device: torch.device | str | None = None,
 ) -> torch.Tensor:
-    """Return PCA-reduced GPT-2 word-token embeddings as a float32 tensor of shape [n_components, vocab_size]."""
+    """Return PCA-reduced GPT-2 word-token embeddings as a float32 tensor."""
     from sklearn.decomposition import PCA
 
     wte = model.wte.state_dict()["weight"].cpu().numpy()
@@ -17,6 +19,8 @@ def gpt2_pca_embeddings(
 
 
 class AccustumGPT2Model(GPT2Model, GenerationMixin):
+    """Expose GPT-2 hidden states without persistent capture hooks."""
+
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, **kwargs
     ):

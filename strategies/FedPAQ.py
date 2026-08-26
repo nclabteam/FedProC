@@ -1,29 +1,44 @@
+import math
+from typing import Any, Dict
+
 import torch
 
-from .tFL import tFL, tFL_Client
+from .qFL import qFL, qFL_Client
 
 
-class FedPAQ(tFL):
-    """FedPAQ: Federated Learning with Periodic Averaging and Quantization (Reisizadeh et al., 2020).
+class FedPAQShared:
+    """FedPAQ's norm-based stochastic quantization rules."""
 
-    Reduces uplink communication by stochastically quantizing client update vectors
-    before upload (paper §III-C). Quantizer (low-precision, QSGD-style):
-      Q_s(v)_i = ||v|| * sign(v_i) * ξ_i / s
-    where ξ_i ~ Bernoulli(|v_i|/||v|| * s - floor(|v_i|/||v|| * s)) + floor(|v_i|/||v|| * s).
+    @staticmethod
+    def quantize_tensor(tensor: torch.Tensor, levels: int) -> torch.Tensor:
+        norm = torch.norm(tensor)
+        if norm == 0:
+            return tensor
+        scaled = tensor.abs().div(norm).mul(levels)
+        lower = scaled.floor()
+        level = lower + (torch.rand_like(tensor) < scaled - lower)
+        return norm * tensor.sign() * level.div(levels)
 
-    Client computes delta = x_τ - x_0, uploads Q(delta). Server aggregates
-    x_{k+1} = x_k + Σ_i w_i · Q(delta_i), implemented by sending x_0 + Q(delta)
-    so the existing FedAvg aggregation remains correct.
+    @staticmethod
+    def quantized_uplink_mb(
+        model_params: Dict[str, torch.Tensor],
+        levels: int,
+    ) -> float:
+        dimensions = sum(param.numel() for param in model_params.values())
+        magnitude_bits = math.ceil(math.log2(max(levels, 2)))
+        total_bits = dimensions * (magnitude_bits + 1) + 32
+        return total_bits / 8 / (1024**2)
 
-    Reference: arXiv:1909.13014.
-    """
+
+class FedPAQ(FedPAQShared, qFL):
+    """FedPAQ: Federated Learning with Periodic Averaging and Quantization (Reisizadeh et al., 2020)."""
 
     optional = {
         "s": 8,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> Any:
         parser.add_argument(
             "-s",
             "--s_levels",
@@ -35,38 +50,5 @@ class FedPAQ(tFL):
         return parser
 
 
-class FedPAQ_Client(tFL_Client):
+class FedPAQ_Client(FedPAQShared, qFL_Client):
     s: int = 8
-
-    def set_parameters(self, package: dict) -> None:
-        super().set_parameters(package)
-        # Snapshot x_0 (params received from server before local training)
-        self._init_params = {
-            name: param.data.clone().cpu()
-            for name, param in self.model.named_parameters()
-        }
-
-    def package(self) -> dict:
-        result = super().package()
-        if self.s > 0:
-            # Quantize the update vector delta = x_τ - x_0, then send x_0 + Q(delta).
-            # Server FedAvg then gives x_0 + Σ w_i·Q(delta_i) as required by paper.
-            quantized = {}
-            for name, x_tau in result["regular_model_params"].items():
-                delta = x_tau.float() - self._init_params[name].float()
-                q_delta = self.quantize_tensor(delta, self.s)
-                quantized[name] = (self._init_params[name].float() + q_delta).to(x_tau.dtype)
-            result["regular_model_params"] = quantized
-        return result
-
-    @staticmethod
-    def quantize_tensor(tensor, s):
-        norm = torch.norm(tensor)
-        if norm == 0:
-            return tensor
-        abs_scaled = (torch.abs(tensor) / norm) * s
-        l = torch.floor(abs_scaled)
-        prob = abs_scaled - l
-        rand = torch.rand_like(tensor)
-        rounded = torch.where(rand < prob, l + 1.0, l)
-        return norm * torch.sign(tensor) * (rounded / s)

@@ -6,7 +6,9 @@ from .base import BaseDataset
 
 
 class WindCSGREGFC(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Fifteen-minute wind-generation and weather station series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # Set the dataset name and path
@@ -51,7 +53,8 @@ class WindCSGREGFC(BaseDataset):
             "https://raw.githubusercontent.com/Bob05757/Renewable-energy-generation-input-feature-variables-analysis/refs/heads/main/data_processed/wind_farms/Wind farm site 6 (Nominal capacity-96MW).xlsx",
         ]
 
-    def download(self):
+    def download(self) -> None:
+        """Download each wind-farm workbook and convert it to CSV."""
         # Create the directory if it doesn't exist
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

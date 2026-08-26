@@ -1,7 +1,12 @@
+from argparse import ArgumentParser, Namespace
+
+from torch.optim.optimizer import ParamsT
+
 from .AdamW import AdamW
 
 
 class AdamWnanoGPT(AdamW):
+    """Apply nanoGPT parameter grouping to the FedProC AdamW wrapper."""
 
     optional = {
         "beta1": 0.9,
@@ -12,14 +17,14 @@ class AdamWnanoGPT(AdamW):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
         parser.add_argument("--epsilon", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--amsgrad", default=None, action="store_true")
 
-    def __init__(self, params, configs):
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
         params = [p for p in params if p.requires_grad]
         # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
         # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
@@ -29,4 +34,4 @@ class AdamWnanoGPT(AdamW):
             {"params": decay_params, "weight_decay": configs.weight_decay},
             {"params": nodecay_params, "weight_decay": 0.0},
         ]
-        super().__init__(optim_groups, configs)
+        super().__init__(params=optim_groups, configs=configs)

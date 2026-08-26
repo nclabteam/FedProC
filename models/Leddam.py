@@ -1,34 +1,14 @@
+from argparse import ArgumentParser, Namespace
+from typing import Any
+
 import torch
 import torch.nn as nn
 
 from layers import DualAttention
 
 
-def update_args(parser):
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--n_layers", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
-    parser.add_argument(
-        "--positional_encoding_type",
-        type=str,
-        default=None,
-        choices=[
-            "no",
-            "zero",
-            "zeros",
-            "normal",
-            "gauss",
-            "uniform",
-            "lin1d",
-            "exp1d",
-            "lin2d",
-            "exp2d",
-            "sincos",
-        ],
-    )
-
-
 class Leddam(nn.Module):
+    """Forecast with learnable decomposition and dual attention."""
 
     optional = {
         "d_model": 512,
@@ -37,14 +17,38 @@ class Leddam(nn.Module):
         "positional_encoding_type": "sincos",
     }
 
-    def __init__(self, configs):
+    @classmethod
+    def args_update(cls, parser: ArgumentParser) -> None:
+        parser.add_argument("--d_model", type=int, default=None)
+        parser.add_argument("--n_layers", type=int, default=None)
+        parser.add_argument("--dropout", type=float, default=None)
+        parser.add_argument(
+            "--positional_encoding_type",
+            type=str,
+            default=None,
+            choices=[
+                "no",
+                "zero",
+                "zeros",
+                "normal",
+                "gauss",
+                "uniform",
+                "lin1d",
+                "exp1d",
+                "lin2d",
+                "exp2d",
+                "sincos",
+            ],
+        )
+
+    def __init__(self, configs: Namespace) -> None:
         super().__init__()
         self.leddam = DualAttention(
-            configs.input_channels,
-            configs.input_len,
-            configs.d_model,
-            configs.dropout,
-            configs.positional_encoding_type,
+            enc_in=configs.input_channels,
+            seq_len=configs.input_len,
+            d_model=configs.d_model,
+            dropout=configs.dropout,
+            pe_type=configs.positional_encoding_type,
             kernel_size=25,
             n_layers=configs.n_layers,
         )
@@ -57,10 +61,10 @@ class Leddam(nn.Module):
             (1 / configs.d_model) * torch.ones([configs.output_len, configs.d_model])
         )
 
-    def forward(self, inp, **kwargs):
-        res, main = self.leddam(inp)
-        main_out = self.Linear_main(main.permute(0, 2, 1)).permute(0, 2, 1)
-        res_out = self.Linear_res(res.permute(0, 2, 1)).permute(0, 2, 1)
-        pred = main_out + res_out
-
-        return pred
+    def forward(self, inp: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+        residual, main = self.leddam(inp=inp)
+        main_output = self.Linear_main(input=main.permute(0, 2, 1)).permute(0, 2, 1)
+        residual_output = self.Linear_res(input=residual.permute(0, 2, 1)).permute(
+            0, 2, 1
+        )
+        return main_output + residual_output

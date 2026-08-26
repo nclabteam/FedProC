@@ -1,120 +1,119 @@
-import math
+from typing import Any, Callable, Iterable
+
+import torch
 
 from .dFL import dFL, dFL_Client
 
 
 class DFedSAM(dFL):
-    """DFedSAM / DFedSAM-MGS: Decentralized Federated Learning with Sharpness-Aware Minimization (Sun et al., ICML 2023).
+    """DFedSAM with optional multiple gossip steps (MGS)."""
 
-    DFedSAM: clients apply SAM perturbation (δ = ρ·g/‖g‖₂) per batch then
-    gossip-average flat models once. DFedSAM-MGS repeats the gossip Q times
-    for improved consistency at the cost of Q× communication per round.
-
-    Default: rho=0.05, use_mgs=True, mgs_steps=2. Reference: arXiv:2302.04083.
-    """
-
-    optional = {
-        "use_mgs": True,
-        "mgs_steps": 2,
-        "rho": 0.05,
-    }
+    optional = {"use_mgs": False, "mgs_steps": 4, "rho": 0.01}
 
     @classmethod
-    def args_update(cls, parser):
-        super().args_update(parser)
+    def args_update(cls, parser: Any) -> None:
+        super().args_update(parser=parser)
         parser.add_argument("--rho", type=float, default=None)
-        parser.add_argument("--use_mgs", type=lambda x: x.lower() != "false", default=None)
+        parser.add_argument(
+            "--use_mgs", type=lambda value: value.lower() != "false", default=None
+        )
         parser.add_argument("--mgs_steps", type=int, default=None)
 
-    def aggregate_client_updates(self, packages) -> None:
-        """One gossip step (DFedSAM) or Q gossip steps (DFedSAM-MGS).
-
-        DFedSAM: Q = 1 (single gossip pass after local training).
-        DFedSAM-MGS: Q >= 2 (repeat gossip Q times; each pass uses the
-        post-previous-gossip params, increasing model consensus).
-        """
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
-
-        q = max(1, int(self.mgs_steps)) if self.use_mgs else 1
-        for _ in range(q):
-            self._gossip_once()
+    def _num_gossip_steps(self) -> int:
+        if not self.use_mgs:
+            return 1
+        if self.mgs_steps < 1:
+            raise ValueError("mgs_steps must be positive")
+        return self.mgs_steps
 
 
 class DFedSAM_Client(dFL_Client):
-    """Local SAM training for DFedSAM.
+    """Local sharpness-aware training from paper Algorithm 1."""
 
-    Each mini-batch:
-      1. Compute gradient g = nabla F(y; xi)
-      2. Perturbation delta = rho * g / ||g||_2
-      3. Compute perturbed gradient g_tilde = nabla F(y + delta; xi)
-      4. Update y <- y - eta * g_tilde
-    """
+    @staticmethod
+    def _grad_norm(model: torch.nn.Module) -> torch.Tensor:
+        gradients = [
+            parameter.grad.detach()
+            for parameter in model.parameters()
+            if parameter.grad is not None
+        ]
+        if not gradients:
+            return torch.zeros((), device=next(model.parameters()).device)
+        return torch.linalg.vector_norm(
+            torch.stack([torch.linalg.vector_norm(gradient) for gradient in gradients])
+        )
 
-    def _grad_norm(self, model):
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is None:
-                continue
-            total_norm += p.grad.detach().float().norm(2).item() ** 2
-        return math.sqrt(total_norm)
+    @staticmethod
+    def _add_perturbation(
+        model: torch.nn.Module,
+        rho: float,
+        grad_norm: torch.Tensor,
+    ) -> tuple[list[torch.nn.Parameter], list[torch.Tensor]]:
+        parameters = [
+            parameter for parameter in model.parameters() if parameter.grad is not None
+        ]
+        scale = rho / grad_norm.clamp_min(torch.finfo(grad_norm.dtype).eps)
+        perturbations = torch._foreach_mul(
+            [parameter.grad.detach() for parameter in parameters], scale
+        )
+        with torch.no_grad():
+            torch._foreach_add_(parameters, perturbations)
+        return parameters, perturbations
 
-    def _add_perturbation(self, model, rho, grad_norm):
-        eps = {}
-        scale = rho / (grad_norm + 1e-12)
-        for p in model.parameters():
-            if p.grad is None:
-                eps[p] = None
-                continue
-            e_w = p.grad.detach() * scale
-            p.data.add_(e_w)
-            eps[p] = e_w
-        return eps
-
-    def _remove_perturbation(self, model, eps):
-        for p in model.parameters():
-            e_w = eps.get(p, None)
-            if e_w is None:
-                continue
-            p.data.sub_(e_w)
+    @staticmethod
+    def _remove_perturbation(
+        parameters: list[torch.nn.Parameter],
+        perturbations: list[torch.Tensor],
+    ) -> None:
+        with torch.no_grad():
+            torch._foreach_sub_(parameters, perturbations)
 
     def train_one_epoch(
         self,
-        model,
-        dataloader,
-        optimizer,
-        criterion,
-        scheduler,
-        device,
-        offload_after=True,
-    ):
-        """SAM training loop: two forward-backward passes per batch."""
-        model.to(device)
-        self._move_optimizer_state_to_param_devices(optimizer)
+        model: torch.nn.Module,
+        dataloader: Iterable,
+        optimizer: torch.optim.Optimizer,
+        criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        scheduler: Any,
+        device: str | torch.device,
+        offload_after: bool = True,
+    ) -> None:
+        if self.rho < 0:
+            raise ValueError("rho must be non-negative")
+        model.to(device=device)
+        self._move_optimizer_state_to_param_devices(optimizer=optimizer)
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
-            batch_x = batch_x.float().to(device)
-            batch_y = batch_y.float().to(device)
-            x_mark = x_mark.to(device)
-            y_mark = y_mark.to(device)
+            batch_x = batch_x.to(device=device, dtype=torch.float32)
+            batch_y = batch_y.to(device=device, dtype=torch.float32)
+            x_mark = x_mark.to(device=device)
+            y_mark = y_mark.to(device=device)
 
-            # Step 1: first forward/backward → compute g
-            optimizer.zero_grad()
-            loss = criterion(model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y)
-            loss.backward()
-            grad_norm = self._grad_norm(model)
-
-            # Step 2: perturb weights by delta = rho * g / ||g||
-            eps = self._add_perturbation(model, self.rho, grad_norm)
-
-            # Step 3: second forward/backward at (y + delta) → compute g_tilde
-            optimizer.zero_grad()
-            loss2 = criterion(model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y)
-            loss2.backward()
-
-            # Step 4: restore weights and step with perturbed gradient
-            self._remove_perturbation(model, eps)
+            optimizer.zero_grad(set_to_none=True)
+            criterion(model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y).backward()
+            grad_norm = self._grad_norm(model=model)
+            # Algorithm 1: delta = rho * g / ||g||_2.
+            parameters, perturbations = self._add_perturbation(
+                model=model,
+                rho=self.rho,
+                grad_norm=grad_norm,
+            )
+            optimizer.zero_grad(set_to_none=True)
+            try:
+                criterion(
+                    model(batch_x, x_mark=x_mark, y_mark=y_mark), batch_y
+                ).backward()
+            finally:
+                self._remove_perturbation(
+                    parameters=parameters,
+                    perturbations=perturbations,
+                )
             optimizer.step()
+            self.step_scheduler_batch(
+                scheduler=scheduler,
+                batch_data=batch_x,
+            )
+
+        self.step_scheduler_epoch(scheduler=scheduler)
         if offload_after:
-            model.to("cpu")
-        scheduler.step()
+            model.to(device="cpu")

@@ -1,7 +1,7 @@
 from argparse import Namespace
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Dict, List
+from typing import Any, Dict, Iterable
 
 import torch
 import torch.nn as nn
@@ -10,73 +10,80 @@ import torch.nn.functional as F
 from .pFL import pFL, pFL_Client
 
 
-class _pFedLANet(nn.Module):
-    """
-    pFedLA hypernetwork: embedding -> MLP -> per-layer fc heads.
-
-    alpha[b] is a softmax-like weight vector over clients for layer b.
-    Uses U(0,1) init on fc layers to avoid all-negative pre-relu outputs.
-    """
+class pFedLAHyperNetwork(nn.Module):
+    """Dedicated pFedLA hypernetwork with one head per model block."""
 
     def __init__(
         self,
         n_clients: int,
-        emb_dim: int,
+        embedding_dim: int,
         hidden_dim: int,
-        layer_num: int,
-        K: int = 0,
+        layer_names: Iterable[str],
+        retained_layers: int = 0,
     ) -> None:
         super().__init__()
-        self.K = K
         self.n_clients = n_clients
-        self.layer_num = layer_num
-        self.embeddings = nn.Embedding(n_clients, emb_dim)
+        self.layer_names = tuple(layer_names)
+        if not self.layer_names:
+            raise ValueError("pFedLA requires at least one trainable model layer")
+        if not 0 <= retained_layers <= len(self.layer_names):
+            raise ValueError(
+                "retained_layers must be between 0 and the number of layers"
+            )
+        self.retained_layers = retained_layers
+        self.embeddings = nn.Embedding(n_clients, embedding_dim)
         self.mlp = nn.Sequential(
-            nn.Linear(emb_dim, hidden_dim),
+            nn.Linear(embedding_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
         )
-        self.fc_layers = nn.ParameterList(
-            nn.Linear(hidden_dim, n_clients) for _ in range(layer_num)
+        self.fc_layers = nn.ModuleList(
+            nn.Linear(hidden_dim, n_clients) for _ in self.layer_names
         )
-        for fc in self.fc_layers:
-            nn.init.uniform_(fc.weight, 0.0, 1.0)
-            nn.init.zeros_(fc.bias)
+        for layer in self.fc_layers:
+            nn.init.uniform_(layer.weight, 0.0, 1.0)
+            nn.init.zeros_(layer.bias)
 
-    def forward(self, client_id: int) -> List[torch.Tensor]:
-        emd = self.embeddings(torch.tensor(client_id, dtype=torch.long))
-        feature = self.mlp(emd)
-        weights = [F.relu(fc(feature)) for fc in self.fc_layers]
-
-        if self.K > 0:
-            default_weight = torch.zeros(self.n_clients, dtype=torch.float)
-            default_weight[client_id] = 1.0
-            self_weights = torch.tensor([w[client_id].item() for w in weights])
-            topk_idx = torch.topk(self_weights, self.K, sorted=False)[1]
-            for i in topk_idx:
-                weights[i] = (weights[i] * default_weight).detach().requires_grad_(True)
-
-        return weights
+    def forward(self, client_id: int) -> tuple[OrderedDict, set[str]]:
+        device = self.embeddings.weight.device
+        embedding = self.embeddings(
+            torch.tensor(client_id, dtype=torch.long, device=device)
+        )
+        feature = self.mlp(embedding)
+        alpha = OrderedDict(
+            (name, F.relu(layer(feature)))
+            for name, layer in zip(self.layer_names, self.fc_layers)
+        )
+        retained = set()
+        if self.retained_layers:
+            self_weights = torch.stack(
+                [weights[client_id].detach() for weights in alpha.values()]
+            )
+            indices = torch.topk(
+                self_weights,
+                self.retained_layers,
+                sorted=False,
+            ).indices.tolist()
+            local_only = torch.zeros(
+                self.n_clients,
+                dtype=feature.dtype,
+                device=device,
+            )
+            local_only[client_id] = 1.0
+            for index in indices:
+                name = self.layer_names[index]
+                alpha[name] = local_only
+                retained.add(name)
+        return alpha, retained
 
 
 class pFedLA(pFL):
-    """pFedLA: Layer-Wised Model Aggregation for Personalized Federated Learning (Ma et al., CVPR 2022).
+    """Layer-wised personalized aggregation (Ma et al., CVPR 2022)."""
 
-    Each client has a dedicated hypernetwork (HN) on the server. The HN maps a
-    client embedding → per-layer aggregation weights α over all clients' stored params.
-    Per round: clients train locally and return Δθ; server backpropagates -Δθ through
-    the HN (via torch.autograd.grad) to update the HN. Updated HN generates new
-    per-layer personalized model for next round.
-
-    HeurpFedLA (pfedla_K > 0): top-K layers by self-weight keep one-hot weights
-    (no mixing for those layers).
-
-    Reference: arXiv:2205.03993. CVPR 2022.
-    """
-
+    compulsory = {"return_diff": True}
     optional = {
         "pfedla_emb_dim": 8,
         "pfedla_hyper_hid": 64,
@@ -86,7 +93,7 @@ class pFedLA(pFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--pfedla_emb_dim", type=int, default=None)
         parser.add_argument("--pfedla_hyper_hid", type=int, default=None)
         parser.add_argument("--pfedla_hn_lr", type=float, default=None)
@@ -95,123 +102,165 @@ class pFedLA(pFL):
 
     def __init__(self, configs: Namespace, times: int) -> None:
         super().__init__(configs=configs, times=times)
-        init_params = {k: v.cpu().clone() for k, v in self.public_model_params.items()}
-        for cid in range(self.num_clients):
-            self.clients_personal_model_params[cid].update(
-                {k: v.clone() for k, v in init_params.items()}
-            )
+        initial = OrderedDict(
+            (name, value.detach().cpu().clone())
+            for name, value in self.public_model_params.items()
+        )
+        for client_id in range(self.num_clients):
+            self.clients_personal_model_params[client_id].update(deepcopy(initial))
 
-        layer_num = len(list(self.model.named_parameters()))
-        self._hnet = _pFedLANet(
+        layer_names = tuple(dict.fromkeys(name.split(".")[0] for name in initial))
+        self._hnet = pFedLAHyperNetwork(
             n_clients=self.num_clients,
-            emb_dim=self.pfedla_emb_dim,
+            embedding_dim=self.pfedla_emb_dim,
             hidden_dim=self.pfedla_hyper_hid,
-            layer_num=layer_num,
-            K=self.pfedla_K,
-        )
-        self._hnet_opt = torch.optim.SGD(
-            self._hnet.parameters(), lr=self.pfedla_hn_lr
-        )
-        # Per-client snapshot of the hypernet (so each client gets its own HN)
-        self._client_hnet_params: Dict[int, dict] = {
-            i: deepcopy(self._hnet.state_dict())
-            for i in range(self.num_clients)
+            layer_names=layer_names,
+            retained_layers=self.pfedla_K,
+        ).to(self.device)
+        self._hnet_opt = torch.optim.SGD(self._hnet.parameters(), lr=self.pfedla_hn_lr)
+        private_state = self._private_hypernetwork_state(hypernetwork=self._hnet)
+        self._client_hnet_params: Dict[int, OrderedDict] = {
+            client_id: deepcopy(private_state) for client_id in range(self.num_clients)
         }
-        # Stores differentiable aggregated params for current client (for autograd)
-        self._agg_params: List[torch.Tensor] = []
+        self._aggregated_params: OrderedDict = OrderedDict()
+        self._initial_model_params: OrderedDict = OrderedDict()
+        self._round_model_params = None
 
-        n_p = sum(p.numel() for p in self._hnet.parameters())
-        self.logger.info(
-            f"[pFedLA] HN: C={self.num_clients} layers={layer_num} "
-            f"emb={self.pfedla_emb_dim} hidden={self.pfedla_hyper_hid} "
-            f"K={self.pfedla_K} params={n_p:,}"
+        parameter_count = sum(
+            parameter.numel() for parameter in self._hnet.parameters()
         )
+        self.logger.info(
+            f"[pFedLA] HN: C={self.num_clients} layers={len(layer_names)} "
+            f"emb={self.pfedla_emb_dim} hidden={self.pfedla_hyper_hid} "
+            f"K={self.pfedla_K} params={parameter_count:,}"
+        )
+
+    def select_clients(self) -> None:
+        self._select_all_clients()
+
+    @staticmethod
+    def _private_hypernetwork_state(
+        hypernetwork: pFedLAHyperNetwork,
+    ) -> OrderedDict:
+        return OrderedDict(
+            (name, value.detach().cpu().clone())
+            for name, value in hypernetwork.state_dict().items()
+            if name != "embeddings.weight"
+        )
+
+    def _aggregate_model(
+        self,
+        client_id: int,
+        alpha: OrderedDict,
+    ) -> OrderedDict:
+        source_models = (
+            self._round_model_params
+            if self._round_model_params is not None
+            else self.clients_personal_model_params
+        )
+        source_ids = [
+            source_id
+            for source_id in range(self.num_clients)
+            if not self.is_new[source_id]
+        ]
+        aggregated = OrderedDict()
+        for name in self.public_model_params:
+            layer_name = name.split(".")[0]
+            weights = alpha[layer_name][source_ids]
+            total = weights.sum()
+            if not torch.isfinite(total) or total.item() <= 0:
+                raise RuntimeError(
+                    f"client {client_id} has zero pFedLA weights for "
+                    f"layer {layer_name}"
+                )
+            values = torch.stack(
+                [
+                    source_models[source_id][name].to(self.device).float()
+                    for source_id in source_ids
+                ]
+            )
+            normalized = weights / total
+            aggregated[name] = torch.sum(
+                values * normalized.view(-1, *([1] * (values.ndim - 1))),
+                dim=0,
+            )
+        return aggregated
 
     def package(self, client_id: int) -> dict:
-        result = super().package(client_id)
-
-        # Load this client's personal HN snapshot
-        self._hnet.load_state_dict(self._client_hnet_params[client_id])
+        package = super().package(client_id=client_id)
+        self._hnet.load_state_dict(self._client_hnet_params[client_id], strict=False)
         self._hnet.train()
-        self._hnet.to(self.device)
-
-        param_names = [n for n, _ in self.model.named_parameters()]
-        alpha = self._hnet(client_id)  # list[Tensor[n_clients]], grad retained
-
-        # Aggregate all clients' stored params using HN weights (keeps grad graph)
-        agg = OrderedDict()
-        for i, name in enumerate(param_names):
-            stacked = torch.stack(
-                [
-                    self.clients_personal_model_params[j][name]
-                    .to(self.device)
-                    .float()
-                    for j in range(self.num_clients)
-                ]
-            )  # [C, ...]
-            w = alpha[i]
-            w_sum = w.sum()
-            if w_sum == 0:
-                w = torch.zeros_like(w)
-                w[client_id] = 1.0
-            else:
-                w = w / w_sum
-            shape = stacked[0].shape
-            agg[name] = (w.view(-1, *([1] * len(shape))) * stacked).sum(0)
-
-        self._agg_params = list(agg.values())
-
-        result["regular_model_params"] = OrderedDict(
-            (k, v.detach().clone().cpu()) for k, v in agg.items()
+        alpha, retained = self._hnet(client_id)
+        aggregated = self._aggregate_model(client_id=client_id, alpha=alpha)
+        self._initial_model_params = OrderedDict(
+            (name, value.detach().cpu().clone()) for name, value in aggregated.items()
         )
-        return result
+        self._aggregated_params = OrderedDict(
+            (name, value)
+            for name, value in aggregated.items()
+            if name.split(".")[0] not in retained
+        )
+        package["regular_model_params"] = OrderedDict(
+            (name, value.detach().cpu().clone())
+            for name, value in aggregated.items()
+            if name.split(".")[0] not in retained
+        )
+        package["personal_model_params"] = OrderedDict(
+            (name, value.detach().cpu().clone())
+            for name, value in aggregated.items()
+            if name.split(".")[0] in retained
+        )
+        package["__wire__"] = ("regular_model_params",)
+        return package
 
     def train_one_round(self) -> dict:
+        self._round_model_params = {
+            client_id: dict(parameters)
+            for client_id, parameters in self.clients_personal_model_params.items()
+        }
         all_packages = {}
         for client_id in self.selected_clients:
-            # package() loads client HN, runs forward, stores graph in self._agg_params
-            packages = self.trainer.train([client_id])
-            pkg = packages[client_id]
+            package = self.trainer.train([client_id])[client_id]
+            difference = package["model_params_diff"]
 
-            self._hnet_opt.zero_grad()
-            hn_grads = torch.autograd.grad(
-                outputs=self._agg_params,
-                inputs=list(self._hnet.parameters()),
-                grad_outputs=[
-                    -diff.to(self.device)
-                    for diff in pkg["model_params_diff"].values()
-                ],
-                allow_unused=True,
+            if self._aggregated_params:
+                self._hnet_opt.zero_grad()
+                gradients = torch.autograd.grad(
+                    outputs=list(self._aggregated_params.values()),
+                    inputs=list(self._hnet.parameters()),
+                    grad_outputs=[
+                        -difference[name].to(self.device)
+                        for name in self._aggregated_params
+                    ],
+                    allow_unused=True,
+                )
+                for parameter, gradient in zip(self._hnet.parameters(), gradients):
+                    if gradient is not None:
+                        parameter.grad = gradient
+                torch.nn.utils.clip_grad_norm_(self._hnet.parameters(), self.norm_clip)
+                self._hnet_opt.step()
+
+            self._client_hnet_params[client_id] = self._private_hypernetwork_state(
+                hypernetwork=self._hnet
             )
-            for param, grad in zip(self._hnet.parameters(), hn_grads):
-                if grad is not None:
-                    param.grad = grad
-            torch.nn.utils.clip_grad_norm_(self._hnet.parameters(), self.norm_clip)
-            self._hnet_opt.step()
-            self._hnet.to("cpu")
-
-            # Save updated HN snapshot for this client
-            self._client_hnet_params[client_id] = deepcopy(self._hnet.state_dict())
-
-            # Store trained params in personal_model_params (nFL-style).
-            # return_diff=True so pkg["regular_model_params"] is empty;
-            # reconstruct: trained = initial - diff.
-            diff = pkg["model_params_diff"]
             trained = OrderedDict(
-                (k, self.clients_personal_model_params[client_id][k] - diff[k])
-                for k in diff
+                (
+                    name,
+                    self._initial_model_params[name] - difference[name],
+                )
+                for name in difference
             )
             self.clients_personal_model_params[client_id].update(trained)
-
-            self.trainer._write_back(client_id, pkg)
-            all_packages[client_id] = pkg
+            all_packages[client_id] = package
+        self._round_model_params = None
         return all_packages
 
-    def aggregate_client_updates(self, packages) -> None:
-        pass  # All done in train_one_round()
+    def aggregate_client_updates(self, packages: Any) -> None:
+        """Aggregation is completed inside ``train_one_round``."""
 
 
 class pFedLA_Client(pFL_Client):
-    """Receives aggregated model, runs local training, returns Δθ."""
+    """Train the server-generated personalized model and return its update."""
 
-    return_diff: bool = True
+    return_diff = True
+    return_diff_score = False

@@ -7,7 +7,6 @@ from .DLinear import DLinear
 class MTSD(DLinear):
 
     optional = {
-        **DLinear.optional,
         "d_model": 512,
     }
 

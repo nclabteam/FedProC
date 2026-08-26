@@ -8,6 +8,7 @@ CLIENT_GLOB = "client_*.csv"
 
 
 def _seed_run_dirs(save_path: Path) -> list[Path]:
+    """Return numerically named run directories in deterministic order."""
     return sorted(
         child
         for child in save_path.iterdir()
@@ -16,6 +17,7 @@ def _seed_run_dirs(save_path: Path) -> list[Path]:
 
 
 def _annotate_frame(frame: pl.DataFrame, **columns: Any) -> pl.DataFrame:
+    """Add constant metadata columns to a non-empty frame."""
     if frame.is_empty():
         return frame
     for name, value in columns.items():
@@ -24,6 +26,7 @@ def _annotate_frame(frame: pl.DataFrame, **columns: Any) -> pl.DataFrame:
 
 
 def compact_experiment_runs(save_path: str | Path) -> dict[str, Any]:
+    """Merge run CSVs into experiment-level files and remove run artifacts."""
     experiment_dir = Path(save_path).expanduser().resolve()
     if not experiment_dir.exists():
         raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")

@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class BeijingAirQuality(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Hourly pollutant and weather readings from Beijing stations."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "BeijingAirQuality", "raw")
         self.save_path = os.path.join("datasets", "BeijingAirQuality")
@@ -42,7 +44,8 @@ class BeijingAirQuality(BaseDataset):
         self.granularity_unit = "hour"
         self.url = "https://archive.ics.uci.edu/static/public/501/beijing+multi+site+air+quality+data.zip"
 
-    def download(self):
+    def download(self) -> None:
+        """Download and extract the Beijing station CSV files."""
         tpath = os.path.join(self.save_path, "temp")
         os.makedirs(tpath, exist_ok=True)
 
@@ -58,7 +61,8 @@ class BeijingAirQuality(BaseDataset):
         )
 
     @staticmethod
-    def read(path):
+    def read(path: str) -> pl.DataFrame | None:
+        """Read a station CSV with its documented null representation."""
         try:
             df = pl.read_csv(
                 path,
@@ -78,8 +82,9 @@ class BeijingAirQuality(BaseDataset):
             print(f"Empty file: {path}")
             return None
 
-    def prepossess(self, df):
-        df = super().prepossess(df)
+    def prepossess(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Clean a station frame and combine its timestamp columns."""
+        df = super().prepossess(df=df)
         # merge  year ┆ month ┆ day ┆ hour into self.column_date
         df = df.with_columns(
             pl.concat_str(

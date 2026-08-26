@@ -7,8 +7,10 @@ from .PositionalEmbedding import PositionalEmbedding
 
 
 class TokenEmbedding(nn.Module):
-    def __init__(self, c_in, d_model):
-        super(TokenEmbedding, self).__init__()
+    """Project input features with a circular temporal convolution."""
+
+    def __init__(self, c_in: int, d_model: int) -> None:
+        super().__init__()
         padding = 1 if torch.__version__ >= "1.5.0" else 2
         self.tokenConv = nn.Conv1d(
             in_channels=c_in,
@@ -24,14 +26,16 @@ class TokenEmbedding(nn.Module):
                     m.weight, mode="fan_in", nonlinearity="leaky_relu"
                 )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
 
 class FixedEmbedding(nn.Module):
-    def __init__(self, c_in, d_model):
-        super(FixedEmbedding, self).__init__()
+    """Embed discrete values with fixed sinusoidal vectors."""
+
+    def __init__(self, c_in: int, d_model: int) -> None:
+        super().__init__()
 
         w = torch.zeros(c_in, d_model).float()
         w.require_grad = False
@@ -47,13 +51,20 @@ class FixedEmbedding(nn.Module):
         self.emb = nn.Embedding(c_in, d_model)
         self.emb.weight = nn.Parameter(w, requires_grad=False)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.emb(x).detach()
 
 
 class TemporalEmbedding(nn.Module):
-    def __init__(self, d_model, embed_type="fixed", freq="h"):
-        super(TemporalEmbedding, self).__init__()
+    """Combine calendar-field embeddings."""
+
+    def __init__(
+        self,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+    ) -> None:
+        super().__init__()
 
         minute_size = 4
         hour_size = 24
@@ -69,7 +80,7 @@ class TemporalEmbedding(nn.Module):
         self.day_embed = Embed(day_size, d_model)
         self.month_embed = Embed(month_size, d_model)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.long()
 
         minute_x = (
@@ -84,26 +95,42 @@ class TemporalEmbedding(nn.Module):
 
 
 class TimeFeatureEmbedding(nn.Module):
+    """Normalize raw calendar fields before a linear projection."""
+
     # Normalization constants per column: [month, day, weekday, hour, minute, second]
     _norm_max = torch.tensor([12.0, 31.0, 6.0, 23.0, 59.0, 59.0])
 
-    def __init__(self, d_model, embed_type="timeF", freq="h"):
-        super(TimeFeatureEmbedding, self).__init__()
+    def __init__(
+        self,
+        d_model: int,
+        embed_type: str = "timeF",
+        freq: str = "h",
+    ) -> None:
+        super().__init__()
 
         freq_map = {"h": 4, "t": 5, "s": 6, "m": 1, "a": 1, "w": 2, "d": 3, "b": 3}
         d_inp = freq_map[freq]
         self.d_inp = d_inp
         self.embed = nn.Linear(d_inp, d_model, bias=False)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Normalize raw integer features to [-0.5, 0.5]
         norm = self._norm_max[: self.d_inp].to(x.device, x.dtype)
         return self.embed(x / norm - 0.5)
 
 
 class DataEmbedding(nn.Module):
-    def __init__(self, c_in, d_model, embed_type="fixed", freq="h", dropout=0.1):
-        super(DataEmbedding, self).__init__()
+    """Combine value, positional, and temporal embeddings."""
+
+    def __init__(
+        self,
+        c_in: int,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
@@ -114,18 +141,27 @@ class DataEmbedding(nn.Module):
         )
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark):
+    def forward(self, x: torch.Tensor, x_mark: torch.Tensor) -> torch.Tensor:
         x = (
-            self.value_embedding(x)
-            + self.temporal_embedding(x_mark)
-            + self.position_embedding(x)
+            self.value_embedding(x=x)
+            + self.temporal_embedding(x=x_mark)
+            + self.position_embedding(x=x)
         )
         return self.dropout(x)
 
 
 class DataEmbedding_wo_pos(nn.Module):
-    def __init__(self, c_in, d_model, embed_type="fixed", freq="h", dropout=0.1):
-        super(DataEmbedding_wo_pos, self).__init__()
+    """Combine value and optional temporal embeddings without positions."""
+
+    def __init__(
+        self,
+        c_in: int,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.temporal_embedding = (
@@ -135,36 +171,66 @@ class DataEmbedding_wo_pos(nn.Module):
         )
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark):
+    def forward(
+        self,
+        x: torch.Tensor | None,
+        x_mark: torch.Tensor | None,
+    ) -> torch.Tensor:
         # https://github.com/huangst21/TimeKAN/blob/main/layers/Embed.py
         if x is None and x_mark is not None:
-            return self.temporal_embedding(x_mark)
+            return self.temporal_embedding(x=x_mark)
         if x_mark is None:
-            x = self.value_embedding(x)
+            x = self.value_embedding(x=x)
         else:
-            x = self.value_embedding(x) + self.temporal_embedding(x_mark)
+            x = self.value_embedding(x=x) + self.temporal_embedding(x=x_mark)
         return self.dropout(x)
 
 
 class DataEmbedding_wo_pos_temp(nn.Module):
-    def __init__(self, c_in, d_model, embed_type="fixed", freq="h", dropout=0.1):
-        super(DataEmbedding_wo_pos_temp, self).__init__()
+    """Embed values without positional or temporal features."""
+
+    def __init__(
+        self,
+        c_in: int,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark=None):
-        x = self.value_embedding(x)
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_mark: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        x = self.value_embedding(x=x)
         return self.dropout(x)
 
 
 class DataEmbedding_inverted(nn.Module):
-    def __init__(self, c_in, d_model, embed_type="fixed", freq="h", dropout=0.1):
+    """Embed variables as tokens, optionally with covariates."""
+
+    def __init__(
+        self,
+        c_in: int,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+        dropout: float = 0.1,
+    ) -> None:
         super().__init__()
         self.value_embedding = nn.Linear(c_in, d_model)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark):
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_mark: torch.Tensor | None,
+    ) -> torch.Tensor:
         x = x.permute(0, 2, 1)  # [B, N, T]
         if x_mark is None:
             x = self.value_embedding(x)
@@ -174,13 +240,26 @@ class DataEmbedding_inverted(nn.Module):
 
 
 class DataEmbedding_wo_temp(nn.Module):
-    def __init__(self, c_in, d_model, embed_type="fixed", freq="h", dropout=0.1):
-        super(DataEmbedding_wo_temp, self).__init__()
+    """Combine value and positional embeddings without temporal features."""
+
+    def __init__(
+        self,
+        c_in: int,
+        d_model: int,
+        embed_type: str = "fixed",
+        freq: str = "h",
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
 
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, x_mark=None):
-        x = self.value_embedding(x) + self.position_embedding(x)
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_mark: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        x = self.value_embedding(x=x) + self.position_embedding(x=x)
         return self.dropout(x)

@@ -7,14 +7,19 @@ class SeriesDecompEMA(nn.Module):
     Series decomposition block
     """
 
-    def __init__(self, alpha, learnable=False, device="cuda"):
+    def __init__(
+        self,
+        alpha: float,
+        learnable: bool = False,
+        device: torch.device | str = "cuda",
+    ) -> None:
         super().__init__()
         self.ma = ExponentialMovingAverage(
             alpha=alpha, learnable=learnable, device=device
         )
 
-    def forward(self, x):
-        moving_average = self.ma(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        moving_average = self.ma(x=x)
         res = x - moving_average
         return res, moving_average
 
@@ -24,7 +29,12 @@ class ExponentialMovingAverage(nn.Module):
     Exponential Moving Average (EMA) block to highlight the trend of time series
     """
 
-    def __init__(self, alpha, learnable=False, device="cuda"):
+    def __init__(
+        self,
+        alpha: float,
+        learnable: bool = False,
+        device: torch.device | str = "cuda",
+    ) -> None:
         super().__init__()
         self.alpha = alpha
         if learnable:
@@ -34,7 +44,7 @@ class ExponentialMovingAverage(nn.Module):
         assert 0 <= self.alpha <= 1, "EMA alpha should be in [0, 1]"
 
     # Optimized implementation with O(1) time complexity
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [Batch, Input, Channel]
         _, t, _ = x.shape
         powers = torch.flip(

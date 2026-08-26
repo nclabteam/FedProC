@@ -6,27 +6,28 @@ from .TSTEncoder import TSTEncoder
 
 
 class TSTiEncoder(nn.Module):
+    """Encode each variable's sequence of patches independently."""
 
     def __init__(
         self,
-        patch_num,
-        patch_len,
-        n_layers=3,
-        d_model=128,
-        n_heads=16,
-        d_k=None,
-        d_v=None,
-        d_ff=256,
-        norm="BatchNorm",
-        attn_dropout=0.0,
-        dropout=0.0,
-        act="gelu",
-        store_attn=False,
-        res_attention=True,
-        pre_norm=False,
-        pe="zeros",
-        learn_pe=True,
-    ):
+        patch_num: int,
+        patch_len: int,
+        n_layers: int = 3,
+        d_model: int = 128,
+        n_heads: int = 16,
+        d_k: int | None = None,
+        d_v: int | None = None,
+        d_ff: int = 256,
+        norm: str = "BatchNorm",
+        attn_dropout: float = 0.0,
+        dropout: float = 0.0,
+        act: str = "gelu",
+        store_attn: bool = False,
+        res_attention: bool = True,
+        pre_norm: bool = False,
+        pe: str | None = "zeros",
+        learn_pe: bool = True,
+    ) -> None:
 
         super().__init__()
 
@@ -40,16 +41,21 @@ class TSTiEncoder(nn.Module):
         self.seq_len = q_len
 
         # Positional encoding
-        self.W_pos = PositionalEncoding(pe, learn_pe, q_len, d_model)
+        self.W_pos = PositionalEncoding(
+            pe=pe,
+            learn_pe=learn_pe,
+            q_len=q_len,
+            d_model=d_model,
+        )
 
         # Residual dropout
         self.dropout = nn.Dropout(dropout)
 
         # Encoder
         self.encoder = TSTEncoder(
-            q_len,
-            d_model,
-            n_heads,
+            q_len=q_len,
+            d_model=d_model,
+            n_heads=n_heads,
             d_k=d_k,
             d_v=d_v,
             d_ff=d_ff,
@@ -63,7 +69,7 @@ class TSTiEncoder(nn.Module):
             store_attn=store_attn,
         )
 
-    def forward(self, x) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         # x: [bs x nvars x patch_len x patch_num]
 
         n_vars = x.shape[1]

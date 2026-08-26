@@ -78,13 +78,13 @@ class CARDformer(nn.Module):
         pred_len: int,
         e_layers: int,
         momentum: float,
-        dp_rank,
+        dp_rank: int,
         d_ff: int,
         merge_size: int,
         alpha: float,
         n_heads: int,
         use_statistic: bool = False,
-    ):
+    ) -> None:
         super().__init__()
         self.patch_len = patch_len
         self.stride = stride
@@ -207,13 +207,13 @@ class Attention(nn.Module):
         d_model: int,
         dropout: float,
         momentum: float,
-        dp_rank: float,
+        dp_rank: int,
         d_ff: int,
         merge_size: int,
         total_token_number: int,
         alpha: float,
         over_hidden: bool = False,
-    ):
+    ) -> None:
         super().__init__()
 
         self.over_hidden = over_hidden

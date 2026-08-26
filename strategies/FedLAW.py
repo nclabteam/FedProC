@@ -1,26 +1,18 @@
 import copy
 from collections import OrderedDict
+from typing import Any
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from torch.nn.utils import vector_to_parameters
 from torch.utils.data import DataLoader, TensorDataset
 
 from .tFL import tFL, tFL_Client
 
 
 class FedLAW(tFL):
-    """
-    FedLAW: Revisiting Weighted Aggregation in Federated Learning with Neural Networks.
-
-    Server learns optimal aggregation weights λ (per-client softmax) and a global
-    scale γ via gradient descent on a small public proxy dataset each round.
-    The final global model is: γ · Σ(λᵢ · flat_params_i).
-
-    Reference: Zeng et al., "Revisiting Weighted Aggregation in Federated Learning
-    with Neural Networks", ICML 2023. arXiv:2302.10911.
-    """
+    """FedLAW: learn aggregation weights directly on a server proxy dataset."""
 
     optional = {
         "public_dataset": "ETDatasetHour",
@@ -30,17 +22,17 @@ class FedLAW(tFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--public_dataset", type=str, default=None)
         parser.add_argument("--server_epochs", type=int, default=None)
         parser.add_argument("--server_lr", type=float, default=None)
         parser.add_argument("--distill_batch_size", type=int, default=None)
 
-    def __init__(self, configs, times):
-        super().__init__(configs, times)
-        self.public_loader = self._load_public_dataset(configs)
+    def __init__(self, configs: Any, times: Any) -> None:
+        super().__init__(configs=configs, times=times)
+        self.public_loader = self._load_public_dataset(configs=configs)
 
-    def _load_public_dataset(self, configs):
+    def _load_public_dataset(self, configs: Any) -> Any:
         import data_factory
 
         public_args = copy.deepcopy(configs)
@@ -67,14 +59,22 @@ class FedLAW(tFL):
             shuffle=True,
         )
 
-    def aggregate_client_updates(self, packages) -> None:
+    def aggregate_client_updates(self, packages: Any) -> None:
         cids = list(packages.keys())
         device = self.device
         self.model.to(device)
 
         flat_params = torch.stack(
-            [packages[cid]["flat_params"].to(device) for cid in cids]
-        )  # [N, D]
+            [
+                torch.cat(
+                    [
+                        packages[cid]["regular_model_params"][name].reshape(-1)
+                        for name in self.public_model_params
+                    ]
+                ).to(device)
+                for cid in cids
+            ]
+        )
 
         scores = torch.tensor(
             [packages[cid]["score"] for cid in cids],
@@ -85,7 +85,8 @@ class FedLAW(tFL):
         a = init_a.detach().clone().requires_grad_(True)
         g = torch.zeros(1, device=device, requires_grad=True)
 
-        optimizer = torch.optim.Adam([a, g], lr=self.server_lr)
+        optimizer = torch.optim.Adam([a, g], lr=self.server_lr, betas=(0.5, 0.999))
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
         param_names = [name for name, _ in self.model.named_parameters()]
         param_shapes = [p.shape for p in self.model.parameters()]
@@ -120,6 +121,7 @@ class FedLAW(tFL):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+            scheduler.step()
 
         with torch.no_grad():
             lam = torch.softmax(a, dim=0)
@@ -129,16 +131,11 @@ class FedLAW(tFL):
 
         self.model.to("cpu")
         self._commit_global(
-            OrderedDict(
+            new_params=OrderedDict(
                 (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
             )
         )
 
 
 class FedLAW_Client(tFL_Client):
-    def package(self) -> dict:
-        result = super().package()
-        result["flat_params"] = parameters_to_vector(
-            self.model.parameters()
-        ).detach().cpu()
-        return result
+    """Use the standard stateless worker."""

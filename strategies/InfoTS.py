@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import torch
 
@@ -5,83 +7,63 @@ from .nFL import nFL, nFL_Client
 
 
 class InfoTS(nFL):
-    """
-    InfoTS: Information-Aware Time Series Meta-Contrastive Learning.
-
-    Each client trains locally and independently:
-      Round t:
-        1. Alternating self-supervised meta-pretraining:
-           - Minimizes global and local InfoNCE contrastive losses over TSEncoder.
-           - Optimizes Gumbel-Softmax augmentation selection weights (AutoAUG)
-             and classifier heads via meta-steps.
-        2. Supervised fine-tuning:
-           - Tunes the forecasting model end-to-end on target MSE forecasting loss.
-    """
+    """InfoTS meta-contrastive pretraining followed by frozen ridge fitting."""
 
     compulsory = {"model": "InfoTS"}
     optional = {
-        "pretrain_epochs": 10,
+        "pretrain_epochs": 400,
         "pretrain_lr": 1e-3,
         "pretrain_meta_lr": 1e-2,
         "pretrain_meta_epoch": 2,
         "pretrain_temp_t0": 2.0,
         "pretrain_temp_t1": 0.1,
+        "ridge_alpha": 1.0,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--pretrain_epochs", type=int, default=None)
         parser.add_argument("--pretrain_lr", type=float, default=None)
         parser.add_argument("--pretrain_meta_lr", type=float, default=None)
         parser.add_argument("--pretrain_meta_epoch", type=int, default=None)
         parser.add_argument("--pretrain_temp_t0", type=float, default=None)
         parser.add_argument("--pretrain_temp_t1", type=float, default=None)
-
-    def aggregate_client_updates(self, packages) -> None:
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
-
-    def evaluate_generalization(self, *args, **kwargs):
-        pass
+        parser.add_argument("--ridge_alpha", type=float, default=None)
 
 
 class InfoTS_Client(nFL_Client):
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
 
         train_loader = self.load_train_data()
 
         self.model.to(self.device)
-
-        if hasattr(self.model, "pretrain_loss") and self.pretrain_epochs > 0:
-            pretrain_loader = self.load_train_data()
-            self._pretrain(pretrain_loader)
-
-        offload_after_epoch = self.efficiency == "low"
-        for _ in range(self.epochs):
-            self.train_one_epoch(
+        if not self.auxiliary_state.get("infots_pretrained"):
+            if self.pretrain_epochs > 0:
+                self._pretrain(train_loader=train_loader)
+            self.fit_ridge_head(
                 model=self.model,
                 dataloader=train_loader,
-                optimizer=self.optimizer,
-                criterion=self.loss,
-                scheduler=self.scheduler,
                 device=self.device,
-                offload_after=offload_after_epoch,
+                alpha=self.ridge_alpha,
             )
+            self.auxiliary_state["infots_pretrained"] = True
 
-        if self.efficiency == "med":
+        if self.efficiency != "high":
             self.model.to("cpu")
 
-    def _pretrain(self, train_loader):
+    def _pretrain(self, train_loader: Any) -> None:
         """Self-supervised pre-training: alternates updates of encoder and AutoAUG."""
-        encoder_opt = torch.optim.AdamW(
-            self.model.encoder.parameters(), lr=self.pretrain_lr
+        encoder_opt = torch.optim.Adam(
+            self.model.encoder.parameters(), lr=self.pretrain_lr, betas=(0.9, 0.999)
         )
-        meta_opt = torch.optim.AdamW(
-            self.model.aug.parameters(), lr=self.pretrain_meta_lr
+        meta_opt = torch.optim.Adam(
+            self.model.aug.parameters(), lr=self.pretrain_meta_lr, betas=(0.9, 0.999)
         )
-        meta_head_opt = torch.optim.AdamW(
-            self.model.meta_unsup_head.parameters(), lr=self.pretrain_meta_lr
+        meta_head_opt = torch.optim.Adam(
+            self.model.meta_unsup_head.parameters(),
+            lr=self.pretrain_meta_lr,
+            betas=(0.9, 0.999),
         )
 
         self.model.train()

@@ -27,7 +27,7 @@ class M4Yearly(BaseDataset):
     m4_granularity = 1
     m4_unit = "year"
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "M4", self.m4_name)
         self.path_raw = os.path.join("datasets", "M4", self.m4_name, "raw")
@@ -83,7 +83,8 @@ class M4Yearly(BaseDataset):
             values.append(float(val))
         return values
 
-    def download(self):
+    def download(self) -> None:
+        """Download M4 splits and write one CSV per competition series."""
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)
 
@@ -119,6 +120,7 @@ class M4Yearly(BaseDataset):
 
     @staticmethod
     def extract_time_features(dates: pl.Series, freq: str) -> pl.DataFrame:
+        """Ensure yearly M4 series retain a non-empty time marker."""
         # freq_mapping["y"] in BaseDataset is deliberately empty (no useful
         # sub-year signal at yearly cadence), but a 0-column mark tensor
         # divides by zero downstream in split_x_y. Yearly is the only M4
@@ -126,30 +128,40 @@ class M4Yearly(BaseDataset):
         # constant column instead of touching base.py for every dataset.
         if freq == "y":
             return pl.DataFrame({"year_marker": [0] * len(dates)})
-        return BaseDataset.extract_time_features(dates, freq)
+        return BaseDataset.extract_time_features(dates=dates, freq=freq)
 
 
 class M4Quarterly(M4Yearly):
+    """M4 quarterly-frequency series."""
+
     m4_name = "Quarterly"
     m4_unit = "quarter"
 
 
 class M4Monthly(M4Yearly):
+    """M4 monthly-frequency series."""
+
     m4_name = "Monthly"
     m4_unit = "month"
 
 
 class M4Weekly(M4Yearly):
+    """M4 weekly-frequency series."""
+
     m4_name = "Weekly"
     m4_unit = "week"
 
 
 class M4Daily(M4Yearly):
+    """M4 daily-frequency series."""
+
     m4_name = "Daily"
     m4_unit = "day"
 
 
 class M4Hourly(M4Yearly):
+    """M4 hourly-frequency series."""
+
     m4_name = "Hourly"
     m4_unit = "hour"
 
@@ -162,7 +174,7 @@ class M4(CustomDataset):
     datasets); this class only merges their already-generated `info` lists.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "M4", "Merged")
         self.sets = [

@@ -177,7 +177,8 @@ class TestOptions(unittest.TestCase):
             with open(config_path, "w", encoding="utf-8") as file:
                 json.dump(
                     {
-                        "model": "Linear",
+                        "model": "FLinear",
+                        "freq_topk": 7,
                         "dataset": "ETDatasetHour",
                         "strategy": "LocalOnly",
                         "optimizer": "Adam",
@@ -200,10 +201,23 @@ class TestOptions(unittest.TestCase):
                     "runs_test_options",
                 ],
             ):
-                self.assertEqual(
-                    Options(root=".").parse_options().args.efficiency,
-                    "high",
-                )
+                args = Options(root=".").parse_options().args
+                self.assertEqual(args.efficiency, "high")
+                self.assertEqual(args.freq_topk, 7)
+
+    def test_strategy_compulsory_models_register_their_arguments(self):
+        for strategy, argument in (
+            ("InfoTS", "--infots_repr_dim"),
+            ("PFMCP", "--pfmcp_d_model"),
+        ):
+            with self.subTest(strategy=strategy):
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["main.py", "--strategy", strategy, argument, "123"],
+                ):
+                    args = Options(root=".").parse_options().args
+                    self.assertEqual(getattr(args, argument.removeprefix("--")), 123)
 
     def test_compact_flag_parses(self):
         with patch.object(

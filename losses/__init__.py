@@ -1,56 +1,42 @@
 import importlib
-import inspect
-import os
-import sys
+from pathlib import Path
 
-# Initialize lists to store imported class names
-LOSSES = []  # For training losses (eval_only=False or not set)
-EVAL_LOSSES = []  # For evaluation-only losses (eval_only=True)
+from torch import Tensor, nn
 
-# Get the current directory of this __init__.py
-current_dir = os.path.dirname(__file__)
+LOSSES: list[str] = []
+EVAL_LOSSES: list[str] = []
+CONTEXT_LOSSES: list[str] = []
 
-# Loop through all files in the directory
-for filename in os.listdir(current_dir):
-    # Only consider .py files that are not __init__.py
-    if filename.endswith(".py") and filename != "__init__.py":
-        # Get the module name by stripping .py
-        module_name = filename[:-3]
-        # Dynamically import the module
-        module = importlib.import_module(f".{module_name}", package=__name__)
+for path in sorted(
+    Path(__file__).parent.glob("*.py"), key=lambda item: item.stem.casefold()
+):
+    name = path.stem
+    if name == "__init__":
+        continue
+    module = importlib.import_module(f".{name}", package=__name__)
+    loss_type = getattr(module, name, None)
+    if not isinstance(loss_type, type) or not issubclass(loss_type, nn.Module):
+        continue
 
-        # Loop through all members of the module
-        for name, obj in inspect.getmembers(module):
-            # Check if the member is a class and is defined in this module
-            if (
-                inspect.isclass(obj)
-                and obj.__module__ == module.__name__
-                and module_name == name
-            ):
-                # Check if the class has eval_only attribute
-                eval_only = getattr(obj, "eval_only", False)
-                # Add the class to the current module's namespace
-                globals()[name] = obj
+    globals()[name] = loss_type
+    if getattr(loss_type, "context_only", False):
+        CONTEXT_LOSSES.append(name)
+    elif getattr(loss_type, "eval_only", False):
+        EVAL_LOSSES.append(name)
+    else:
+        LOSSES.append(name)
 
-                if eval_only:
-                    # Add to evaluation-only losses
-                    EVAL_LOSSES.append(name)
-                else:
-                    # Add to training losses
-                    LOSSES.append(name)
-
-__all__ = LOSSES + EVAL_LOSSES
+__all__ = [*LOSSES, *EVAL_LOSSES, *CONTEXT_LOSSES, "evaluation_result"]
+_EVALUATORS: tuple[tuple[str, nn.Module], ...] = tuple(
+    (name, globals()[name]())
+    for name in (*LOSSES, *EVAL_LOSSES)
+    if getattr(globals()[name], "generic_eval", True)
+)
 
 
-def evaluation_result(y_pred, y_true):
-    results = {}
-
-    # Include training losses
-    for loss in LOSSES:
-        results[loss] = getattr(sys.modules[__name__], loss)()(y_pred, y_true).item()
-
-    # Include evaluation-only losses
-    for loss in EVAL_LOSSES:
-        results[loss] = getattr(sys.modules[__name__], loss)()(y_pred, y_true).item()
-
-    return results
+def evaluation_result(y_pred: Tensor, y_true: Tensor) -> dict[str, float]:
+    """Evaluate metrics that only require predictions and observations."""
+    return {
+        name: evaluator(input=y_pred, target=y_true).item()
+        for name, evaluator in _EVALUATORS
+    }

@@ -1,19 +1,11 @@
 import torch
+from torch import Tensor
 
 from .base import Loss
 
 
 class MAPE(Loss):
-    """
-    Mean Absolute Percentage Error
-    """
+    """Compute mean absolute percentage error."""
 
-    def forward(self, input, target):
-        return torch.mean(
-            input=torch.abs(
-                input=self._percentage_error(
-                    input=input,
-                    target=target,
-                )
-            )
-        )
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return torch.mean(torch.abs(self._percentage_error(input=input, target=target)))

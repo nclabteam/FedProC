@@ -27,7 +27,12 @@ class mLSTMCell(nn.Module):
     the bound is scaled by the same factor to keep the two forms equal.
     """
 
-    def __init__(self, embedding_dim, num_heads, eps=1e-6):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        eps: float = 1e-6,
+    ) -> None:
         super().__init__()
         assert (
             embedding_dim % num_heads == 0
@@ -39,10 +44,13 @@ class mLSTMCell(nn.Module):
 
         self.igate = nn.Linear(3 * embedding_dim, num_heads)
         self.fgate = nn.Linear(3 * embedding_dim, num_heads)
-        self.outnorm = MultiHeadLayerNorm(embedding_dim, num_heads)
+        self.outnorm = MultiHeadLayerNorm(
+            ndim=embedding_dim,
+            num_heads=num_heads,
+        )
         self.reset_parameters()
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         self.outnorm.reset_parameters()
         # gates start input-independent: the forget gate biased wide open on a
         # linear ramp, the input gate near zero
@@ -52,7 +60,12 @@ class mLSTMCell(nn.Module):
         nn.init.zeros_(self.igate.weight)
         nn.init.normal_(self.igate.bias, mean=0.0, std=0.1)
 
-    def forward(self, q, k, v):
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+    ) -> torch.Tensor:
         """Run the recurrence over a full sequence.
 
         Args:
@@ -116,18 +129,22 @@ class mLSTMBlock(nn.Module):
 
     def __init__(
         self,
-        embedding_dim,
-        num_heads,
-        proj_factor=2.0,
-        conv_kernel_size=4,
-        qkv_proj_blocksize=4,
-        dropout=0.0,
-        bias=False,
-        num_blocks=1,
-        round_proj_to=64,
-    ):
+        embedding_dim: int,
+        num_heads: int,
+        proj_factor: float = 2.0,
+        conv_kernel_size: int = 4,
+        qkv_proj_blocksize: int = 4,
+        dropout: float = 0.0,
+        bias: bool = False,
+        num_blocks: int = 1,
+        round_proj_to: int = 64,
+    ) -> None:
         super().__init__()
-        inner = round_proj_up_dim(embedding_dim, proj_factor, round_proj_to)
+        inner = round_proj_up_dim(
+            embedding_dim=embedding_dim,
+            proj_factor=proj_factor,
+            multiple_of=round_proj_to,
+        )
         assert inner % num_heads == 0, (
             f"inner dim {inner} must be divisible by num_heads {num_heads}; "
             "adjust --embedding_dim, --proj_factor or --round_proj_to"
@@ -138,22 +155,43 @@ class mLSTMBlock(nn.Module):
         )
         self.inner = inner
 
-        self.norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
+        self.norm = MultiHeadLayerNorm(ndim=embedding_dim, num_heads=1)
         self.proj_up = nn.Linear(embedding_dim, 2 * inner, bias=bias)
 
         num_proj_heads = inner // qkv_proj_blocksize
-        self.q_proj = LinearHeadwiseExpand(inner, num_proj_heads, bias=bias)
-        self.k_proj = LinearHeadwiseExpand(inner, num_proj_heads, bias=bias)
-        self.v_proj = LinearHeadwiseExpand(inner, num_proj_heads, bias=bias)
+        self.q_proj = LinearHeadwiseExpand(
+            in_features=inner,
+            num_heads=num_proj_heads,
+            bias=bias,
+        )
+        self.k_proj = LinearHeadwiseExpand(
+            in_features=inner,
+            num_heads=num_proj_heads,
+            bias=bias,
+        )
+        self.v_proj = LinearHeadwiseExpand(
+            in_features=inner,
+            num_heads=num_proj_heads,
+            bias=bias,
+        )
 
-        self.conv1d = CausalConv1d(inner, conv_kernel_size)
-        self.cell = mLSTMCell(inner, num_heads)
+        self.conv1d = CausalConv1d(
+            hidden_size=inner,
+            kernel_size=conv_kernel_size,
+        )
+        self.cell = mLSTMCell(
+            embedding_dim=inner,
+            num_heads=num_heads,
+        )
         self.learnable_skip = nn.Parameter(torch.ones(inner))
         self.proj_down = nn.Linear(inner, embedding_dim, bias=bias)
         self.dropout = nn.Dropout(dropout)
-        self.reset_parameters(embedding_dim, num_blocks)
+        self.reset_parameters(
+            embedding_dim=embedding_dim,
+            num_blocks=num_blocks,
+        )
 
-    def reset_parameters(self, embedding_dim, num_blocks):
+    def reset_parameters(self, embedding_dim: int, num_blocks: int) -> None:
         # small init on the up-projection and on q/k/v, Wang init on the
         # down-projection -- all keyed to the outer embedding dim
         nn.init.normal_(self.proj_up.weight, std=math.sqrt(2 / (5 * embedding_dim)))
@@ -167,11 +205,15 @@ class mLSTMBlock(nn.Module):
             proj.reset_parameters(dim=embedding_dim)
         nn.init.ones_(self.learnable_skip)
 
-    def forward(self, x):
-        x_mlstm, z = self.proj_up(self.norm(x)).chunk(2, dim=-1)
-        x_conv = F.silu(self.conv1d(x_mlstm))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_mlstm, z = self.proj_up(self.norm(x=x)).chunk(2, dim=-1)
+        x_conv = F.silu(self.conv1d(x=x_mlstm))
         # q and k read the convolved branch; v is fed the unconvolved one
-        h = self.cell(self.q_proj(x_conv), self.k_proj(x_conv), self.v_proj(x_mlstm))
+        h = self.cell(
+            q=self.q_proj(x=x_conv),
+            k=self.k_proj(x=x_conv),
+            v=self.v_proj(x=x_mlstm),
+        )
         h = h + self.learnable_skip * x_conv
         h = h * F.silu(z)
         return x + self.dropout(self.proj_down(h))

@@ -4,7 +4,9 @@ from .base import BaseDataset
 
 
 class BaseStation5G(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Two-minute traffic and radio metrics from 5G base stations."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "BaseStation5G")
         self.path_raw = os.path.join("datasets", "BaseStation5G", "raw")
@@ -40,7 +42,8 @@ class BaseStation5G(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "https://raw.githubusercontent.com/vperifan/Federated-Time-Series-Forecasting/refs/heads/main/dataset/full_dataset.csv"
 
-    def download(self):
+    def download(self) -> None:
+        """Download the full dataset and split it by district."""
         # Create the directories
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

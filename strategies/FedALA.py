@@ -11,61 +11,48 @@ _logger = logging.getLogger(__name__)
 
 
 class FedALA(pFL):
-    """FedALA: Federated Adaptive Local Aggregation (Huang et al., AAAI 2023).
-
-    Each client learns element-wise blending weights W_i that interpolate
-    between the global model Θ and its own previous local model Θ_i:
-      Θ̂_i = Θ_i + (Θ - Θ_i) ⊙ W_i   (W_i ∈ [0,1])
-    Weights are learned via gradient descent on a local random subset before
-    each round's local training. Only the top-p higher layers use ALA
-    (controlled by layer_idx); lower layers use standard FedAvg weights.
-
-    Default hyperparameters: η=1.0, sample_ratio=0.8, layer_idx=2,
-    threshold=0.1, local_patience=10. Reference: arXiv:2212.01197. AAAI 2023.
-    """
+    """FedALA: Federated Adaptive Local Aggregation (Huang et al., AAAI 2023)."""
 
     optional = {
         "eta": 1.0,
         "sample_ratio": 0.8,
         "layer_idx": 2,
-        "threshold": 0.1,
+        "threshold": 0.01,
         "local_patience": 10,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--eta", type=float, default=None)
         parser.add_argument("--sample_ratio", type=float, default=None)
         parser.add_argument("--layer_idx", type=int, default=None)
         parser.add_argument("--threshold", type=float, default=None)
         parser.add_argument("--local_patience", type=int, default=None)
 
-    def __init__(self, configs, times):
+    def __init__(self, configs: Any, times: Any) -> None:
         super().__init__(configs=configs, times=times)
         for cid in range(self.num_clients):
             self.clients_personal_model_params[cid]["ala_weights"] = None
             self.clients_personal_model_params[cid]["ala_start_phase"] = True
-            self.clients_personal_model_params[cid]["prev_local_params"] = None
+            self.clients_personal_model_params[cid]["personalized_params"] = None
+
+    def package(self, client_id: int) -> dict:
+        package = super().package(client_id=client_id)
+        package["__wire__"] = ("regular_model_params",)
+        return package
 
 
 class FedALA_Client(pFL_Client):
-    """Client for FedALA.
-
-    Per-client persistent state in personal_model_params:
-        "ala_weights"       — list of CPU tensors (per-param blend weights for
-                              the last ``layer_idx`` parameter groups), or None.
-        "ala_start_phase"   — bool; True until ALA weights converge for the
-                              first time, then False (one-pass mode).
-        "prev_local_params" — list of CPU tensors (all model params after the
-                              previous round's training), or None on first round.
-    """
+    """Client for FedALA."""
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        super().set_parameters(package)  # loads global model into self.model
+        super().set_parameters(package=package)  # loads global model into self.model
         pm = package["personal_model_params"]
         self._ala_weights: Optional[List[torch.Tensor]] = pm["ala_weights"]
         self._ala_start_phase: bool = pm["ala_start_phase"]
-        self._prev_local_params: Optional[List[torch.Tensor]] = pm["prev_local_params"]
+        self._prev_local_params: Optional[List[torch.Tensor]] = pm[
+            "personalized_params"
+        ]
 
     def fit(self) -> None:
         # Run ALA interpolation before local training if we have a previous
@@ -75,17 +62,7 @@ class FedALA_Client(pFL_Client):
         super().fit()
 
     def _run_ala(self) -> None:
-        """Adaptive Local Aggregation: interpolate self.model in-place.
-
-        After super().set_parameters() the model holds global params.
-        This method:
-          1. Copies global params into the lower layers (already done by
-             set_parameters; no-op here).
-          2. Learns per-param blend weights for the higher layers via a
-             small-batch gradient descent on the local objective.
-          3. Applies the learned weights to set the higher layers of
-             self.model to the interpolated values.
-        """
+        """Adaptive Local Aggregation: interpolate self.model in-place."""
         # Global params: what set_parameters already loaded into self.model.
         # Persistent state is kept on CPU for transport/storage, but ALA's
         # temporary optimization must run on the same device as the model.
@@ -95,13 +72,9 @@ class FedALA_Client(pFL_Client):
         ]
         prev_local = [t.to(self.device).clone() for t in self._prev_local_params]
 
-        # Skip if global and previous local are identical (e.g. first real round)
-        if torch.sum(global_params[0] - prev_local[0]) == 0:
-            return
-
         # Higher-layer slices used for weight learning / interpolation
-        params_p = prev_local[-self.layer_idx:]     # prev local, higher layers
-        params_gp = global_params[-self.layer_idx:] # global,     higher layers
+        params_p = prev_local[-self.layer_idx :]  # prev local, higher layers
+        params_gp = global_params[-self.layer_idx :]  # global,     higher layers
 
         if self._ala_weights is None:
             ala_weights = [torch.ones_like(p) for p in params_p]
@@ -112,9 +85,9 @@ class FedALA_Client(pFL_Client):
         # Lower layers stay as global; higher layers are set to interpolated init.
         model_t = copy.deepcopy(self.model).to(self.device)
         params_t = list(model_t.parameters())
-        params_tp = params_t[-self.layer_idx:]
+        params_tp = params_t[-self.layer_idx :]
 
-        for param in params_t[:-self.layer_idx]:
+        for param in params_t[: -self.layer_idx]:
             param.requires_grad = False
 
         with torch.no_grad():
@@ -130,7 +103,7 @@ class FedALA_Client(pFL_Client):
             batch_size=self.batch_size,
             shuffle=False,
             scaler=self.scaler,
-            seed=self._loader_seed("train"),
+            seed=self._loader_seed(dataset_type="train"),
         )
 
         losses: List[float] = []
@@ -151,9 +124,7 @@ class FedALA_Client(pFL_Client):
                     for pt, pp, pg, w in zip(
                         params_tp, params_p, params_gp, ala_weights
                     ):
-                        w.data = torch.clamp(
-                            w - self.eta * (pt.grad * (pg - pp)), 0, 1
-                        )
+                        w.data = torch.clamp(w - self.eta * (pt.grad * (pg - pp)), 0, 1)
                         pt.data = pp + (pg - pp) * w
 
             losses.append(loss_value.item())
@@ -163,11 +134,11 @@ class FedALA_Client(pFL_Client):
             _logger.info(
                 "ALA epochs: %03d | std: %.6f",
                 len(losses),
-                np.std(losses[-self.local_patience:]),
+                np.std(losses[-self.local_patience :]),
             )
             if (
                 len(losses) > self.local_patience
-                and np.std(losses[-self.local_patience:]) < self.threshold
+                and np.std(losses[-self.local_patience :]) < self.threshold
             ):
                 break
 
@@ -176,7 +147,7 @@ class FedALA_Client(pFL_Client):
         # Write learned higher-layer params back to self.model
         with torch.no_grad():
             model_params = list(self.model.parameters())
-            for mp, pt in zip(model_params[-self.layer_idx:], params_tp):
+            for mp, pt in zip(model_params[-self.layer_idx :], params_tp):
                 mp.data.copy_(pt.data)
 
         self._ala_weights = [w.detach().cpu().clone() for w in ala_weights]
@@ -185,9 +156,10 @@ class FedALA_Client(pFL_Client):
     def package(self) -> Dict[str, Any]:
         out = super().package()
         # Persist ALA state and current trained params for the next round
-        out["personal_model_params"]["prev_local_params"] = [
+        out["personal_model_params"]["personalized_params"] = [
             p.detach().cpu().clone() for p in self.model.parameters()
         ]
         out["personal_model_params"]["ala_weights"] = self._ala_weights
         out["personal_model_params"]["ala_start_phase"] = self._ala_start_phase
+        out["__wire__"] = ("regular_model_params", "score")
         return out

@@ -4,12 +4,9 @@ import polars as pl
 
 from .base import BaseDataset
 
-
 LEVEL_COLUMNS = [f"L_T{index}" for index in range(1, 8)]
 PUMP_COLUMNS = [
-    column
-    for index in range(1, 12)
-    for column in (f"F_PU{index}", f"S_PU{index}")
+    column for index in range(1, 12) for column in (f"F_PU{index}", f"S_PU{index}")
 ]
 VALVE_COLUMNS = ["F_V2", "S_V2"]
 PRESSURE_COLUMNS = [
@@ -26,12 +23,7 @@ PRESSURE_COLUMNS = [
     "P_J14",
     "P_J422",
 ]
-MEASUREMENT_COLUMNS = (
-    LEVEL_COLUMNS
-    + PUMP_COLUMNS
-    + VALVE_COLUMNS
-    + PRESSURE_COLUMNS
-)
+MEASUREMENT_COLUMNS = LEVEL_COLUMNS + PUMP_COLUMNS + VALVE_COLUMNS + PRESSURE_COLUMNS
 
 
 class BATADAL(BaseDataset):
@@ -52,18 +44,9 @@ class BATADAL(BaseDataset):
         self.granularity_unit = "hour"
         self.url = "https://www.batadal.net/data.html"
         self.dataset_urls = {
-            "dataset03": (
-                "https://www.batadal.net/data/"
-                "BATADAL_dataset03.csv"
-            ),
-            "dataset04": (
-                "https://www.batadal.net/data/"
-                "BATADAL_dataset04.csv"
-            ),
-            "test": (
-                "https://www.batadal.net/data/"
-                "BATADAL_test_dataset.zip"
-            ),
+            "dataset03": ("https://www.batadal.net/data/" "BATADAL_dataset03.csv"),
+            "dataset04": ("https://www.batadal.net/data/" "BATADAL_dataset04.csv"),
+            "test": ("https://www.batadal.net/data/" "BATADAL_test_dataset.zip"),
         }
 
     def _read_release(
@@ -75,12 +58,7 @@ class BATADAL(BaseDataset):
             path,
             infer_schema_length=None,
         )
-        frame = frame.rename(
-            {
-                column: column.strip()
-                for column in frame.columns
-            }
-        )
+        frame = frame.rename({column: column.strip() for column in frame.columns})
         return frame.with_columns(
             [
                 pl.concat_str(
@@ -100,9 +78,7 @@ class BATADAL(BaseDataset):
                     for column in self.measurement_columns
                 ],
             ]
-        ).select(
-            [self.column_date] + self.measurement_columns
-        )
+        ).select([self.column_date] + self.measurement_columns)
 
     def download(self) -> None:
         """Download and merge the three canonical BATADAL releases."""
@@ -136,16 +112,16 @@ class BATADAL(BaseDataset):
 
         releases = [
             self._read_release(
-                dataset03_path,
-                "%d/%m/%y %H",
+                path=dataset03_path,
+                date_format="%d/%m/%y %H",
             ),
             self._read_release(
-                dataset04_path,
-                "%d/%m/%y %H",
+                path=dataset04_path,
+                date_format="%d/%m/%y %H",
             ),
             self._read_release(
-                test_path,
-                "%d/%m/%y %H",
+                path=test_path,
+                date_format="%d/%m/%y %H",
             ),
         ]
         pl.concat(
@@ -153,8 +129,4 @@ class BATADAL(BaseDataset):
             how="vertical_relaxed",
         ).unique(
             subset=[self.column_date],
-        ).sort(
-            self.column_date
-        ).write_csv(
-            os.path.join(self.path_raw, "BATADAL.csv")
-        )
+        ).sort(self.column_date).write_csv(os.path.join(self.path_raw, "BATADAL.csv"))

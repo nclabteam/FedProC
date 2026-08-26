@@ -148,7 +148,7 @@ class PatchEmbedding(nn.Module):
     def __init__(
         self, d_model, patch_len, stride, padding, dropout, position_embedding=True
     ):
-        super(PatchEmbedding, self).__init__()
+        super().__init__()
         # Patching
         self.patch_len = patch_len
         self.stride = stride
@@ -183,7 +183,7 @@ class PatchEmbedding(nn.Module):
 
 class AttentionLayer(nn.Module):
     def __init__(self, attention, d_model, n_heads, d_keys=None, d_values=None):
-        super(AttentionLayer, self).__init__()
+        super().__init__()
 
         d_keys = d_keys or (d_model // n_heads)
         d_values = d_values or (d_model // n_heads)
@@ -221,7 +221,7 @@ class FullAttention(nn.Module):
         attention_dropout=0.1,
         output_attention=False,
     ):
-        super(FullAttention, self).__init__()
+        super().__init__()
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
@@ -264,7 +264,7 @@ class TriangularCausalMask:
 
 class EncoderLayer(nn.Module):
     def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
-        super(EncoderLayer, self).__init__()
+        super().__init__()
         d_ff = d_ff or 4 * d_model
         self.attention = attention
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)
@@ -287,7 +287,7 @@ class EncoderLayer(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self, attn_layers, conv_layers=None, norm_layer=None):
-        super(Encoder, self).__init__()
+        super().__init__()
         self.attn_layers = nn.ModuleList(attn_layers)
         self.conv_layers = (
             nn.ModuleList(conv_layers) if conv_layers is not None else None

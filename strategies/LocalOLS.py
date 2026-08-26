@@ -8,17 +8,7 @@ from .LocalOnly import LocalOnly, LocalOnly_Client
 
 
 class LocalOLS(LocalOnly):
-    """
-    LocalOLS: Local-only one-shot ridge-OLS — no federation.
-
-    Inherits LocalOnly's no-FL infrastructure and eval hooks
-    (personalization loss only, no global model evaluation).
-    gamma=0.0 gives plain OLS; gamma>0 gives ridge.
-
-    Overrides train() to be one-shot: clients solve once, then evaluate.
-    Re-running OLS on fixed data is idempotent, so multi-round iteration
-    is wasteful.
-    """
+    """LocalOLS: Local-only one-shot ridge-OLS — no federation."""
 
     optional = {"gamma": 0.0}
 
@@ -26,9 +16,11 @@ class LocalOLS(LocalOnly):
         self.logger.info("%s: one-shot local OLS", self.__class__.__name__)
         round_start = time.time()
         self.current_iter = 0
-        self.selected_clients = [i for i in range(self.num_clients) if not self.is_new[i]]
+        self.selected_clients = [
+            i for i in range(self.num_clients) if not self.is_new[i]
+        ]
         packages = self.trainer.train(self.selected_clients)
-        uplink, downlink = self._compute_send_mb(packages)
+        uplink, downlink = self._compute_send_mb(packages=packages)
         self.metrics["downlink_mb"].append(downlink)
         for cid, mb in uplink.items():
             self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
@@ -38,7 +30,7 @@ class LocalOLS(LocalOnly):
         for dataset_type in ["train", "test"]:
             if dataset_type == "train" and self.skip_eval_train:
                 continue
-            self._pre_eval_hook(dataset_type)
+            self.evaluate_generalization(dataset_type=dataset_type)
 
         self.metrics["time_per_iter"].append(time.time() - round_start)
         self._save_best_hook()
@@ -55,15 +47,10 @@ class LocalOLS(LocalOnly):
 
 
 class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
-    """
-    Client for LocalOLS.
-
-    Replaces gradient training with a closed-form OLS solve each round.
-    Data never changes, so recomputing is idempotent.
-    """
+    """Client for LocalOLS."""
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
         L = self.input_len
         H = self.output_len
@@ -78,4 +65,4 @@ class LocalOLS_Client(_LinearWeightsMixin, LocalOnly_Client):
 
         N = self.train_samples
         W_i = torch.linalg.solve(sxx / N + self.gamma * torch.eye(L), sxy / N)
-        self._load_linear_weights(self.model, W_i)
+        self._load_linear_weights(model=self.model, W=W_i)

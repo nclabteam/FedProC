@@ -8,7 +8,9 @@ from .base import BaseDataset, CustomOnSingleDataset
 
 
 class PeMS08(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Five-minute, three-feature PeMS08 sensor series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "PeMS08", "raw")
         self.path_temp = os.path.join("datasets", "PeMS08", "temp")
@@ -20,7 +22,8 @@ class PeMS08(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "https://raw.githubusercontent.com/guoshnBJTU/ASTGNN/refs/heads/main/data/PEMS08/PEMS08.npz"
 
-    def download(self):
+    def download(self) -> None:
+        """Download PeMS08 arrays and write one CSV per sensor."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)
@@ -56,7 +59,9 @@ class PeMS08(BaseDataset):
 
 
 class PeMS08OutVar1(CustomOnSingleDataset):
-    def __init__(self, *args, **kwargs):
+    """First mixed-horizon PeMS08 client configuration."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "PeMS08", "3_96_96-1_96_720")
         self.sets = [
@@ -80,7 +85,9 @@ class PeMS08OutVar1(CustomOnSingleDataset):
 
 
 class PeMS08OutVar2(CustomOnSingleDataset):
-    def __init__(self, *args, **kwargs):
+    """Second mixed-horizon PeMS08 client configuration."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "PeMS08", "2_96_96-2_96_720")
         self.sets = [
@@ -104,7 +111,9 @@ class PeMS08OutVar2(CustomOnSingleDataset):
 
 
 class PeMS08OutVar3(CustomOnSingleDataset):
-    def __init__(self, *args, **kwargs):
+    """Third mixed-horizon PeMS08 client configuration."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "PeMS08", "1_96_96-3_96_720")
         self.sets = [

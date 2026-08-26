@@ -78,7 +78,7 @@ class TimeSeriesCharacteristics:
             - Computation time scales linearly with series length and column count
         """
 
-        def first_zero_ac(X: np.ndarray):
+        def first_zero_ac(X: np.ndarray) -> int:
             """Computes the lag of the first zero crossing of the ACF."""
             n = len(X)
 
@@ -109,7 +109,7 @@ class TimeSeriesCharacteristics:
         for column in df.columns:
             # Step 1: Calculate the first zero crossing of the autocorrelation function
             X = df[column].to_numpy()
-            tau = first_zero_ac(X)
+            tau = first_zero_ac(X=X)
 
             # Step 2: Downsample the time series with stride tau
             Y = X[::tau]
@@ -380,7 +380,7 @@ class TimeSeriesCharacteristics:
             seasonal_strength = max(0.0, 1 - (var_residual / var_diff_trend))
 
             # Calculate entropy for trend and seasonal components
-            def safe_entropy(arr, bins=20):
+            def safe_entropy(arr: np.ndarray, bins: int = 20) -> float:
                 if np.ptp(arr) < 1e-8:
                     # Near-constant component (e.g. STL trend on a very short
                     # segment): no meaningful spread to bin, treat as zero
@@ -392,8 +392,8 @@ class TimeSeriesCharacteristics:
                 hist = hist / hist.sum()
                 return float(entropy(hist))
 
-            trend_entropy = safe_entropy(trend)
-            seasonal_entropy = safe_entropy(seasonal)
+            trend_entropy = safe_entropy(arr=trend)
+            seasonal_entropy = safe_entropy(arr=seasonal)
 
             trend_results[col] = trend_strength
             seasonal_results[col] = seasonal_strength
@@ -408,5 +408,3 @@ class TimeSeriesCharacteristics:
                 seasonal_entropy_results,
             ]
         )
-
-

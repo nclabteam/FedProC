@@ -4,7 +4,6 @@ import polars as pl
 
 from .base import BaseDataset, CustomDataset
 
-
 SOURCE_ROOT = (
     "https://raw.githubusercontent.com/IBM/AssetOpsBench/main/"
     "src/couchdb/scenarios_data/shared/iot"
@@ -103,29 +102,18 @@ def _download_dataset(
         source_path,
         infer_schema_length=None,
     ).with_columns(
-        pl.col("timestamp")
-        .str.to_datetime(strict=False)
-        .alias(dataset.column_date)
+        pl.col("timestamp").str.to_datetime(strict=False).alias(dataset.column_date)
     )
     if normalize_interval is not None:
         frame = (
-            frame.with_columns(
-                pl.col(dataset.column_date).dt.round(
-                    normalize_interval
-                )
-            )
+            frame.with_columns(pl.col(dataset.column_date).dt.round(normalize_interval))
             .group_by(dataset.column_date)
             .agg(
-                [
-                    pl.col(column).mean().alias(column)
-                    for column in dataset.column_train
-                ]
+                [pl.col(column).mean().alias(column) for column in dataset.column_train]
             )
         )
 
-    frame.select(
-        [dataset.column_date] + dataset.column_train
-    ).drop_nulls().sort(
+    frame.select([dataset.column_date] + dataset.column_train).drop_nulls().sort(
         dataset.column_date
     ).write_csv(
         os.path.join(
@@ -143,7 +131,7 @@ class AssetOpsBenchChiller(BaseDataset):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         _configure_dataset(
-            self,
+            dataset=self,
             dataset_name="Chiller",
             source_name="chiller_6",
             measurement_columns=self.measurement_columns,
@@ -153,7 +141,7 @@ class AssetOpsBenchChiller(BaseDataset):
 
     def download(self) -> None:
         """Download and normalize minor timestamp jitter and duplicates."""
-        _download_dataset(self, normalize_interval="15m")
+        _download_dataset(dataset=self, normalize_interval="15m")
 
 
 class AssetOpsBenchHydraulicPump(BaseDataset):
@@ -164,7 +152,7 @@ class AssetOpsBenchHydraulicPump(BaseDataset):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         _configure_dataset(
-            self,
+            dataset=self,
             dataset_name="HydraulicPump",
             source_name="hydraulic_pump_1",
             measurement_columns=self.measurement_columns,
@@ -174,7 +162,7 @@ class AssetOpsBenchHydraulicPump(BaseDataset):
 
     def download(self) -> None:
         """Download the telemetry while omitting its cycle index."""
-        _download_dataset(self)
+        _download_dataset(dataset=self)
 
 
 class AssetOpsBenchMetroPump(BaseDataset):
@@ -185,7 +173,7 @@ class AssetOpsBenchMetroPump(BaseDataset):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         _configure_dataset(
-            self,
+            dataset=self,
             dataset_name="MetroPump",
             source_name="metro_pump_1",
             measurement_columns=self.measurement_columns,
@@ -195,7 +183,7 @@ class AssetOpsBenchMetroPump(BaseDataset):
 
     def download(self) -> None:
         """Download and prepare the metro-pump telemetry."""
-        _download_dataset(self)
+        _download_dataset(dataset=self)
 
 
 class AssetOpsBenchMotor(BaseDataset):
@@ -206,7 +194,7 @@ class AssetOpsBenchMotor(BaseDataset):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         _configure_dataset(
-            self,
+            dataset=self,
             dataset_name="Motor",
             source_name="motor_01",
             measurement_columns=self.measurement_columns,
@@ -216,7 +204,7 @@ class AssetOpsBenchMotor(BaseDataset):
 
     def download(self) -> None:
         """Download and prepare the motor telemetry."""
-        _download_dataset(self)
+        _download_dataset(dataset=self)
 
 
 class AssetOpsBench(CustomDataset):

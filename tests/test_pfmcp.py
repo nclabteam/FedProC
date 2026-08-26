@@ -8,13 +8,13 @@ import torch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.PFMCP import PFMCP as PFMCPModel
+from strategies.pFL import pFL, pFL_Client
 from strategies.PFMCP import (
     PFMCP,
     PFMCP_Client,
     conformal_quantile,
     dynamic_conformal_intervals,
 )
-from strategies.pFL import pFL, pFL_Client
 
 
 class TestPFMCPModel(unittest.TestCase):

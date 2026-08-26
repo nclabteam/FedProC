@@ -1,11 +1,13 @@
+import math
+
 import torch
-from torch import nn
+from torch import Tensor
+
+from .base import Loss
 
 
-class RMSE(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.mse = nn.MSELoss()
+class RMSE(Loss):
+    """Compute root mean squared error."""
 
-    def forward(self, input, target):
-        return torch.sqrt(self.mse(input=input, target=target))
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return torch.linalg.vector_norm(input - target) / math.sqrt(input.numel())

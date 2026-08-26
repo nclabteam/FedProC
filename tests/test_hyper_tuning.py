@@ -4,7 +4,12 @@ import unittest
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.hyper_tuning import BASE_ARGS, HYPERPARAMS, build_command, generate_combinations
+from scripts.hyper_tuning import (
+    BASE_ARGS,
+    HYPERPARAMS,
+    build_command,
+    generate_combinations,
+)
 
 
 class TestHyperTuning(unittest.TestCase):

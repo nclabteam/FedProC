@@ -132,6 +132,7 @@ def parse_numeric_list(
 
 
 def resolve_loss_metric() -> str:
+    """Return the canonical loss metric used by analysis commands."""
     return "generalization_avg_test_loss"
 
 

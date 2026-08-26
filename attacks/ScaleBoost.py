@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from typing import Any
+
 from .base import Attack
 
 
@@ -11,7 +14,12 @@ class ScaleBoost(Attack):
 
     scale: float = 10.0
 
-    def craft(self, packages, malicious_ids, ctx):
+    def craft(
+        self,
+        packages: OrderedDict[int, dict[str, Any]],
+        malicious_ids: list[int],
+        ctx: Any,
+    ) -> OrderedDict[int, dict[str, Any]]:
         for cid in malicious_ids:
             pkg = packages[cid]
             pkg["regular_model_params"] = {

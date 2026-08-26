@@ -26,7 +26,7 @@ class SyntheticGrok(BaseDataset):
     teacher_seed = 0
     x_seed = 1
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "SyntheticGrok", type(self).__name__)
         self.column_date = None
@@ -35,7 +35,7 @@ class SyntheticGrok(BaseDataset):
         self.granularity = 1
         self.granularity_unit = "hour"
 
-    def _make_teacher(self):
+    def _make_teacher(self) -> torch.nn.Module:
         from models.MLP import MLP
 
         teacher_configs = SimpleNamespace(
@@ -52,7 +52,12 @@ class SyntheticGrok(BaseDataset):
             p.requires_grad_(False)
         return teacher
 
-    def _make_split(self, teacher, n, rng):
+    def _make_split(
+        self,
+        teacher: torch.nn.Module,
+        n: int,
+        rng: np.random.Generator,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         x = rng.standard_normal((n, self.seq_len, self.channels)).astype(np.float32)
         with torch.no_grad():
             y = teacher(torch.from_numpy(x)).numpy()
@@ -67,7 +72,10 @@ class SyntheticGrok(BaseDataset):
         return x, y, x_mark, y_mark
 
     @staticmethod
-    def _channel_stats(arr, columns):
+    def _channel_stats(
+        arr: np.ndarray,
+        columns: list[str],
+    ) -> dict[str, dict[str, float]]:
         flat = arr.reshape(-1, arr.shape[-1])
         stats = {}
         for i, col in enumerate(columns):
@@ -77,7 +85,8 @@ class SyntheticGrok(BaseDataset):
             }
         return stats
 
-    def execute(self):
+    def execute(self) -> None:
+        """Generate deterministic synthetic train and test arrays."""
         name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
         self.path_save = os.path.join(self.save_path, name)
         self.path_info = os.path.join(self.path_save, "info.json")
@@ -96,10 +105,14 @@ class SyntheticGrok(BaseDataset):
         test_rng = np.random.default_rng(self.x_seed + 1)
 
         train_x, train_y, train_x_mark, train_y_mark = self._make_split(
-            teacher, self.n_train, train_rng
+            teacher=teacher,
+            n=self.n_train,
+            rng=train_rng,
         )
         test_x, test_y, test_x_mark, test_y_mark = self._make_split(
-            teacher, self.n_test, test_rng
+            teacher=teacher,
+            n=self.n_test,
+            rng=test_rng,
         )
 
         train_path = os.path.join(self.path_train, "0.npz")
@@ -115,8 +128,14 @@ class SyntheticGrok(BaseDataset):
             "client": 0,
             "paths": {"train": train_path, "test": test_path},
             "stats": {
-                "train": self._channel_stats(train_x, self.column_train),
-                "test": self._channel_stats(test_x, self.column_train),
+                "train": self._channel_stats(
+                    arr=train_x,
+                    columns=self.column_train,
+                ),
+                "test": self._channel_stats(
+                    arr=test_x,
+                    columns=self.column_train,
+                ),
             },
             "samples": {"train": train_x.shape[0], "test": test_x.shape[0]},
             "input_channels": self.channels,
@@ -134,12 +153,18 @@ class SyntheticGrok(BaseDataset):
 
 
 class SyntheticGrokNoise01(SyntheticGrok):
+    """Synthetic grokking task with 0.1 target noise."""
+
     noise_std = 0.1
 
 
 class SyntheticGrokNoise03(SyntheticGrok):
+    """Synthetic grokking task with 0.3 target noise."""
+
     noise_std = 0.3
 
 
 class SyntheticGrokNoise10(SyntheticGrok):
+    """Synthetic grokking task with 1.0 target noise."""
+
     noise_std = 1.0

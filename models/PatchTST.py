@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import Tensor, nn
@@ -174,8 +174,8 @@ class PatchTST_backbone(nn.Module):
         stride: int,
         max_seq_len: Optional[int] = 1024,
         n_layers: int = 3,
-        d_model=128,
-        n_heads=16,
+        d_model: int = 128,
+        n_heads: int = 16,
         d_k: Optional[int] = None,
         d_v: Optional[int] = None,
         d_ff: int = 256,
@@ -192,17 +192,17 @@ class PatchTST_backbone(nn.Module):
         pe: str = "zeros",
         learn_pe: bool = True,
         fc_dropout: float = 0.0,
-        head_dropout=0,
-        padding_patch=None,
+        head_dropout: float = 0,
+        padding_patch: Optional[str] = None,
         pretrain_head: bool = False,
-        head_type="flatten",
-        individual=False,
-        revin=True,
-        affine=True,
-        subtract_last=False,
+        head_type: str = "flatten",
+        individual: bool = False,
+        revin: bool = True,
+        affine: bool = True,
+        subtract_last: bool = False,
         verbose: bool = False,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
 
         super().__init__()
 

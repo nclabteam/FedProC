@@ -1,16 +1,15 @@
 import torch
+from torch import Tensor
 
 from .base import Loss
 
 
 class sMdAPE(Loss):
-    """
-    Symmetric Median Absolute Percentage Error
-    """
+    """Compute symmetric median absolute percentage error."""
 
-    def forward(self, input, target):
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return torch.median(
-            input=self._symmetric_absolute_percentage_error(
+            self._symmetric_absolute_percentage_error(
                 input=input,
                 target=target,
             )

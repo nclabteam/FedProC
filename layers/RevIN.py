@@ -3,15 +3,17 @@ import torch.nn as nn
 
 
 class RevIN(nn.Module):
+    """Apply reversible instance normalization to time-series features."""
+
     def __init__(
         self,
         num_features: int,
-        eps=1e-5,
-        affine=True,
-        subtract_last=False,
-        non_norm=False,
-        stdev_detach=True,
-    ):
+        eps: float = 1e-5,
+        affine: bool = True,
+        subtract_last: bool = False,
+        non_norm: bool = False,
+        stdev_detach: bool = True,
+    ) -> None:
         super().__init__()
         self.num_features = num_features
         self.eps = eps
@@ -22,22 +24,27 @@ class RevIN(nn.Module):
         if self.affine:
             self._init_params()
 
-    def forward(self, x, mode: str, **kwargs):
+    def forward(
+        self,
+        x: torch.Tensor,
+        mode: str,
+        **kwargs: object,
+    ) -> torch.Tensor:
         if mode == "norm":
-            self._get_statistics(x)
-            x = self._normalize(x)
+            self._get_statistics(x=x)
+            x = self._normalize(x=x)
         elif mode == "denorm":
-            x = self._denormalize(x)
+            x = self._denormalize(x=x)
         else:
             raise NotImplementedError
         return x
 
-    def _init_params(self):
+    def _init_params(self) -> None:
         # initialize RevIN params: (C,)
         self.affine_weight = nn.Parameter(torch.ones(self.num_features))
         self.affine_bias = nn.Parameter(torch.zeros(self.num_features))
 
-    def _get_statistics(self, x):
+    def _get_statistics(self, x: torch.Tensor) -> None:
         dim2reduce = tuple(range(1, x.ndim - 1))
         if self.subtract_last:
             self.last = x[:, -1, :].unsqueeze(1)
@@ -48,7 +55,7 @@ class RevIN(nn.Module):
         )
         self.stdev = stdev.detach() if self.stdev_detach else stdev
 
-    def _normalize(self, x):
+    def _normalize(self, x: torch.Tensor) -> torch.Tensor:
         if self.non_norm:
             return x
         if self.subtract_last:
@@ -61,7 +68,7 @@ class RevIN(nn.Module):
             x = x + self.affine_bias
         return x
 
-    def _denormalize(self, x):
+    def _denormalize(self, x: torch.Tensor) -> torch.Tensor:
         if self.non_norm:
             return x
         if self.affine:

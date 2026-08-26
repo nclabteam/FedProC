@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class ElectricityLoadDiagrams(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """UCI electricity load diagrams split into per-client series."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Set the paths for the dataset
         self.path_raw = os.path.join("datasets", "ElectricityLoadDiagrams", "raw")
@@ -23,7 +25,8 @@ class ElectricityLoadDiagrams(BaseDataset):
         self.url = "https://archive.ics.uci.edu/static/public/321/electricityloaddiagrams20112014.zip"
         self.split_files = True
 
-    def download(self):
+    def download(self) -> None:
+        """Download and convert the load diagrams to CSV files."""
         # Create the directory if it doesn't exist
         os.makedirs(self.path_temp, exist_ok=True)
         os.makedirs(self.path_raw, exist_ok=True)
@@ -53,7 +56,9 @@ class ElectricityLoadDiagrams(BaseDataset):
 
 
 class ElectricityLoadDiagramsOG(ElectricityLoadDiagrams):
-    def __init__(self, *args, **kwargs):
+    """Multivariate form of the electricity load diagrams dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Set the paths for the dataset
         self.save_path = os.path.join("datasets", "ElectricityLoadDiagramsOG")

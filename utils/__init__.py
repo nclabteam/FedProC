@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> object:
     if name == "Decimal":
         from .decimal import Decimal
 

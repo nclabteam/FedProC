@@ -191,19 +191,6 @@
     }
     .vcount { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
 
-    /* Tags */
-    .tags-row { display: flex; gap: 5px; flex-wrap: wrap; }
-    .tag-pill {
-      padding: 3px 9px; border: 1px solid var(--border-mid);
-      font-size: 9px; letter-spacing: 0.12em; cursor: pointer;
-      color: var(--text-faint); transition: all 0.12s; user-select: none;
-    }
-    .tag-pill:hover { border-color: var(--accent); color: var(--accent); }
-    .tag-pill.active {
-      border-color: var(--accent); color: var(--accent);
-      background: rgba(255,255,255,0.05);
-    }
-
     /* Checkbox row */
     .cb-row {
       display: flex; align-items: center; gap: 7px;
@@ -246,6 +233,25 @@
       flex: 1; display: flex; flex-direction: column; overflow: hidden;
       min-width: 0;
     }
+
+    /* Topic tabs */
+    .topic-tabs {
+      display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      background: var(--bg);
+    }
+    .topic-tab {
+      min-width: 150px; padding: 9px 14px; background: transparent;
+      border: 0; border-right: 1px solid var(--border);
+      color: var(--text-faint); font-family: var(--font); font-size: 10px;
+      letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer;
+    }
+    .topic-tab:hover { color: var(--text); background: var(--bg-alt); }
+    .topic-tab[aria-selected="true"] {
+      color: var(--accent); background: var(--bg-alt);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+    .topic-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
+    .topic-count { color: var(--text-faint); margin-left: 5px; }
 
     /* Stats bar */
     .stats-bar {
@@ -319,29 +325,6 @@
       transition: all 0.1s; font-family: var(--font); letter-spacing: 0.05em;
     }
     .lb:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* Expanded row */
-    tr.exp-row td {
-      background: #131313 !important;
-      border-left: 2px solid var(--accent);
-      padding: 14px 18px;
-    }
-    .exp-inner { display: flex; flex-direction: column; gap: 9px; }
-    .exp-title { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.45; }
-    .exp-meta { font-size: 10px; color: var(--text-dim); }
-    .exp-links { display: flex; gap: 6px; flex-wrap: wrap; }
-    .exp-lb {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 11px; border: 1px solid var(--border-mid);
-      color: var(--text-dim); font-size: 10px; text-decoration: none;
-      transition: all 0.12s; font-family: var(--font);
-    }
-    .exp-lb:hover { border-color: var(--accent); color: var(--accent); }
-    .tag-badge {
-      padding: 1px 7px; border: 1px solid var(--accent-dim);
-      font-size: 9px; color: var(--accent); letter-spacing: 0.1em;
-    }
-    .badges { display: flex; gap: 5px; }
 
     /* Pagination */
     .pagination {
@@ -469,6 +452,17 @@
   <!-- CONTENT -->
   <div class="content">
 
+    <div class="topic-tabs" role="tablist" aria-label="Paper topic">
+      <button class="topic-tab" id="flTab" type="button" role="tab"
+              aria-controls="tableWrap" aria-selected="true" data-topic="fl">
+        FL only <span class="topic-count" id="flTotal">—</span>
+      </button>
+      <button class="topic-tab" id="tsfTab" type="button" role="tab"
+              aria-controls="tableWrap" aria-selected="false" data-topic="tsf" tabindex="-1">
+        TSF only <span class="topic-count" id="tsfTotal">—</span>
+      </button>
+    </div>
+
     <!-- Stats -->
     <div class="stats-bar">
       <div class="stat-card">
@@ -490,8 +484,8 @@
     </div>
 
     <!-- Table -->
-    <div class="table-wrap" id="tableWrap">
-      <div class="status-msg"><span class="spin">◌</span>&nbsp; Loading papers.csv&hellip;</div>
+    <div class="table-wrap" id="tableWrap" role="tabpanel" aria-labelledby="flTab">
+      <div class="status-msg"><span class="spin">◌</span>&nbsp; Loading paper lists&hellip;</div>
     </div>
 
     <!-- Pagination -->
@@ -506,8 +500,6 @@
     <div class="shortcuts">
       <span class="sc"><kbd>Ctrl+K</kbd>search</span>
       <span class="sc"><kbd>Esc</kbd>clear</span>
-      <span class="sc"><kbd>↑↓</kbd>navigate</span>
-      <span class="sc"><kbd>Enter</kbd>expand</span>
       <span class="sc"><kbd>R</kbd>refresh</span>
     </div>
 
@@ -517,33 +509,27 @@
 <script>
 // ── CSV PARSER ───────────────────────────────────────────────────────────────
 function parseCSV(raw) {
-  const lines = raw.split(/\r?\n/);
-  if (!lines.length) return [];
-  const headers = parseLine(lines[0]);
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const vals = parseLine(line);
-    const obj = {};
-    headers.forEach((h, j) => { obj[h.trim()] = (vals[j] || '').trim(); });
-    rows.push(obj);
-  }
-  return rows;
-}
-
-function parseLine(line) {
-  const out = []; let cur = ''; let q = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
+  const records = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
     if (c === '"') {
-      if (q && line[i+1] === '"') { cur += '"'; i++; }
-      else q = !q;
-    } else if (c === ',' && !q) { out.push(cur); cur = ''; }
-    else cur += c;
+      if (quoted && raw[i+1] === '"') { cell += '"'; i++; }
+      else quoted = !quoted;
+    } else if (c === ',' && !quoted) {
+      row.push(cell); cell = '';
+    } else if ((c === '\n' || c === '\r') && !quoted) {
+      if (c === '\r' && raw[i+1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(Boolean)) records.push(row);
+      row = [];
+    } else cell += c;
   }
-  out.push(cur);
-  return out;
+  if (cell || row.length) { row.push(cell); records.push(row); }
+  if (!records.length) return [];
+  const [headers, ...values] = records;
+  return values.map(vals => Object.fromEntries(
+    headers.map((header, index) => [header.trim(), (vals[index] || '').trim()])
+  ));
 }
 
 function parseYear(val) {
@@ -554,19 +540,15 @@ function parseYear(val) {
   return m ? +m[1] : 0;
 }
 
-// ── TAG DETECTION ─────────────────────────────────────────────────────────────
-function tags(p) {
-  const t = (p.Title + ' ' + p.Venue).toLowerCase();
-  return {
-    TSF: /time.?series|forecast|temporal|predict/.test(t),
-    FL:  /federat/.test(t),
-  };
-}
-
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let all = [], filtered = [];
+const TOPICS = {
+  fl:  { file: 'papers-fl.csv',  label: 'FL',  tab: 'flTab',  count: 'flTotal' },
+  tsf: { file: 'papers-tsf.csv', label: 'TSF', tab: 'tsfTab', count: 'tsfTotal' },
+};
+const datasets = {};
+let activeTopic = 'fl', all = [], filtered = [];
 let sortCol = 'Year', sortDir = -1;
-let page = 1, selIdx = -1;
+let page = 1;
 
 const S = {
   q: '', yMin: 0, yMax: 9999,
@@ -585,6 +567,7 @@ const resetBtn = $('resetBtn');
 const tableWrap = $('tableWrap');
 const prevBtn = $('prevBtn'), nextBtn = $('nextBtn');
 const curPage = $('curPage'), totPages = $('totPages'), rowRange = $('rowRange');
+const topicTabs = [...document.querySelectorAll('.topic-tab')];
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
 async function load() {
@@ -596,26 +579,50 @@ async function load() {
     </div>`;
     return;
   }
-  tableWrap.innerHTML = '<div class="status-msg"><span class="spin">◌</span>&nbsp; Loading papers.csv&hellip;</div>';
+  tableWrap.innerHTML = '<div class="status-msg"><span class="spin">◌</span>&nbsp; Loading paper lists&hellip;</div>';
   try {
-    const r = await fetch('./papers.csv');
-    if (!r.ok) throw new Error('HTTP ' + r.status + ' — papers.csv not found at this path');
-    const txt = await r.text();
-    if (!txt.trim()) throw new Error('papers.csv is empty');
-    all = parseCSV(txt).filter(p => p.Title);
-    if (!all.length) throw new Error('CSV parsed but no rows with Title found — check the file');
-    all.forEach(p => {
-      const y = parseYear(p.Year);
-      p.Year = y ? String(y) : '';
-      p._t = tags(p);
-    });
+    await Promise.all(Object.entries(TOPICS).map(async ([topic, config]) => {
+      const r = await fetch('./' + config.file);
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + config.file + ' not found at this path');
+      const txt = await r.text();
+      if (!txt.trim()) throw new Error(config.file + ' is empty');
+      datasets[topic] = parseCSV(txt).filter(p => p.Title);
+      datasets[topic].forEach(p => {
+        const y = parseYear(p.Year);
+        p.Year = y ? String(y) : '';
+      });
+      $(config.count).textContent = datasets[topic].length;
+    }));
+    activeTopic = topicFromHash();
+    selectTopic(activeTopic, false);
     initFilters();
     loadQueryId();
     apply();
   } catch(e) {
-    tableWrap.innerHTML = `<div class="status-msg">✗ ${e.message}<br>
+    tableWrap.innerHTML = `<div class="status-msg">✗ ${h(e.message)}<br>
       <small style="color:#444;margin-top:6px;display:block">Run: python -m http.server 8080 from the web/ directory</small></div>`;
   }
+}
+
+function topicFromHash() {
+  const topic = new URLSearchParams(location.hash.slice(1)).get('topic');
+  return TOPICS[topic] ? topic : 'fl';
+}
+
+function selectTopic(topic, refresh=true) {
+  activeTopic = topic;
+  all = datasets[topic] || [];
+  topicTabs.forEach(tab => {
+    const selected = tab.dataset.topic === topic;
+    tab.setAttribute('aria-selected', selected);
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  tableWrap.setAttribute('aria-labelledby', TOPICS[topic].tab);
+  if (!refresh) return;
+  S.venues.clear();
+  page = 1;
+  initFilters();
+  apply();
 }
 
 // ── INIT FILTERS ──────────────────────────────────────────────────────────────
@@ -633,14 +640,17 @@ function initFilters() {
   venueList.innerHTML = '';
   Object.entries(vc).sort((a,b)=>b[1]-a[1]).forEach(([v,c]) => {
     const lbl = document.createElement('label');
-    lbl.className = 'venue-item';
-    lbl.innerHTML = `<input type="checkbox" data-v="${v.replace(/"/g,'&quot;')}">
-      <span class="vname" title="${h(v)}">${h(v)}</span>
-      <span class="vcount">(${c})</span>`;
-    lbl.querySelector('input').addEventListener('change', e => {
+    const input = document.createElement('input');
+    const name = document.createElement('span');
+    const count = document.createElement('span');
+    lbl.className = 'venue-item'; input.type = 'checkbox'; input.dataset.v = v;
+    name.className = 'vname'; name.title = v; name.textContent = v;
+    count.className = 'vcount'; count.textContent = `(${c})`;
+    input.addEventListener('change', e => {
       e.target.checked ? S.venues.add(v) : S.venues.delete(v);
       page=1; apply();
     });
+    lbl.append(input, name, count);
     venueList.appendChild(lbl);
   });
 }
@@ -758,14 +768,19 @@ function render() {
 
 function links(p) {
   let s = '';
-  if (p.Arxiv)      s += `<a class="lb" href="${p.Arxiv}" target="_blank" rel="noopener">arXiv</a>`;
-  if (p.DOI)        s += `<a class="lb" href="${p.DOI}"   target="_blank" rel="noopener">DOI</a>`;
-  if (p.Code)       s += `<a class="lb" href="${p.Code}"  target="_blank" rel="noopener">Code</a>`;
-  if (p.Video)      s += `<a class="lb" href="${p.Video}" target="_blank" rel="noopener">Video</a>`;
-  if (p.OpenReview) s += `<a class="lb" href="${p.OpenReview}" target="_blank" rel="noopener">OR</a>`;
+  for (const [field, label] of [['URL','Paper'], ['DOI','DOI'], ['Arxiv','arXiv'], ['OpenReview','OR'], ['Code','Code'], ['Video','Video'], ['Slide','Slides'], ['Poster','Poster']]) {
+    const url = safeUrl(p[field]);
+    if (url) s += `<a class="lb" href="${h(url)}" target="_blank" rel="noopener">${label}</a>`;
+  }
   return s || '<span style="color:#2a2a2a">—</span>';
 }
 
+function safeUrl(value) {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch { return ''; }
+}
 
 function h(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -773,9 +788,18 @@ function h(s) {
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
 searchInput.addEventListener('input', () => {
-  S.q = searchInput.value; page=1; expandId=null; apply();
+  S.q = searchInput.value; page=1; apply();
 });
 
+topicTabs.forEach(tab => {
+  tab.addEventListener('click', () => selectTopic(tab.dataset.topic));
+  tab.addEventListener('keydown', e => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const next = tab.dataset.topic === 'fl' ? 'tsf' : 'fl';
+    selectTopic(next); $(TOPICS[next].tab).focus();
+  });
+});
 
 codeChk.addEventListener('change', () => { S.code=codeChk.checked; page=1; apply(); });
 perPage.addEventListener('change', () => { S.pp=+perPage.value; page=1; render(); });
@@ -793,7 +817,7 @@ resetBtn.addEventListener('click', () => {
   venueList.querySelectorAll('input').forEach(c=>c.checked=false);
   S.code=false; codeChk.checked=false;
   S.pp=25; perPage.value='25';
-  selIdx=-1; page=1; apply();
+  page=1; apply();
 });
 
 // ── KEYBOARD ──────────────────────────────────────────────────────────────────
@@ -806,26 +830,13 @@ document.addEventListener('keydown', e => {
     searchInput.blur(); return;
   }
   if (e.target===searchInput) return;
-  const pp = S.pp||filtered.length;
-  const start = (page-1)*pp;
-  const end   = Math.min(start+pp, filtered.length)-1;
-  if (e.key==='ArrowDown') {
-    e.preventDefault();
-    selIdx = Math.min(selIdx<start?start:selIdx+1, end);
-    render();
-  }
-  if (e.key==='ArrowUp') {
-    e.preventDefault();
-    selIdx = Math.max(selIdx>end?end:selIdx-1, start);
-    render();
-  }
-  if (e.key==='Enter' && selIdx>=0) render();
   if ((e.key==='r'||e.key==='R') && !e.ctrlKey && !e.metaKey) load();
 });
 
 // ── URL HASH ──────────────────────────────────────────────────────────────────
 function pushHash() {
   const p = new URLSearchParams();
+  p.set('topic', activeTopic);
   if (S.q) p.set('q', S.q);
   if (S.yMin!==+yearMin.min||S.yMax!==+yearMax.max) p.set('year',`${S.yMin}-${S.yMax}`);
   if (S.venues.size) p.set('venues',[...S.venues].join('|'));
@@ -864,7 +875,7 @@ function loadHash() {
   if (p.get('venues')) {
     p.get('venues').split('|').forEach(v=>{
       S.venues.add(v);
-      const cb=venueList.querySelector(`input[data-v="${v.replace(/"/g,'&quot;')}"]`);
+      const cb=[...venueList.querySelectorAll('input')].find(input => input.dataset.v === v);
       if(cb) cb.checked=true;
     });
   }

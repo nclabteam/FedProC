@@ -50,7 +50,7 @@ class MMK(nn.Module):
         self,
         configs,
     ):
-        super(MMK, self).__init__()
+        super().__init__()
         self.hist_len = configs.input_len
         self.pred_len = configs.output_len
         self.use_norm = configs.use_norm
@@ -174,7 +174,7 @@ class MoKLayer(nn.Module):
         with_bn=False,
         with_dropout=False,
     ):
-        super(MoKLayer, self).__init__()
+        super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.n_expert = len(expert_config)
@@ -215,7 +215,7 @@ class MoKLayer(nn.Module):
 
 class KANInterfaceV2(nn.Module):
     def __init__(self, in_features, out_features, layer_type, hyperparam):
-        super(KANInterfaceV2, self).__init__()
+        super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         if layer_type == "KAN":
@@ -360,7 +360,7 @@ class KANLayer(nn.Module):
         >>> (model.in_dim, model.out_dim)
         (3, 5)
         """
-        super(KANLayer, self).__init__()
+        super().__init__()
         # size
         self.size = size = out_dim * in_dim
         self.out_dim = out_dim
@@ -888,7 +888,7 @@ class WaveKANLayer(nn.Module):
         with_bn=True,
         device="cuda",
     ):
-        super(WaveKANLayer, self).__init__()
+        super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.wavelet_type = wavelet_type
@@ -1020,7 +1020,7 @@ class NaiveFourierKANLayer(nn.Module):
     """
 
     def __init__(self, inputdim, outdim, gridsize=300):
-        super(NaiveFourierKANLayer, self).__init__()
+        super().__init__()
         self.gridsize = gridsize
         self.inputdim = inputdim
         self.outdim = outdim
@@ -1060,7 +1060,7 @@ class JacobiKANLayer(nn.Module):
     """
 
     def __init__(self, input_dim, output_dim, degree, a=1.0, b=1.0):
-        super(JacobiKANLayer, self).__init__()
+        super().__init__()
         self.inputdim = input_dim
         self.outdim = output_dim
         self.a = a
@@ -1122,7 +1122,7 @@ class ChebyKANLayer(nn.Module):
     """
 
     def __init__(self, input_dim, output_dim, degree):
-        super(ChebyKANLayer, self).__init__()
+        super().__init__()
         self.inputdim = input_dim
         self.outdim = output_dim
         self.degree = degree
@@ -1159,7 +1159,7 @@ class TaylorKANLayer(nn.Module):
     """
 
     def __init__(self, input_dim, out_dim, order, addbias=True):
-        super(TaylorKANLayer, self).__init__()
+        super().__init__()
         self.input_dim = input_dim
         self.out_dim = out_dim
         self.order = order
@@ -1194,7 +1194,7 @@ class RBFKANLayer(nn.Module):
     """
 
     def __init__(self, input_dim, output_dim, num_centers, alpha=1.0):
-        super(RBFKANLayer, self).__init__()
+        super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.num_centers = num_centers

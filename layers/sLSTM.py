@@ -26,7 +26,13 @@ class sLSTMCell(nn.Module):
 
     gate_names = ("i", "f", "z", "o")
 
-    def __init__(self, hidden_size, num_heads, block_idx=0, num_blocks=1):
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        block_idx: int = 0,
+        num_blocks: int = 1,
+    ) -> None:
         super().__init__()
         assert (
             hidden_size % num_heads == 0
@@ -44,7 +50,7 @@ class sLSTMCell(nn.Module):
         self.bias = nn.Parameter(torch.zeros(num_heads, n_gates, self.head_dim))
         self.reset_parameters()
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         nn.init.zeros_(self.recurrent_kernel)
         with torch.no_grad():
             self.bias.zero_()
@@ -58,7 +64,13 @@ class sLSTMCell(nn.Module):
             f_index = self.gate_names.index("f")
             self.bias[:, f_index, :] = 5.0 - 12.0 * positions ** (0.3 + 1.3 * ratio)
 
-    def forward(self, i_pre, f_pre, z_pre, o_pre):
+    def forward(
+        self,
+        i_pre: torch.Tensor,
+        f_pre: torch.Tensor,
+        z_pre: torch.Tensor,
+        o_pre: torch.Tensor,
+    ) -> torch.Tensor:
         """Run the recurrence over a full sequence.
 
         Args:
@@ -121,39 +133,52 @@ class sLSTMBlock(nn.Module):
 
     def __init__(
         self,
-        embedding_dim,
-        num_heads,
-        conv_kernel_size=4,
-        ffn_proj_factor=1.3,
-        ffn_act_fn="gelu",
-        dropout=0.0,
-        bias=False,
-        block_idx=0,
-        num_blocks=1,
-        round_proj_to=64,
-    ):
+        embedding_dim: int,
+        num_heads: int,
+        conv_kernel_size: int = 4,
+        ffn_proj_factor: float = 1.3,
+        ffn_act_fn: str = "gelu",
+        dropout: float = 0.0,
+        bias: bool = False,
+        block_idx: int = 0,
+        num_blocks: int = 1,
+        round_proj_to: int = 64,
+    ) -> None:
         super().__init__()
-        self.norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
+        self.norm = MultiHeadLayerNorm(ndim=embedding_dim, num_heads=1)
         self.conv1d = (
-            CausalConv1d(embedding_dim, conv_kernel_size)
+            CausalConv1d(
+                hidden_size=embedding_dim,
+                kernel_size=conv_kernel_size,
+            )
             if conv_kernel_size > 0
             else None
         )
-        gate = lambda: LinearHeadwiseExpand(embedding_dim, num_heads, bias=bias)
+        gate = lambda: LinearHeadwiseExpand(
+            in_features=embedding_dim,
+            num_heads=num_heads,
+            bias=bias,
+        )
         self.igate, self.fgate = gate(), gate()
         self.zgate, self.ogate = gate(), gate()
         for proj in (self.igate, self.fgate, self.zgate, self.ogate):
             proj.reset_parameters(dim=embedding_dim)
 
         self.cell = sLSTMCell(
-            embedding_dim, num_heads, block_idx=block_idx, num_blocks=num_blocks
+            hidden_size=embedding_dim,
+            num_heads=num_heads,
+            block_idx=block_idx,
+            num_blocks=num_blocks,
         )
-        self.group_norm = MultiHeadLayerNorm(embedding_dim, num_heads)
+        self.group_norm = MultiHeadLayerNorm(
+            ndim=embedding_dim,
+            num_heads=num_heads,
+        )
         self.dropout = nn.Dropout(dropout)
 
-        self.ffn_norm = MultiHeadLayerNorm(embedding_dim, num_heads=1)
+        self.ffn_norm = MultiHeadLayerNorm(ndim=embedding_dim, num_heads=1)
         self.ffn = GatedFeedForward(
-            embedding_dim,
+            embedding_dim=embedding_dim,
             proj_factor=ffn_proj_factor,
             act_fn=ffn_act_fn,
             dropout=dropout,
@@ -162,17 +187,15 @@ class sLSTMBlock(nn.Module):
             round_proj_to=round_proj_to,
         )
 
-    def forward(self, x):
-        normed = self.norm(x)
-        x_conv = (
-            F.silu(self.conv1d(normed)) if self.conv1d is not None else normed
-        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        normed = self.norm(x=x)
+        x_conv = F.silu(self.conv1d(x=normed)) if self.conv1d is not None else normed
         # the convolved branch drives only the input and forget gates
         y = self.cell(
-            self.igate(x_conv),
-            self.fgate(x_conv),
-            self.zgate(normed),
-            self.ogate(normed),
+            i_pre=self.igate(x=x_conv),
+            f_pre=self.fgate(x=x_conv),
+            z_pre=self.zgate(x=normed),
+            o_pre=self.ogate(x=normed),
         )
         x = x + self.group_norm(self.dropout(y))
         return x + self.ffn(self.ffn_norm(x))

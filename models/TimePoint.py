@@ -139,7 +139,7 @@ class Encoder1D(nn.Module):
     """
 
     def __init__(self, input_channels=1, dims=[64, 64, 128, 128]):
-        super(Encoder1D, self).__init__()
+        super().__init__()
         self.layer1 = ConvBlock1D(input_channels, dims[0], stride=1)
         self.layer2 = ConvBlock1D(dims[0], dims[1], stride=2)
         self.layer3 = ConvBlock1D(dims[1], dims[2], stride=2)
@@ -162,7 +162,7 @@ class WTConvEncoder1D(nn.Module):
     def __init__(
         self, input_channels=1, dims=[64, 64, 128, 128], stride=2, wt_levels=[3, 3, 3]
     ):
-        super(WTConvEncoder1D, self).__init__()
+        super().__init__()
         self.stride = stride
         self.layer1 = ConvBlock1D(input_channels, dims[0], stride=1, padding="same")
         self.layer2 = WTConvBlock1D(
@@ -190,7 +190,7 @@ class DetectorHead1D(nn.Module):
     """
 
     def __init__(self, input_channels, cell_size=8):
-        super(DetectorHead1D, self).__init__()
+        super().__init__()
         self.cell_size = cell_size
         self.conv = nn.Conv1d(
             input_channels, cell_size + 1, kernel_size=1
@@ -219,7 +219,7 @@ class DescriptorHead1D(nn.Module):
     """
 
     def __init__(self, input_channels, descriptor_dim=256):
-        super(DescriptorHead1D, self).__init__()
+        super().__init__()
         self.conv = nn.Conv1d(input_channels, descriptor_dim, kernel_size=1)
         self.upsample = nn.Upsample(scale_factor=8, mode="linear", align_corners=False)
 
@@ -275,7 +275,7 @@ class WTConv1d(nn.Module):
         wt_levels=1,
         wt_type="db1",
     ):
-        super(WTConv1d, self).__init__()
+        super().__init__()
 
         assert in_channels == out_channels
 
@@ -391,7 +391,7 @@ class WTConv1d(nn.Module):
 
 class _ScaleModule(nn.Module):
     def __init__(self, dims, init_scale=1.0, init_bias=0):
-        super(_ScaleModule, self).__init__()
+        super().__init__()
         self.dims = dims
         self.weight = nn.Parameter(torch.ones(*dims) * init_scale)
         self.bias = None
@@ -411,7 +411,7 @@ class ConvBlock1D(nn.Module):
         act=nn.ReLU,
         padding=1,
     ):
-        super(ConvBlock1D, self).__init__()
+        super().__init__()
         self.layer = nn.Sequential(
             nn.Conv1d(
                 c_in, c_out, kernel_size=kernel_size, stride=stride, padding=padding
@@ -435,7 +435,7 @@ class WTConvBlock1D(nn.Module):
         act=nn.ReLU,
         wt_levels=3,
     ):
-        super(WTConvBlock1D, self).__init__()
+        super().__init__()
         self.layer = nn.Sequential(
             WTConv1d(
                 c_in, c_in, kernel_size=kernel_size, wt_levels=wt_levels, stride=stride

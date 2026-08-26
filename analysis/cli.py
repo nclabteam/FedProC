@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 
 def main() -> None:
+    """Dispatch to the selected analysis command."""
     if len(sys.argv) < 2:
         print("Usage: python -m analysis <command> [args]")
         print()

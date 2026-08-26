@@ -1,5 +1,6 @@
 import math
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -13,7 +14,11 @@ ACT_FN_REGISTRY = {
 }
 
 
-def round_proj_up_dim(embedding_dim, proj_factor, multiple_of=64):
+def round_proj_up_dim(
+    embedding_dim: int,
+    proj_factor: float,
+    multiple_of: int = 64,
+) -> int:
     """Up-projection dim, rounded up to a multiple (reference default: 64)."""
     if multiple_of <= 1:
         return int(round(embedding_dim * proj_factor))
@@ -31,24 +36,31 @@ class GatedFeedForward(nn.Module):
 
     def __init__(
         self,
-        embedding_dim,
-        proj_factor=1.3,
-        act_fn="gelu",
-        dropout=0.0,
-        bias=False,
-        num_blocks=1,
-        round_proj_to=64,
-    ):
+        embedding_dim: int,
+        proj_factor: float = 1.3,
+        act_fn: str = "gelu",
+        dropout: float = 0.0,
+        bias: bool = False,
+        num_blocks: int = 1,
+        round_proj_to: int = 64,
+    ) -> None:
         super().__init__()
         assert act_fn in ACT_FN_REGISTRY, f"Unknown activation {act_fn!r}"
-        self.inner = round_proj_up_dim(embedding_dim, proj_factor, round_proj_to)
+        self.inner = round_proj_up_dim(
+            embedding_dim=embedding_dim,
+            proj_factor=proj_factor,
+            multiple_of=round_proj_to,
+        )
         self.act_fn = ACT_FN_REGISTRY[act_fn]
         self.proj_up = nn.Linear(embedding_dim, 2 * self.inner, bias=bias)
         self.proj_down = nn.Linear(self.inner, embedding_dim, bias=bias)
         self.dropout = nn.Dropout(dropout)
-        self.reset_parameters(embedding_dim, num_blocks)
+        self.reset_parameters(
+            embedding_dim=embedding_dim,
+            num_blocks=num_blocks,
+        )
 
-    def reset_parameters(self, embedding_dim, num_blocks):
+    def reset_parameters(self, embedding_dim: int, num_blocks: int) -> None:
         # small init on the up-projection, Wang init on the down-projection
         nn.init.normal_(self.proj_up.weight, std=math.sqrt(2 / (5 * embedding_dim)))
         nn.init.normal_(
@@ -58,6 +70,6 @@ class GatedFeedForward(nn.Module):
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate_preact, up_proj = self.proj_up(x).split(self.inner, dim=-1)
         return self.dropout(self.proj_down(self.act_fn(gate_preact) * up_proj))

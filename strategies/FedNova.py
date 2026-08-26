@@ -9,31 +9,25 @@ from .tFL import tFL, tFL_Client
 
 
 class NovaOptimizer(Optimizer):
-    """SGD optimizer that accumulates the normalized gradient update for FedNova.
-
-    Tracks `cum_grad = sum(lr * g_t)` across all local steps and
-    `local_normalizing_vec` (= number of steps for vanilla SGD, adjusted for
-    momentum / proximal variants).  The normalized gradient returned to the
-    server is `cum_grad / local_normalizing_vec`.
-    """
+    """SGD optimizer that accumulates the normalized gradient update for FedNova."""
 
     def __init__(
         self,
-        params,
+        params: Any,
         lr: float,
         momentum: float = 0.0,
         weight_decay: float = 0.0,
         prox_mu: float = 0.0,
     ) -> None:
         defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay)
-        super().__init__(params, defaults)
+        super().__init__(params=params, defaults=defaults)
         self.prox_mu = prox_mu
         self.momentum = momentum
         self.local_normalizing_vec = 0.0
         self.local_counter = 0.0
         self.local_steps = 0
 
-    def step(self, closure=None):
+    def step(self, closure: Any = None) -> Any:
         loss = None
         if closure is not None:
             loss = closure()
@@ -95,23 +89,7 @@ class NovaOptimizer(Optimizer):
 
 
 class FedNova(tFL):
-    """
-    FedNova: Tackling the Objective Inconsistency Problem in Heterogeneous
-    Federated Optimization.
-
-    Each client normalizes its gradient update by the local normalizing
-    vector a_i (= number of local steps for vanilla SGD) before sending it
-    to the server.  The server aggregates:
-        Δ = τ_eff · weighted_avg(d_i)
-        global = global - Δ
-    where τ_eff = weighted_avg(τ_i) and d_i = cum_grad_i / a_i.
-
-    Optional global momentum (gmf) can be enabled to further smooth the
-    server update.
-
-    Reference: Wang et al., "Tackling the Objective Inconsistency Problem
-    in Heterogeneous Federated Optimization", NeurIPS 2020. arXiv 2007.07481.
-    """
+    """FedNova: Tackling the Objective Inconsistency Problem in Heterogeneous Federated Optimization."""
 
     optional = {
         "gmf": 0.0,
@@ -120,7 +98,7 @@ class FedNova(tFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--gmf", type=float, default=None)
         parser.add_argument("--prox_mu", type=float, default=None)
         parser.add_argument("--nova_momentum", type=float, default=None)
@@ -131,21 +109,28 @@ class FedNova(tFL):
         self._global_momentum_buffer: List[torch.Tensor] = []
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
-        total_score = sum(pkg["score"] for pkg in packages.values())
+        total_score = 0.0
+        weighted_tau = 0.0
+        weighted_gradients: List[torch.Tensor] = []
+        for package in packages.values():
+            score = float(package["score"])
+            total_score += score
+            weighted_tau += float(package["tau"]) * score
+            if not weighted_gradients:
+                weighted_gradients = [
+                    gradient * score for gradient in package["nova_grad"]
+                ]
+            else:
+                for accumulated, gradient in zip(
+                    weighted_gradients, package["nova_grad"]
+                ):
+                    accumulated.add_(gradient, alpha=score)
+        if total_score <= 0:
+            raise ValueError("FedNova client scores must sum to a positive value")
 
-        # τ_eff = weighted_avg(tau_i)
-        tau_eff = sum(
-            pkg["tau"] * (pkg["score"] / total_score) for pkg in packages.values()
-        )
-
-        # weighted_avg(d_i) where d_i = cum_grad_i / a_i
-        avg_d: List[torch.Tensor] = [
-            sum(
-                pkg["nova_grad"][i] * (pkg["score"] / total_score)
-                for pkg in packages.values()
-            )
-            for i in range(len(self.public_model_params))
-        ]
+        # τ_eff = weighted_avg(tau_i); d = weighted_avg(cum_grad_i / a_i).
+        tau_eff = weighted_tau / total_score
+        avg_d = [gradient / total_score for gradient in weighted_gradients]
 
         # Global momentum
         if self.gmf != 0.0:
@@ -164,14 +149,11 @@ class FedNova(tFL):
             (name, param - upd.to(param.device))
             for (name, param), upd in zip(self.public_model_params.items(), update)
         )
-        self._commit_global(new_params)
+        self._commit_global(new_params=new_params)
 
 
 class FedNova_Client(tFL_Client):
-    """
-    Client for FedNova. Uses NovaOptimizer to accumulate normalized gradient
-    updates and returns nova_grad = cum_grad / local_normalizing_vec and tau.
-    """
+    """Client for FedNova."""
 
     personal_params_name: List[str] = []
 
@@ -215,11 +197,19 @@ class FedNova_Client(tFL_Client):
                 nova_grad.append(torch.zeros_like(p, device="cpu"))
 
         self._nova_grad = nova_grad
-        self._tau = nova_opt.local_normalizing_vec
+        # The proximal variant retains a_i for d_i but uses local steps for
+        # tau_eff, matching the paper and reference optimizer.
+        self._tau = (
+            nova_opt.local_steps
+            if self.prox_mu != 0
+            else nova_opt.local_normalizing_vec
+        )
         self.model.to("cpu")
 
     def package(self) -> Dict[str, Any]:
         result = super().package()
+        result["regular_model_params"] = {}
         result["nova_grad"] = self._nova_grad
         result["tau"] = self._tau
+        result["__wire__"] = ("nova_grad", "tau", "score")
         return result

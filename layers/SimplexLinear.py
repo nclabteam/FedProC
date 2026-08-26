@@ -4,7 +4,14 @@ from torch import nn
 
 
 class SimplexLinear(nn.Module):
-    def __init__(self, input_features, output_features, bias=False):
+    """Apply a linear transform with normalized nonnegative weights."""
+
+    def __init__(
+        self,
+        input_features: int,
+        output_features: int,
+        bias: bool = False,
+    ) -> None:
         super().__init__()
         self.input_features = input_features
         self.output_features = output_features
@@ -15,7 +22,7 @@ class SimplexLinear(nn.Module):
         else:
             self.register_parameter("bias", None)
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         # Apply softmax to the weight along the input feature dimension
         weight = torch.log(self.weight.abs() + 1)
         weight = weight / weight.sum(1, keepdim=True)
@@ -23,5 +30,5 @@ class SimplexLinear(nn.Module):
 
         return output
 
-    def loss(self):
+    def loss(self) -> torch.Tensor:
         return self.weight.abs().sum()

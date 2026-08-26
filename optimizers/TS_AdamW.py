@@ -1,5 +1,9 @@
+from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
+
 import torch
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
 
 
 class TS_AdamW(Optimizer):
@@ -23,14 +27,14 @@ class TS_AdamW(Optimizer):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--beta1", type=float, default=None)
         parser.add_argument("--beta2", type=float, default=None)
         parser.add_argument("--epsilon", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--amsgrad", default=None, action="store_true")
 
-    def __init__(self, params, configs):
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
         defaults = dict(
             lr=configs.learning_rate,
             betas=(configs.beta1, configs.beta2),
@@ -38,10 +42,13 @@ class TS_AdamW(Optimizer):
             weight_decay=configs.weight_decay,
             amsgrad=configs.amsgrad,
         )
-        super().__init__(params, defaults)
+        super().__init__(params=params, defaults=defaults)
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(
+        self,
+        closure: Callable[[], float] | None = None,
+    ) -> float | None:
         loss = None
         if closure is not None:
             with torch.enable_grad():

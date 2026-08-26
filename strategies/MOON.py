@@ -8,22 +8,7 @@ from .tFL import tFL, tFL_Client
 
 
 class MOON(tFL):
-    """Model-Contrastive Federated Learning (Li et al., CVPR 2021).
-
-    Each client's local loss = supervised loss + μ * model-contrastive loss.
-    The contrastive term pulls the current local representation toward the
-    global model's representation (positive) and away from the previous local
-    model's representation (negative).
-
-    Default hyperparameters from the paper: temperature τ = 0.5, μ ∈ {0.1,1,5,10}
-    (dataset-dependent; 1.0 used as a reasonable default here).
-
-    TSF adaptation: the paper uses a projection head R_w(x) before the output
-    layer as the representation. For TSF models that lack a projection head,
-    we use the flattened model output directly.
-
-    Reference: arXiv:2103.16257.
-    """
+    """Model-Contrastive Federated Learning (Li et al., CVPR 2021)."""
 
     optional = {
         "mu": 1.0,
@@ -31,11 +16,11 @@ class MOON(tFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--mu", type=float, default=None)
         parser.add_argument("--temperature", type=float, default=None)
 
-    def __init__(self, configs, times):
+    def __init__(self, configs: Any, times: Any) -> None:
         super().__init__(configs=configs, times=times)
         init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
         for cid in range(self.num_clients):
@@ -48,7 +33,7 @@ class MOON_Client(tFL_Client):
     def set_parameters(self, package: Dict[str, Any]) -> None:
         self._global_model_params = copy.deepcopy(package["regular_model_params"])
         self._prev_model_params = package["personal_model_params"]["prev_model_state"]
-        super().set_parameters(package)
+        super().set_parameters(package=package)
 
     def package(self) -> Dict[str, Any]:
         out = super().package()
@@ -60,16 +45,16 @@ class MOON_Client(tFL_Client):
 
     def train_one_epoch(
         self,
-        model,
-        dataloader,
-        optimizer,
-        criterion,
-        scheduler,
-        device,
-        offload_after=True,
-    ):
+        model: Any,
+        dataloader: Any,
+        optimizer: Any,
+        criterion: Any,
+        scheduler: Any,
+        device: Any,
+        offload_after: Any = True,
+    ) -> None:
         model.to(device)
-        self._move_optimizer_state_to_param_devices(optimizer)
+        self._move_optimizer_state_to_param_devices(optimizer=optimizer)
 
         # Frozen reference models for contrastive loss
         global_model = copy.deepcopy(model)
@@ -95,8 +80,12 @@ class MOON_Client(tFL_Client):
             # Representations z, z_glob, z_prev (flattened output as proxy for R_w(x))
             z = outputs.flatten(start_dim=1)
             with torch.no_grad():
-                z_glob = global_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(start_dim=1)
-                z_prev = prev_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(start_dim=1)
+                z_glob = global_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
+                    start_dim=1
+                )
+                z_prev = prev_model(batch_x, x_mark=x_mark, y_mark=y_mark).flatten(
+                    start_dim=1
+                )
 
             # Model-contrastive loss ℓ_con (Eq. 3)
             sim_glob = F.cosine_similarity(z, z_glob, dim=1) / self.temperature
@@ -109,8 +98,12 @@ class MOON_Client(tFL_Client):
             loss = loss_sup + self.mu * loss_con
             loss.backward()
             optimizer.step()
+            self.step_scheduler_batch(
+                scheduler=scheduler,
+                batch_data=batch_x,
+            )
 
-        scheduler.step()
+        self.step_scheduler_epoch(scheduler=scheduler)
         if offload_after:
             model.to("cpu")
         del global_model, prev_model

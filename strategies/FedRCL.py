@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from typing import Any
+
 import torch
 import torch.nn.functional as F
 
@@ -5,69 +8,48 @@ from .tFL import tFL, tFL_Client
 
 
 class FedRCL(tFL):
-    """Federated Relaxed Contrastive Learning (Seo et al., ICLR 2024).
-
-    Server: standard FedAvg aggregation.
-    Client: L = L_task + rcl_weight * L_RCL, where L_RCL is the relaxed supervised
-    contrastive loss (paper Eq. 5) that adds a per-pair divergence penalty
-    β · sim(i,j)/τ for intra-class pairs in P(x) = {x' | y_{x'}=y_x, cos(x',x) > λ}.
-
-    TSF adaptations (cannot be avoided):
-    - Multi-level contrastive training (Sec. 4.4) is not applied; only the final
-      model output is used as representation since TSF models have no intermediate
-      feature hooks.
-    - Pseudo-labels from quantile binning of target mean replace class labels.
-
-    Default hyperparameters (from paper): τ = 0.05, λ = 0.7, β = 1.0.
-    Reference: OpenReview hduCLXDhS4.
-    """
+    """Federated Relaxed Contrastive Learning (Seo et al., CVPR 2024)."""
 
     optional = {
         "rcl_tau": 0.05,
         "rcl_beta": 1.0,
         "rcl_lambda": 0.7,
-        "rcl_weight": 0.1,
+        "rcl_weight": 1.0,
         "rcl_num_classes": 4,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--rcl_tau", type=float, default=None)
         parser.add_argument("--rcl_beta", type=float, default=None)
         parser.add_argument("--rcl_lambda", type=float, default=None)
         parser.add_argument("--rcl_weight", type=float, default=None)
         parser.add_argument("--rcl_num_classes", type=int, default=None)
 
+    def aggregate_client_updates(self, packages: Any) -> None:
+        new_global = OrderedDict(
+            (
+                name,
+                torch.stack(
+                    [
+                        package["regular_model_params"][name]
+                        for package in packages.values()
+                    ]
+                ).mean(dim=0),
+            )
+            for name in self.public_model_params
+        )
+        self._commit_global(new_params=new_global)
+
 
 class FedRCL_Client(tFL_Client):
-    """
-    [methodology.tex, Algorithm 1] — Client side: L = L_task + rcl_weight * L_RCL.
-    Overrides train_one_epoch to add the relaxed contrastive loss.
-    """
+    """Train with relaxed contrastive regularization."""
 
     @staticmethod
-    def compute_rcl_loss(features, pseudo_labels, tau, beta, lam):
-        """
-        Relaxed Contrastive Loss (paper Eq. 5).
-
-        L_RCL(x_i, y_i; φ) =
-          Σ_{j≠i, y_j=y_i} {
-            -sim(i,j)/τ + log(Σ_{k≠i} exp(sim(i,k)/τ))    [SCL term]
-            + β · 1_{j∈P(x_i)} · sim(i,j)/τ                [divergence penalty]
-          }
-        where P(x_i) = {x' | y_{x'}=y_i, sim(x',x_i) > λ}.
-        Note: log(exp(sim/τ)) = sim/τ, so the divergence penalty is per-pair.
-
-        Args:
-            features: [B, D] flattened representations.
-            pseudo_labels: [B] integer pseudo-class labels.
-            tau: temperature scalar.
-            beta: divergence term weight.
-            lam: similarity threshold for P(x).
-
-        Returns:
-            Scalar loss.
-        """
+    def compute_rcl_loss(
+        features: Any, pseudo_labels: Any, tau: Any, beta: Any, lam: Any
+    ) -> Any:
+        """Compute relaxed contrastive loss."""
         B = features.shape[0]
         if B < 2:
             return torch.tensor(0.0, device=features.device)
@@ -86,7 +68,9 @@ class FedRCL_Client(tFL_Client):
         logits = sim / tau  # [B, B]
 
         # SCL term per pair: -sim(i,j)/τ + log(Σ_{k≠i} exp(sim(i,k)/τ))
-        log_denom = torch.logsumexp(logits.masked_fill(eye, float("-inf")), dim=1)  # [B]
+        log_denom = torch.logsumexp(
+            logits.masked_fill(eye, float("-inf")), dim=1
+        )  # [B]
         scl_per_pair = -logits + log_denom.unsqueeze(1)  # [B, B]
 
         # Divergence term (paper Eq. 5): β · 1_{j∈P(x_i)} · sim(i,j)/τ
@@ -98,20 +82,8 @@ class FedRCL_Client(tFL_Client):
         return total_per_pair.sum() / pos_mask.sum().clamp(min=1)
 
     @staticmethod
-    def assign_pseudo_labels(batch_y, num_classes):
-        """
-        Assigns pseudo-class labels to TSF samples by binning target statistics.
-
-        Since TSF is regression with no class labels, we compute the per-sample
-        mean of the target sequence and bin into quantile-based groups.
-
-        Args:
-            batch_y: [B, pred_len, channels] target tensor.
-            num_classes: number of pseudo-class bins.
-
-        Returns:
-            [B] integer pseudo-labels.
-        """
+    def assign_pseudo_labels(batch_y: Any, num_classes: Any) -> Any:
+        """Assigns pseudo-class labels to TSF samples by binning target statistics."""
         # Compute per-sample statistic: mean across time and channels
         means = batch_y.mean(dim=(1, 2))  # [B]
         # Quantile-based binning for balanced classes
@@ -122,16 +94,16 @@ class FedRCL_Client(tFL_Client):
 
     def train_one_epoch(
         self,
-        model,
-        dataloader,
-        optimizer,
-        criterion,
-        scheduler,
-        device,
-        offload_after=True,
-    ):
+        model: Any,
+        dataloader: Any,
+        optimizer: Any,
+        criterion: Any,
+        scheduler: Any,
+        device: Any,
+        offload_after: Any = True,
+    ) -> None:
         model.to(device)
-        self._move_optimizer_state_to_param_devices(optimizer)
+        self._move_optimizer_state_to_param_devices(optimizer=optimizer)
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad()
@@ -140,15 +112,17 @@ class FedRCL_Client(tFL_Client):
             x_mark = x_mark.to(device)
             y_mark = y_mark.to(device)
 
-            # [methodology.tex, Algorithm 1, line 10] — L_CE (task loss)
+            # methodology.tex Algorithm 1, pseudocode step 10: task loss.
             outputs = model(batch_x, x_mark=x_mark, y_mark=y_mark)
             task_loss = criterion(outputs, batch_y)
 
-            # [methodology.tex, Algorithm 1, line 8-9] — L_RCL
+            # methodology.tex Algorithm 1, pseudocode steps 8-9: L_RCL.
             # Use model outputs as representations (flattened)
             B = outputs.shape[0]
             features = outputs.reshape(B, -1)
-            pseudo_labels = self.assign_pseudo_labels(batch_y, self.rcl_num_classes)
+            pseudo_labels = self.assign_pseudo_labels(
+                batch_y=batch_y, num_classes=self.rcl_num_classes
+            )
 
             # [methodology.tex, eq.6] — Relaxed contrastive loss
             rcl_loss = self.compute_rcl_loss(
@@ -159,11 +133,20 @@ class FedRCL_Client(tFL_Client):
                 lam=self.rcl_lambda,
             )
 
-            # [methodology.tex, Algorithm 1, line 10] — L = L_CE + L_RCL
+            # methodology.tex Algorithm 1, pseudocode step 10: L = L_CE + L_RCL.
             loss = task_loss + self.rcl_weight * rcl_loss
             loss.backward()
             optimizer.step()
+            self.step_scheduler_batch(
+                scheduler=scheduler,
+                batch_data=batch_x,
+            )
 
         if offload_after:
             model.to("cpu")
-        scheduler.step()
+        self.step_scheduler_epoch(scheduler=scheduler)
+
+    def package(self) -> dict:
+        package = super().package()
+        package["__wire__"] = ("regular_model_params",)
+        return package

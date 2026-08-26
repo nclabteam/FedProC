@@ -40,7 +40,7 @@ class SCINet(nn.Module):
 
 class SCIBlock(nn.Module):
     def __init__(self, enc_in, kernel_size=3, dilation=1, dropout=0.5, d_model=64):
-        super(SCIBlock, self).__init__()
+        super().__init__()
         pad_l = (
             dilation * (kernel_size - 1) // 2 + 1
             if kernel_size % 2 != 0
@@ -102,7 +102,7 @@ class SCITree(nn.Module):
     def __init__(
         self, level, enc_in, kernel_size=3, dilation=1, dropout=0.5, d_model=64
     ):
-        super(SCITree, self).__init__()
+        super().__init__()
         self.level = level
         self.block = SCIBlock(
             enc_in=enc_in,

@@ -126,7 +126,7 @@ class ChebyKANLayer(nn.Module):
 
 class FrequencyDecomp(nn.Module):
     def __init__(self, configs):
-        super(FrequencyDecomp, self).__init__()
+        super().__init__()
         self.configs = configs
 
     def forward(self, level_list, **kwargs):
@@ -171,7 +171,7 @@ class FrequencyDecomp(nn.Module):
 
 class FrequencyMixing(nn.Module):
     def __init__(self, configs):
-        super(FrequencyMixing, self).__init__()
+        super().__init__()
         self.configs = configs
         self.front_block = M_KAN(
             configs.d_model,
@@ -270,7 +270,7 @@ class BasicConv(nn.Module):
         bias=False,
         dropout=0.0,
     ):
-        super(BasicConv, self).__init__()
+        super().__init__()
         self.out_channels = c_out
         self.conv = nn.Conv1d(
             c_in,

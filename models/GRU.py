@@ -15,7 +15,7 @@ class GRU(nn.Module):
         parser.add_argument("--num_layers", type=int, default=None)
 
     def __init__(self, configs):
-        super(GRU, self).__init__()
+        super().__init__()
         self.hidden_size = configs.hidden_size
         self.num_layers = configs.num_layers
         self.pred_len = configs.output_len
@@ -59,7 +59,7 @@ class GRU(nn.Module):
 
 class GRUCell(nn.Module):
     def __init__(self, input_size, hidden_size):
-        super(GRUCell, self).__init__()
+        super().__init__()
         self.hidden_size = hidden_size
         self.input_size = input_size
 

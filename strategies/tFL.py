@@ -1,32 +1,21 @@
-"""Stateless-client / server-owned-state execution core.
-
-Stateless-client architecture: clients are reusable stateless workers; ALL
-per-client persistent state (model params, optimizer/scheduler state, personal
-params) lives on the server and is threaded in/out each round via packages.
-
-Canonical class hierarchy:
-  SharedMethods  ← base.py utilities
-    └─ tFL_Client   reusable stateless worker
-    └─ tFL          server — owns global model + all per-client state
-         └─ pFL     adds per-client personal-model evaluation pre-hook
-         └─ sFL     adds Byzantine attack injection seam (attacks/ registry)
-              └─ Krum, FedMedian, FedTrimmedAvg
-"""
+"""Stateless-client / server-owned-state execution core."""
 
 import copy
+import csv
 import json
 import logging
 import os
 import time
-
-import csv
 from argparse import Namespace
 from collections import OrderedDict, deque
+from collections.abc import Callable, Mapping
+from contextlib import suppress
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import ray
 import torch
+from torch.utils.data import DataLoader
 
 from .base import SharedMethods
 
@@ -34,39 +23,35 @@ _PARITY_RNG_SHIM = True
 
 
 class tFL_Client(SharedMethods):
-    """Reusable worker that can *become* any client for a single round.
-
-    Holds one model/optimizer/scheduler/loss, rebuilt only at construction.
-    Every round, :meth:`set_parameters` fully (re)loads the target client's
-    data, model params, and optimizer/scheduler state from the server package,
-    so no cross-round state lives on this object.
-    """
+    """Reusable worker that can *become* any client for a single round."""
 
     def __init__(self, configs: Namespace, times: int, device: str) -> None:
         self.set_configs(configs=configs, times=times)
+        self.return_diff = bool(self.return_diff or type(self).return_diff)
         self.device = device
         self.id: Optional[int] = None
         self.current_iter = 0
         self.train_samples = 0
         self._private_cache: Dict[int, dict] = {}
 
-        self._load_private(0)  # set channels on configs before building the model
-        self.model = self._build("models", configs.model)(configs=configs)
-        self.optimizer = self._build("optimizers", configs.optimizer)(
+        # Heterogeneous workers may need a representative client's dimensions.
+        self._load_private(client_id=getattr(configs, "_worker_client_id", 0))
+        self.initialize_model()
+        self.optimizer = self._build(kind="optimizers", name=configs.optimizer)(
             params=self.model.parameters(), configs=configs
         )
-        self.scheduler = self._build("schedulers", configs.scheduler)(
-            optimizer=self.optimizer, configs=configs
-        )
-        self.loss = self._build("losses", configs.loss)()
+        self._scheduler_base_lrs = [
+            float(group["lr"]) for group in self.optimizer.param_groups
+        ]
+        self.initialize_scheduler()
+        self.loss = self._build(kind="losses", name=configs.loss)()
         self.init_optimizer_state = copy.deepcopy(self.optimizer.state_dict())
-        self.init_scheduler_state = copy.deepcopy(self.scheduler.state_dict())
         self.regular_params_name = [k for k, _ in self.model.named_parameters()]
         self.personal_params_name: List[str] = []
 
-    @staticmethod
-    def _build(kind: str, name: str):
-        return SharedMethods._get_objective_function(kind, name)
+    @classmethod
+    def _build(cls, kind: str, name: str) -> Callable[..., Any]:
+        return cls._get_objective_function(func_type=kind, func_name=name)
 
     def _load_private(self, client_id: int) -> None:
         if client_id not in self._private_cache:
@@ -90,29 +75,30 @@ class tFL_Client(SharedMethods):
             int(self.seed) + int(self.times), self.id, self.current_iter, offset
         )
 
-    def load_train_data(self):
+    def load_train_data(self) -> DataLoader:
         loader = self.load_data(
             file=self.train_file,
             sample_ratio=self.sample_ratio,
             shuffle=True,
             scaler=self.scaler,
             batch_size=self.batch_size,
-            seed=self._loader_seed("train"),
+            seed=self._loader_seed(dataset_type="train"),
         )
         self.train_samples = len(loader.dataset)
         return loader
 
-    def load_test_data(self):
+    def load_test_data(self) -> DataLoader:
         return self.load_data(
             file=self.test_file,
             sample_ratio=1.0,
             shuffle=False,
             scaler=self.scaler,
             batch_size=self.batch_size,
-            seed=self._loader_seed("test"),
+            seed=self._loader_seed(dataset_type="test"),
         )
 
     return_diff: bool = False
+    return_diff_score: bool = True
 
     def _warmup(self) -> None:
         self.model.to(self.device)
@@ -129,7 +115,7 @@ class tFL_Client(SharedMethods):
     def set_parameters(self, package: Dict[str, Any]) -> None:
         self.id = package["client_id"]
         self.current_iter = package["current_iter"]
-        self._load_private(self.id)
+        self._load_private(client_id=self.id)
         self.model.load_state_dict(package["regular_model_params"], strict=False)
         if package["personal_model_params"]:
             self.model.load_state_dict(package["personal_model_params"], strict=False)
@@ -137,10 +123,13 @@ class tFL_Client(SharedMethods):
             self.optimizer.load_state_dict(package["optimizer_state"])
         else:
             self.optimizer.load_state_dict(self.init_optimizer_state)
-        if package["scheduler_state"]:
-            self.scheduler.load_state_dict(package["scheduler_state"])
-        else:
-            self.scheduler.load_state_dict(self.init_scheduler_state)
+        if self.scheduler_mode == "iteration":
+            self.restore_scheduler(
+                scheduler=self.scheduler,
+                optimizer=self.optimizer,
+                state=package["scheduler_state"] or self.init_scheduler_state,
+                mode=self.scheduler_mode,
+            )
         if self.return_diff:
             state = self.model.state_dict()
             self._initial_regular_params = OrderedDict(
@@ -148,8 +137,9 @@ class tFL_Client(SharedMethods):
             )
 
     def fit(self) -> None:
-        SharedMethods._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
+        self.initialize_scheduler(steps_per_epoch=len(loader))
         offload_after_epoch = self.efficiency == "low"
         for _ in range(self.epochs):
             self.train_one_epoch(
@@ -165,15 +155,13 @@ class tFL_Client(SharedMethods):
             self.model.to("cpu")
 
     def train(self, package: Dict[str, Any]) -> Dict[str, Any]:
-        self.set_parameters(package)
+        self.set_parameters(package=package)
         self.fit()
         return self.package()
 
     def package(self) -> Dict[str, Any]:
         state = self.model.state_dict()
-        regular = {
-            k: state[k].detach().cpu().clone() for k in self.regular_params_name
-        }
+        regular = {k: state[k].detach().cpu().clone() for k in self.regular_params_name}
         personal = {
             k: state[k].detach().cpu().clone() for k in self.personal_params_name
         }
@@ -182,7 +170,7 @@ class tFL_Client(SharedMethods):
             "client_id": self.id,
             "regular_model_params": regular,
             "personal_model_params": personal,
-            "optimizer_state": self._optimizer_state_to_cpu(self.optimizer),
+            "optimizer_state": self._optimizer_state_to_cpu(optimizer=self.optimizer),
             "scheduler_state": copy.deepcopy(self.scheduler.state_dict()),
             "score": self.train_samples,
         }
@@ -190,6 +178,11 @@ class tFL_Client(SharedMethods):
             pkg["model_params_diff"] = OrderedDict(
                 (k, self._initial_regular_params[k] - regular[k])
                 for k in self.regular_params_name
+            )
+            pkg["__wire__"] = (
+                ("model_params_diff", "score")
+                if self.return_diff_score
+                else ("model_params_diff",)
             )
         return pkg
 
@@ -202,12 +195,10 @@ class tFL_Client(SharedMethods):
     ) -> float:
         self.id = client_id
         self.current_iter = current_iter
-        self._load_private(client_id)
+        self._load_private(client_id=client_id)
         self.model.load_state_dict(global_params, strict=False)
         loader = (
-            self.load_test_data()
-            if dataset_type == "test"
-            else self.load_train_data()
+            self.load_test_data() if dataset_type == "test" else self.load_train_data()
         )
         losses = self.calculate_loss(
             model=self.model,
@@ -228,14 +219,12 @@ class tFL_Client(SharedMethods):
     ) -> float:
         self.id = client_id
         self.current_iter = current_iter
-        self._load_private(client_id)
+        self._load_private(client_id=client_id)
         self.model.load_state_dict(global_params, strict=False)
         if personal_params:
             self.model.load_state_dict(personal_params, strict=False)
         loader = (
-            self.load_test_data()
-            if dataset_type == "test"
-            else self.load_train_data()
+            self.load_test_data() if dataset_type == "test" else self.load_train_data()
         )
         losses = self.calculate_loss(
             model=self.model,
@@ -250,18 +239,26 @@ class tFL_Client(SharedMethods):
 class Trainer:
     """Drives per-client work serially or across a Ray actor pool."""
 
-    def __init__(self, server: "tFL", client_cls, configs, times) -> None:
+    def __init__(
+        self,
+        server: "tFL",
+        client_cls: type[tFL_Client],
+        configs: Namespace,
+        times: int,
+    ) -> None:
         self.server = server
         self.client_cls = client_cls
         self.parallel = server.parallel
         if not self.parallel:
-            self.worker = client_cls(configs=configs, times=times, device=configs.device)
+            self.worker = client_cls(
+                configs=configs, times=times, device=configs.device
+            )
         else:
             self.num_workers = int(server.num_workers)
             device = "cuda" if server.num_gpus > 0 else "cpu"
-            remote_cls = ray.remote(
-                num_gpus=server.num_gpus / self.num_workers
-            )(client_cls)
+            remote_cls = ray.remote(num_gpus=server.num_gpus / self.num_workers)(
+                client_cls
+            )
             self.workers = [
                 remote_cls.remote(configs=configs, times=times, device=device)
                 for _ in range(self.num_workers)
@@ -271,17 +268,17 @@ class Trainer:
             ray.get([w._warmup.remote() for w in self.workers])
 
     def _dispatch(self, cid: int) -> dict:
-        pkg = self.server.package(cid)
+        pkg = self.server.package(client_id=cid)
         real_keys = pkg.pop("__wire__", ())
         self.server._downlink_sizes[cid] = sum(
-            self.server.get_size(pkg[k]) for k in real_keys if k in pkg
+            self.server.get_size(obj=pkg[k]) for k in real_keys if k in pkg
         )
         return pkg
 
     def _receive(self, cid: int, out: dict) -> dict:
         real_keys = out.pop("__wire__", ())
         self.server._uplink_sizes[cid] = sum(
-            self.server.get_size(out[k]) for k in real_keys if k in out
+            self.server.get_size(obj=out[k]) for k in real_keys if k in out
         )
         return out
 
@@ -289,8 +286,11 @@ class Trainer:
         packages: "OrderedDict[int, dict]" = OrderedDict()
         if not self.parallel:
             for cid in selected:
-                out = self._receive(cid, self.worker.train(self._dispatch(cid)))
-                self._write_back(cid, out)
+                out = self._receive(
+                    cid=cid,
+                    out=self.worker.train(package=self._dispatch(cid=cid)),
+                )
+                self._write_back(cid=cid, out=out)
                 packages[cid] = out
             return packages
 
@@ -303,7 +303,7 @@ class Trainer:
             while i < len(selected) and idle:
                 wid = idle.popleft()
                 cid = selected[i]
-                fut = self.workers[wid].train.remote(self._dispatch(cid))
+                fut = self.workers[wid].train.remote(package=self._dispatch(cid=cid))
                 job_map[fut] = (cid, wid)
                 futures.append(fut)
                 i += 1
@@ -311,47 +311,68 @@ class Trainer:
                 done, futures = ray.wait(futures)
                 for fut in done:
                     cid, wid = job_map.pop(fut)
-                    out = self._receive(cid, ray.get(fut))
-                    self._write_back(cid, out)
+                    out = self._receive(cid=cid, out=ray.get(fut))
+                    self._write_back(cid=cid, out=out)
                     results[cid] = out
                     idle.append(wid)
-        for cid in selected:
-            packages[cid] = results[cid]
-        return packages
+        return OrderedDict((cid, results[cid]) for cid in selected)
 
     def evaluate(
-        self, ids: List[int], global_params, dataset_type: str, current_iter: int
+        self,
+        ids: List[int],
+        global_params: Mapping[str, torch.Tensor],
+        dataset_type: str,
+        current_iter: int,
     ) -> List[float]:
         if not self.parallel:
             return [
                 self.worker.evaluate_global(
-                    cid, global_params, dataset_type, current_iter
+                    client_id=cid,
+                    global_params=global_params,
+                    dataset_type=dataset_type,
+                    current_iter=current_iter,
                 )
                 for cid in ids
             ]
         gp = ray.put(global_params)
         futures = [
             self.workers[k % self.num_workers].evaluate_global.remote(
-                cid, gp, dataset_type, current_iter
+                client_id=cid,
+                global_params=gp,
+                dataset_type=dataset_type,
+                current_iter=current_iter,
             )
             for k, cid in enumerate(ids)
         ]
         return list(ray.get(futures))
 
     def evaluate_personalized(
-        self, ids: List[int], global_params, personal_map, dataset_type, current_iter
+        self,
+        ids: List[int],
+        global_params: Mapping[str, torch.Tensor],
+        personal_map: Mapping[int, Mapping[str, Any]],
+        dataset_type: str,
+        current_iter: int,
     ) -> List[float]:
         if not self.parallel:
             return [
                 self.worker.evaluate_personalized(
-                    cid, global_params, personal_map[cid], dataset_type, current_iter
+                    client_id=cid,
+                    global_params=global_params,
+                    personal_params=personal_map[cid],
+                    dataset_type=dataset_type,
+                    current_iter=current_iter,
                 )
                 for cid in ids
             ]
         gp = ray.put(global_params)
         futures = [
             self.workers[k % self.num_workers].evaluate_personalized.remote(
-                cid, gp, personal_map[cid], dataset_type, current_iter
+                client_id=cid,
+                global_params=gp,
+                personal_params=personal_map[cid],
+                dataset_type=dataset_type,
+                current_iter=current_iter,
             )
             for k, cid in enumerate(ids)
         ]
@@ -359,7 +380,7 @@ class Trainer:
 
     def dispatch_one(self, cid: int, wid: int) -> Any:
         """Dispatch a single client to a specific Ray worker. Returns a future."""
-        return self.workers[wid].train.remote(self._dispatch(cid))
+        return self.workers[wid].train.remote(package=self._dispatch(cid=cid))
 
     def _write_back(self, cid: int, out: Dict[str, Any]) -> None:
         self.server.client_optimizer_states[cid] = out["optimizer_state"]
@@ -370,12 +391,7 @@ class Trainer:
 
 
 class tFL(SharedMethods):
-    """Server that owns all per-client state and aggregates a global model.
-
-    Subclass and override :meth:`aggregate_client_updates` to implement a
-    custom aggregation rule. Override :meth:`package` to send extra per-round
-    data to clients; override :meth:`tFL_Client.set_parameters` to consume it.
-    """
+    """Server that owns all per-client state and aggregates a global model."""
 
     # Class-level sentinels for optional metrics that may never be set
     # (None-stripping means None-default optionals never reach the instance).
@@ -420,11 +436,13 @@ class tFL(SharedMethods):
         self.configs.__dict__["output_channels"] = info0["output_channels"]
         self.output_channels = info0["output_channels"]
 
-        model_cls = SharedMethods._get_objective_function("models", self.model)
+        model_cls = self._get_objective_function(
+            func_type="models", func_name=self.model
+        )
         if _PARITY_RNG_SHIM:
             for _ in range(self.num_clients):
                 model_cls(configs=self.configs)
-        self.model = model_cls(configs=self.configs)
+        self.initialize_model()
         self.public_model_params = OrderedDict(
             (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
         )
@@ -436,15 +454,21 @@ class tFL(SharedMethods):
         if self.exclude_ratio > 0.0:
             num_new = max(1, int(self.num_clients * self.exclude_ratio))
             rng = np.random.default_rng(self.seed)
-            new_ids = set(
-                rng.choice(self.num_clients, num_new, replace=False).tolist()
-            )
+            new_ids = set(rng.choice(self.num_clients, num_new, replace=False).tolist())
             for cid in new_ids:
                 self.is_new[cid] = True
             self.logger.info(f"New clients ({num_new}): {sorted(new_ids)}")
 
-        self.trainer = Trainer(self, self._client_cls(), self.configs, self.times)
+        self.trainer = self._make_trainer()
         self.get_model_info()
+
+    def _make_trainer(self) -> Trainer:
+        return Trainer(
+            server=self,
+            client_cls=self._client_cls(),
+            configs=self.configs,
+            times=self.times,
+        )
 
     def get_model_info(self) -> None:
         if self.exclude_server_model_processes:
@@ -452,20 +476,20 @@ class tFL(SharedMethods):
         if not self.parallel:
             worker = self.trainer.worker
         else:
-            worker = self._client_cls()(configs=self.configs, times=self.times, device=self.device)
-        worker._load_private(0)
+            worker = self._client_cls()(
+                configs=self.configs, times=self.times, device=self.device
+            )
+        worker._load_private(client_id=0)
         worker.id = 0
         worker.current_iter = 0
         dl = worker.load_train_data()
         self.summarize_model(dataloader=dl)
 
-    def _client_cls(self):
+    def _client_cls(self) -> type[tFL_Client]:
         module_name = self.__module__
         class_name = self.__class__.__name__ + "_Client"
         try:
-            return getattr(
-                __import__(module_name, fromlist=[class_name]), class_name
-            )
+            return getattr(__import__(module_name, fromlist=[class_name]), class_name)
         except (ImportError, AttributeError):
             return tFL_Client
 
@@ -484,6 +508,19 @@ class tFL(SharedMethods):
             )
         ]
 
+    def _select_all_clients(self) -> None:
+        self.selected_clients = [
+            i for i in range(self.num_clients) if not self.is_new[i]
+        ]
+        self.current_num_join_clients = len(self.selected_clients)
+
+    def _select_one_client(self) -> None:
+        incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
+        if not incumbent:
+            raise ValueError("at least one incumbent client is required")
+        self.selected_clients = [int(np.random.choice(incumbent))]
+        self.current_num_join_clients = 1
+
     def package(self, client_id: int) -> Dict[str, Any]:
         return {
             "__wire__": ("regular_model_params",),
@@ -495,41 +532,54 @@ class tFL(SharedMethods):
             "scheduler_state": self.client_scheduler_states[client_id],
         }
 
-    def _commit_global(self, new_params) -> None:
+    def _commit_global(self, new_params: Mapping[str, torch.Tensor]) -> None:
         self.public_model_params = OrderedDict(new_params)
         self.model.load_state_dict(self.public_model_params, strict=False)
 
     def _downlink_payload(self) -> Dict[str, Any]:
         return {}
 
-    def _compute_send_mb(self, packages) -> tuple:
-        uplink = {
-            cid: self._uplink_sizes.get(cid, 0.0)
-            for cid in packages
-        }
+    def _compute_send_mb(
+        self, packages: Mapping[int, dict[str, Any]]
+    ) -> tuple[dict[int, float], float]:
+        uplink = {cid: self._uplink_sizes.get(cid, 0.0) for cid in packages}
         post_agg = self._downlink_payload()
         if post_agg:
-            downlink = sum(self.get_size(v) for v in post_agg.values()) * len(self.selected_clients)
+            downlink = sum(
+                self.get_size(obj=value) for value in post_agg.values()
+            ) * len(self.selected_clients)
         else:
-            downlink = sum(self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients)
+            downlink = sum(
+                self._downlink_sizes.get(cid, 0.0) for cid in self.selected_clients
+            )
         return uplink, downlink
 
     def train_one_round(self) -> dict:
-        packages = self.trainer.train(self.selected_clients)
-        self.aggregate_client_updates(packages)
+        packages = self.trainer.train(selected=self.selected_clients)
+        self.aggregate_client_updates(packages=packages)
         return packages
 
+    @staticmethod
+    def extract_models_and_scores(
+        packages: Mapping[int, Mapping[str, Any]],
+        model_key: str = "regular_model_params",
+    ) -> tuple[List[Dict[str, torch.Tensor]], List[float]]:
+        """Extract model payloads and scores in one pass."""
+        models: List[Dict[str, torch.Tensor]] = []
+        scores: List[float] = []
+        for package in packages.values():
+            models.append(package[model_key])
+            scores.append(float(package["score"]))
+        return models, scores
+
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
-        scores = [p["score"] for p in packages.values()]
-        total = float(sum(scores))
-        weights = torch.tensor([s / total for s in scores], dtype=torch.float32)
-        new_params = OrderedDict()
-        for name in self.public_model_params:
-            stacked = torch.stack(
-                [p["regular_model_params"][name] for p in packages.values()], dim=-1
+        models, scores = self.extract_models_and_scores(packages=packages)
+        self._commit_global(
+            new_params=self.mean_models(
+                models=models,
+                weights=scores,
             )
-            new_params[name] = torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
-        self._commit_global(new_params)
+        )
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
         """No-op for tFL; pFL overrides to run per-client personalized eval."""
@@ -537,7 +587,10 @@ class tFL(SharedMethods):
     def evaluate_generalization(self, dataset_type: str) -> None:
         incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
         losses = self.trainer.evaluate(
-            incumbent, self.public_model_params, dataset_type, self.current_iter
+            ids=incumbent,
+            global_params=self.public_model_params,
+            dataset_type=dataset_type,
+            current_iter=self.current_iter,
         )
         metric = f"generalization_avg_{dataset_type}_loss"
         metric_val = float(np.mean(losses))
@@ -549,13 +602,15 @@ class tFL(SharedMethods):
         if dataset_type == "test":
             self._best_global_loss = min(self._best_global_loss, metric_val)
         for cid, loss in zip(incumbent, losses):
-            self._round_client_data.setdefault(cid, {})[f"{dataset_type}_loss"] = float(loss)
+            self._round_client_data.setdefault(cid, {})[f"{dataset_type}_loss"] = float(
+                loss
+            )
 
     def early_stopping(self) -> bool:
         metric = self.metrics["generalization_avg_test_loss"]
         if not self.patience or len(metric) < self.patience:
             return False
-        if min(metric) not in metric[-self.patience:]:
+        if min(metric) not in metric[-self.patience :]:
             self.logger.info("Early stopping activated.")
             return True
         return False
@@ -598,19 +653,35 @@ class tFL(SharedMethods):
         if not vals:
             return
         if vals[-1] == self._best_global_loss:
-            SharedMethods.save_model(
-                self.model, self.model_path, self.name.strip(), "best",
-                configs=self.configs, verbose=self.logger,
+            self.save_model(
+                model=self.model,
+                path=self.model_path,
+                name=self.name.strip(),
+                postfix="best",
+                configs=self.configs,
+                verbose=self.logger,
             )
 
     def _save_last_hook(self) -> None:
-        SharedMethods.save_model(
-            self.model, self.model_path, self.name.strip(), "last",
-            configs=self.configs, verbose=self.logger,
+        self.save_model(
+            model=self.model,
+            path=self.model_path,
+            name=self.name.strip(),
+            postfix="last",
+            configs=self.configs,
+            verbose=self.logger,
         )
         path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
         self.logger.info(f"Results saved to {path}")
         self.logger.info(f"Per-client results saved to {self.result_path}")
+
+    def _finish_training(self) -> None:
+        """Save final state and close the training runtime."""
+        self._save_last_hook()
+        with suppress(Exception):
+            self.close_logger()
+        with suppress(Exception):
+            ray.shutdown()
 
     def train(self) -> None:
         for i in range(self.iterations):
@@ -625,9 +696,9 @@ class tFL(SharedMethods):
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
                         continue
-                    self._pre_eval_hook(dataset_type)
+                    self._pre_eval_hook(dataset_type=dataset_type)
             packages = self.train_one_round()
-            uplink, downlink = self._compute_send_mb(packages)
+            uplink, downlink = self._compute_send_mb(packages=packages)
             self.metrics["downlink_mb"].append(downlink)
             for cid, mb in uplink.items():
                 self._round_client_data.setdefault(cid, {})["uplink_mb"] = mb
@@ -636,7 +707,7 @@ class tFL(SharedMethods):
                     if dataset_type == "train" and self.skip_eval_train:
                         continue
                     if not self.exclude_server_model_processes:
-                        self.evaluate_generalization(dataset_type)
+                        self.evaluate_generalization(dataset_type=dataset_type)
                 self._save_best_hook()
             iter_time = time.time() - round_start
             self.metrics["time_per_iter"].append(iter_time)
@@ -644,12 +715,4 @@ class tFL(SharedMethods):
             self._flush_round()
             if self.early_stopping():
                 break
-        self._save_last_hook()
-        try:
-            self.close_logger()
-        except Exception:
-            pass
-        try:
-            ray.shutdown()
-        except Exception:
-            pass
+        self._finish_training()

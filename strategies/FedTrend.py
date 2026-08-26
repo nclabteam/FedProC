@@ -1,5 +1,8 @@
 import copy
+import json
+from argparse import Namespace
 from collections import OrderedDict
+from typing import Any
 
 import higher
 import numpy as np
@@ -10,27 +13,13 @@ from .tFL import tFL, tFL_Client
 
 
 class FedTrend(tFL):
-    """Fed-TREND: Federated Time Series Forecasting with Synthetic Data (Bai et al., 2025).
-
-    Generates two types of synthetic data on the server to address heterogeneity:
-    - D_ct: derived from per-client model-update trajectory pairs; distributed to clients
-      for local training augmentation to reduce cross-client heterogeneity.
-    - D_gt: derived from the global model trajectory; used server-side to refine the
-      aggregated global model and correct for model drift.
-
-    Both datasets are updated every L_ct / L_gt rounds via bi-level optimization (MTT
-    data condensation: Adam on synthetic (X, Y) pairs, inner SGD for trajectory replay).
-
-    Default hyperparameters (from paper §5.4): L_ct=L_gt=10, synthetic_epochs=300,
-    synthetic_lr=3e-4. Effective D_ct/D_gt sizes explored in paper: 5–40 samples.
-    Reference: arXiv:2411.15716.
-    """
+    """Fed-TREND: Federated Time Series Forecasting with Synthetic Data (Bai et al., 2025)."""
 
     optional = {
         "L_ct": 10,
-        "synthetic_data_size_ct": 100,
+        "synthetic_data_size_ct": 20,
         "L_gt": 10,
-        "synthetic_data_size_gt": 100,
+        "synthetic_data_size_gt": 20,
         "synthetic_epochs": 300,
         "synthetic_inner_epochs": 1,
         "synthetic_lr": 3e-4,
@@ -38,7 +27,7 @@ class FedTrend(tFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> Any:
         parser.add_argument("--L_ct", type=int, default=None)
         parser.add_argument("--synthetic_data_size_ct", type=int, default=None)
         parser.add_argument("--L_gt", type=int, default=None)
@@ -49,8 +38,8 @@ class FedTrend(tFL):
         parser.add_argument("--refine_epochs", type=int, default=None)
         return parser
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, configs: Namespace, times: int) -> None:
+        super().__init__(configs=configs, times=times)
         self.D_ct = None
         self.D_gt = None
 
@@ -59,13 +48,12 @@ class FedTrend(tFL):
 
         # Start of current L_ct interval per client — initialized to W^0.
         self.T_ct_start = {
-            i: copy.deepcopy(self.public_model_params)
-            for i in range(self.num_clients)
+            i: copy.deepcopy(self.public_model_params) for i in range(self.num_clients)
         }
         self.T_ct_prev_delta = {}
 
-        # T_gt: list of aggregated global model state dicts [W^0, W^1, ...].
-        self.T_gt = []
+        # T_gt: aggregated global trajectory [W^0, W^1, ...].
+        self.T_gt = [copy.deepcopy(self.public_model_params)]
 
         self.initialize_loss()
         self.initialize_optimizer()
@@ -76,15 +64,17 @@ class FedTrend(tFL):
     # ------------------------------------------------------------------ #
 
     def package(self, client_id: int) -> dict:
-        result = super().package(client_id)
+        result = super().package(client_id=client_id)
         result["D_ct"] = self.D_ct
+        if self.D_ct is not None:
+            result["__wire__"] = (*result["__wire__"], "D_ct")
         return result
 
     # ------------------------------------------------------------------ #
     # Trajectory management                                                #
     # ------------------------------------------------------------------ #
 
-    def _update_T_ct(self, packages) -> None:
+    def _update_T_ct(self, packages: Any) -> None:
         """Record one L_ct-length trajectory per client with consistency mask."""
         for cid, pkg in packages.items():
             end_params = pkg["regular_model_params"]
@@ -95,8 +85,8 @@ class FedTrend(tFL):
                 for name in end_params:
                     if name in start_params:
                         curr_delta[name] = (
-                            end_params[name] - start_params[name]
-                        ).cpu().clone()
+                            (end_params[name] - start_params[name]).cpu().clone()
+                        )
 
             mask = None
             prev_delta = self.T_ct_prev_delta.get(cid)
@@ -117,29 +107,37 @@ class FedTrend(tFL):
             self.T_ct_prev_delta[cid] = curr_delta
 
     # ------------------------------------------------------------------ #
-    # Synthetic data construction (Algorithm 1, lines 29-36)              #
+    # Synthetic data construction (Algorithm 1, pseudocode steps 29-36)   #
     # ------------------------------------------------------------------ #
 
     def _data_construction(
         self,
-        trajectories,
-        data_size,
-        input_shape,
-        output_shape,
-        synthetic_epochs,
-        synthetic_inner_epochs,
-        synthetic_lr,
-        x_mark_shape=None,
-        y_mark_shape=None,
-        is_client_trajectory=False,
-    ):
+        trajectories: Any,
+        data_size: Any,
+        input_shape: Any,
+        output_shape: Any,
+        synthetic_epochs: Any,
+        synthetic_inner_epochs: Any,
+        synthetic_lr: Any,
+        x_mark_shape: Any = None,
+        y_mark_shape: Any = None,
+        is_client_trajectory: Any = False,
+    ) -> Any:
         synthetic_x = torch.randn(
             data_size, *input_shape, requires_grad=True, device="cpu"
         )
         synthetic_y = torch.randn(
             data_size, *output_shape, requires_grad=True, device="cpu"
         )
-        synthetic_data = TensorDataset(synthetic_x, synthetic_y)
+        synthetic_tensors = [synthetic_x, synthetic_y]
+        if x_mark_shape is not None and y_mark_shape is not None:
+            synthetic_tensors.extend(
+                [
+                    torch.zeros(data_size, *x_mark_shape),
+                    torch.zeros(data_size, *y_mark_shape),
+                ]
+            )
+        synthetic_data = TensorDataset(*synthetic_tensors)
         optimizer_data = torch.optim.Adam([synthetic_x, synthetic_y], lr=synthetic_lr)
 
         for s_epoch in range(synthetic_epochs):
@@ -162,7 +160,7 @@ class FedTrend(tFL):
             )
 
             with higher.innerloop_ctx(
-                temp_model, optimizer_model, track_higher_grads=False
+                temp_model, optimizer_model, track_higher_grads=True
             ) as (fmodel, diffopt):
                 for _ in range(synthetic_inner_epochs):
                     for batch in DataLoader(
@@ -176,41 +174,39 @@ class FedTrend(tFL):
                         diffopt.step(loss)
 
                 optimizer_data.zero_grad()
-                distance_loss = 0
-                named_end = dict(model_end_state)
-                for (name, param_end), param_tilde in zip(
-                    named_end.items(), fmodel.parameters()
-                ):
-                    if name not in dict(fmodel.named_parameters()):
+                distance_loss = torch.zeros((), device="cpu")
+                for name, param_tilde in fmodel.named_parameters():
+                    if name not in model_end_state:
                         continue
-                    diff = (param_end.to("cpu") - param_tilde) ** 2
+                    diff = (model_end_state[name].to("cpu") - param_tilde) ** 2
                     if name in mask_dict:
                         diff = diff * mask_dict[name].float().to("cpu")
                     distance_loss += torch.sum(diff)
 
-            self.logger.info(
-                f"SynEpoch {s_epoch+1}/{synthetic_epochs}, "
-                f"Distance Loss: {distance_loss.item():.4f}"
-            )
+            if (
+                s_epoch == synthetic_epochs - 1
+                or (s_epoch + 1) % max(1, synthetic_epochs // 10) == 0
+            ):
+                self.logger.info(
+                    f"SynEpoch {s_epoch+1}/{synthetic_epochs}, "
+                    f"Distance Loss: {distance_loss.item():.4f}"
+                )
             distance_loss.backward()
             optimizer_data.step()
 
         sx = synthetic_x.detach().cpu()
         sy = synthetic_y.detach().cpu()
         if x_mark_shape is not None and y_mark_shape is not None:
-            return TensorDataset(
-                sx,
-                sy,
-                torch.zeros(data_size, *x_mark_shape),
-                torch.zeros(data_size, *y_mark_shape),
-            )
+            return TensorDataset(sx, sy, *synthetic_data.tensors[2:])
         return TensorDataset(sx, sy)
 
-    def _get_mark_shapes(self):
-        sample = next(iter(self.trainer.worker.load_train_data()))
-        return tuple(sample[2].shape[1:]), tuple(sample[3].shape[1:])
+    def _get_mark_shapes(self) -> Any:
+        with open(self.path_info, "r", encoding="utf-8") as file:
+            train_file = json.load(file)[0]["paths"]["train"]
+        with np.load(train_file) as data:
+            return tuple(data["x_mark"].shape[1:]), tuple(data["y_mark"].shape[1:])
 
-    def _update_D_ct(self, packages) -> None:
+    def _update_D_ct(self, packages: Any) -> None:
         input_shape = (self.input_len, self.input_channels)
         output_shape = (self.output_len, self.output_channels)
         x_mark_shape, y_mark_shape = self._get_mark_shapes()
@@ -262,6 +258,10 @@ class FedTrend(tFL):
             return
         self.logger.info("Refining global model on D_gt...")
         dataloader = DataLoader(self.D_gt, batch_size=self.batch_size, shuffle=True)
+        self.initialize_scheduler(
+            steps_per_epoch=len(dataloader),
+            epochs=self.refine_epochs,
+        )
         for _ in range(self.refine_epochs):
             self.train_one_epoch(
                 model=self.model,
@@ -276,27 +276,27 @@ class FedTrend(tFL):
     # FL aggregation hook                                                  #
     # ------------------------------------------------------------------ #
 
-    def aggregate_client_updates(self, packages) -> None:
+    def aggregate_client_updates(self, packages: Any) -> None:
         # Standard FedAvg aggregation
-        super().aggregate_client_updates(packages)
+        super().aggregate_client_updates(packages=packages)
 
         # Store aggregated global model state in T_gt, then refine on D_gt.
         self.T_gt.append(copy.deepcopy(self.public_model_params))
         self._refine_global_model()
         # Commit refined model after refinement
         self._commit_global(
-            OrderedDict(
+            new_params=OrderedDict(
                 (k, v.detach().cpu().clone()) for k, v in self.model.named_parameters()
             )
         )
 
         # Update T_ct and D_ct at L_ct boundaries (t > 0).
-        if self.current_iter > 0 and self.current_iter % self.L_ct == 0:
-            self._update_T_ct(packages)
-            self._update_D_ct(packages)
+        if (self.current_iter + 1) % self.L_ct == 0:
+            self._update_T_ct(packages=packages)
+            self._update_D_ct(packages=packages)
 
         # Update D_gt at L_gt boundaries (t > 0).
-        if self.current_iter > 0 and self.current_iter % self.L_gt == 0:
+        if (self.current_iter + 1) % self.L_gt == 0:
             self._update_D_gt()
 
 
@@ -305,10 +305,10 @@ class FedTrend_Client(tFL_Client):
 
     def set_parameters(self, package: dict) -> None:
         self.D_ct = package.pop("D_ct", None)
-        super().set_parameters(package)
+        super().set_parameters(package=package)
 
-    def load_train_data(self, *args, **kwargs):
-        local_dataloader = super().load_train_data(*args, **kwargs)
+    def load_train_data(self) -> DataLoader:
+        local_dataloader = super().load_train_data()
         local_dataset = local_dataloader.dataset
 
         if self.D_ct is not None and len(self.D_ct) > 0:
@@ -316,7 +316,15 @@ class FedTrend_Client(tFL_Client):
         else:
             final_dataset = local_dataset
 
-        self.train_samples = len(final_dataset)
+        # FedAvg weighting remains based on private local data, not the shared D_ct.
+        self.train_samples = len(local_dataset)
+        generator = None
+        seed = self._loader_seed(dataset_type="train")
+        if seed is not None:
+            generator = torch.Generator().manual_seed(seed)
         return DataLoader(
-            dataset=final_dataset, batch_size=self.batch_size, shuffle=True
+            dataset=final_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            generator=generator,
         )

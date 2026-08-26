@@ -27,7 +27,6 @@ class TrackableModel(torch.nn.Module):
         return super().to(*args, **kwargs)
 
 
-
 class TestDevicePolicy(unittest.TestCase):
     def make_loader(self):
         x = torch.ones(2, 1)
@@ -111,7 +110,9 @@ class TestDevicePolicy(unittest.TestCase):
         client.device = "cpu"
         client.metrics = {"train_time": [], "lr": []}
         client.load_train_data = lambda: "loader"
-        client._loader_seed = lambda split: None
+        client._loader_seed = lambda dataset_type: None
+        client._set_worker_seed = lambda seed: None
+        client.initialize_scheduler = lambda steps_per_epoch: None
         client._clone_model_to_cpu = lambda m: m
         client._optimizer_state_to_cpu = lambda o: o
         client.train_samples = 0

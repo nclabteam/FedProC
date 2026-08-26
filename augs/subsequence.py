@@ -1,17 +1,22 @@
-import numpy as np
 import torch
 
 
 class subsequence:
-    def __call__(self, x):
-        T = x.size(1)
-        if T <= 2:
-            return x.clone()
-        crop_l = np.random.randint(low=2, high=T + 1)
-        new_x = x.clone()
-        start = np.random.randint(T - crop_l + 1)
-        end = start + crop_l
+    """Keep one random subsequence and mask its surroundings."""
 
-        new_x[:, :start, :] = 0.0
-        new_x[:, end:, :] = 0.0
-        return new_x
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        sequence_length = x.size(1)
+        if sequence_length <= 2:
+            return x.clone()
+        crop_length = torch.randint(
+            low=2,
+            high=sequence_length + 1,
+            size=(),
+            device=x.device,
+        )
+        start = torch.floor(
+            torch.rand(size=(), device=x.device) * (sequence_length - crop_length + 1)
+        ).long()
+        positions = torch.arange(end=sequence_length, device=x.device)
+        keep = (positions >= start) & (positions < start + crop_length)
+        return x * keep.view(1, -1, 1)

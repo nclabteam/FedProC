@@ -21,12 +21,8 @@ class TestBATADAL(unittest.TestCase):
         )
         self.dataset = BATADAL(configs)
         self.dataset.save_path = str(temporary_path / "BATADAL")
-        self.dataset.path_raw = str(
-            temporary_path / "BATADAL" / "raw"
-        )
-        self.dataset.path_temp = str(
-            temporary_path / "BATADAL" / "temp"
-        )
+        self.dataset.path_raw = str(temporary_path / "BATADAL" / "raw")
+        self.dataset.path_temp = str(temporary_path / "BATADAL" / "temp")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -39,22 +35,16 @@ class TestBATADAL(unittest.TestCase):
         attack_flag: int | None = None,
     ) -> None:
         columns = ["DATETIME"] + self.dataset.measurement_columns
-        values = [timestamp] + list(
-            range(1, len(self.dataset.measurement_columns) + 1)
-        )
+        values = [timestamp] + list(range(1, len(self.dataset.measurement_columns) + 1))
         if attack_flag is not None:
             columns.append("ATT_FLAG")
             values.append(attack_flag)
         if spaced_header:
             columns = [
-                column if column == "DATETIME" else f" {column}"
-                for column in columns
+                column if column == "DATETIME" else f" {column}" for column in columns
             ]
         path.write_text(
-            ",".join(columns)
-            + "\n"
-            + ",".join(str(value) for value in values)
-            + "\n",
+            ",".join(columns) + "\n" + ",".join(str(value) for value in values) + "\n",
             encoding="utf-8",
         )
 

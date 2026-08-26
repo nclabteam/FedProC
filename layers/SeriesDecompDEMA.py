@@ -7,14 +7,20 @@ class SeriesDecompDEMA(nn.Module):
     Series decomposition block
     """
 
-    def __init__(self, alpha, beta, learnable=False, device="cuda"):
+    def __init__(
+        self,
+        alpha: float,
+        beta: float,
+        learnable: bool = False,
+        device: torch.device | str = "cuda",
+    ) -> None:
         super().__init__()
         self.ma = DoubleExponentialMovingAverage(
             alpha=alpha, beta=beta, learnable=learnable, device=device
         )
 
-    def forward(self, x):
-        moving_average = self.ma(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        moving_average = self.ma(x=x)
         res = x - moving_average
         return res, moving_average
 
@@ -24,7 +30,13 @@ class DoubleExponentialMovingAverage(nn.Module):
     Double Exponential Moving Average (DEMA) block to highlight the trend of time series
     """
 
-    def __init__(self, alpha, beta, learnable=False, device="cuda"):
+    def __init__(
+        self,
+        alpha: float,
+        beta: float,
+        learnable: bool = False,
+        device: torch.device | str = "cuda",
+    ) -> None:
         super().__init__()
         self.alpha = alpha
         self.beta = beta
@@ -38,7 +50,7 @@ class DoubleExponentialMovingAverage(nn.Module):
         assert 0 <= self.alpha <= 1, "DEMA alpha should be in [0, 1]"
         assert 0 <= self.beta <= 1, "DEMA beta should be in [0, 1]"
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         s_prev = x[:, 0, :]
         b = x[:, 1, :] - s_prev
         res = [s_prev.unsqueeze(1)]

@@ -9,31 +9,32 @@ from .Transpose import Transpose
 
 
 class TSTEncoder(nn.Module):
+    """Stack time-series transformer encoder layers."""
 
     def __init__(
         self,
-        q_len,
-        d_model,
-        n_heads,
-        d_k=None,
-        d_v=None,
-        d_ff=None,
-        norm="BatchNorm",
-        attn_dropout=0.0,
-        dropout=0.0,
-        activation="gelu",
-        res_attention=False,
-        n_layers=1,
-        pre_norm=False,
-        store_attn=False,
-    ):
+        q_len: int,
+        d_model: int,
+        n_heads: int,
+        d_k: int | None = None,
+        d_v: int | None = None,
+        d_ff: int | None = None,
+        norm: str = "BatchNorm",
+        attn_dropout: float = 0.0,
+        dropout: float = 0.0,
+        activation: str = "gelu",
+        res_attention: bool = False,
+        n_layers: int = 1,
+        pre_norm: bool = False,
+        store_attn: bool = False,
+    ) -> None:
         super().__init__()
 
         self.layers = nn.ModuleList(
             [
                 TSTEncoderLayer(
-                    q_len,
-                    d_model,
+                    q_len=q_len,
+                    d_model=d_model,
                     n_heads=n_heads,
                     d_k=d_k,
                     d_v=d_v,
@@ -56,13 +57,13 @@ class TSTEncoder(nn.Module):
         src: Tensor,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-    ):
+    ) -> Tensor:
         output = src
         scores = None
         if self.res_attention:
             for mod in self.layers:
                 output, scores = mod(
-                    output,
+                    src=output,
                     prev=scores,
                     key_padding_mask=key_padding_mask,
                     attn_mask=attn_mask,
@@ -71,29 +72,33 @@ class TSTEncoder(nn.Module):
         else:
             for mod in self.layers:
                 output = mod(
-                    output, key_padding_mask=key_padding_mask, attn_mask=attn_mask
+                    src=output,
+                    key_padding_mask=key_padding_mask,
+                    attn_mask=attn_mask,
                 )
             return output
 
 
 class TSTEncoderLayer(nn.Module):
+    """Apply residual attention and a position-wise feed-forward block."""
+
     def __init__(
         self,
-        q_len,
-        d_model,
-        n_heads,
-        d_k=None,
-        d_v=None,
-        d_ff=256,
-        store_attn=False,
-        norm="BatchNorm",
-        attn_dropout=0,
-        dropout=0.0,
-        bias=True,
-        activation="gelu",
-        res_attention=False,
-        pre_norm=False,
-    ):
+        q_len: int,
+        d_model: int,
+        n_heads: int,
+        d_k: int | None = None,
+        d_v: int | None = None,
+        d_ff: int = 256,
+        store_attn: bool = False,
+        norm: str = "BatchNorm",
+        attn_dropout: float = 0,
+        dropout: float = 0.0,
+        bias: bool = True,
+        activation: str = "gelu",
+        res_attention: bool = False,
+        pre_norm: bool = False,
+    ) -> None:
         super().__init__()
         assert (
             not d_model % n_heads
@@ -104,10 +109,10 @@ class TSTEncoderLayer(nn.Module):
         # Multi-Head attention
         self.res_attention = res_attention
         self.self_attn = MultiheadAttention(
-            d_model,
-            n_heads,
-            d_k,
-            d_v,
+            d_model=d_model,
+            n_heads=n_heads,
+            d_k=d_k,
+            d_v=d_v,
             attn_dropout=attn_dropout,
             proj_dropout=dropout,
             res_attention=res_attention,
@@ -125,7 +130,7 @@ class TSTEncoderLayer(nn.Module):
         # Position-wise Feed-Forward
         self.ff = nn.Sequential(
             nn.Linear(d_model, d_ff, bias=bias),
-            get_activation_fn(activation),
+            get_activation_fn(activation=activation),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model, bias=bias),
         )
@@ -148,23 +153,27 @@ class TSTEncoderLayer(nn.Module):
         prev: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+    ) -> Tensor | tuple[Tensor, Tensor]:
         # Multi-Head attention sublayer
         if self.pre_norm:
             src = self.norm_attn(src)
         ## Multi-Head attention
         if self.res_attention:
             src2, attn, scores = self.self_attn(
-                src,
-                src,
-                src,
-                prev,
+                Q=src,
+                K=src,
+                V=src,
+                prev=prev,
                 key_padding_mask=key_padding_mask,
                 attn_mask=attn_mask,
             )
         else:
             src2, attn = self.self_attn(
-                src, src, src, key_padding_mask=key_padding_mask, attn_mask=attn_mask
+                Q=src,
+                K=src,
+                V=src,
+                key_padding_mask=key_padding_mask,
+                attn_mask=attn_mask,
             )
         if self.store_attn:
             self.attn = attn
@@ -194,16 +203,16 @@ class TSTEncoderLayer(nn.Module):
 class MultiheadAttention(nn.Module):
     def __init__(
         self,
-        d_model,
-        n_heads,
-        d_k=None,
-        d_v=None,
-        res_attention=False,
-        attn_dropout=0.0,
-        proj_dropout=0.0,
-        qkv_bias=True,
-        lsa=False,
-    ):
+        d_model: int,
+        n_heads: int,
+        d_k: int | None = None,
+        d_v: int | None = None,
+        res_attention: bool = False,
+        attn_dropout: float = 0.0,
+        proj_dropout: float = 0.0,
+        qkv_bias: bool = True,
+        lsa: bool = False,
+    ) -> None:
         """Multi Head Attention Layer
         Input shape:
             Q:       [batch_size (bs) x max_q_len x d_model]
@@ -223,8 +232,8 @@ class MultiheadAttention(nn.Module):
         # Scaled Dot-Product Attention (multiple heads)
         self.res_attention = res_attention
         self.sdp_attn = ScaledDotProductAttention(
-            d_model,
-            n_heads,
+            d_model=d_model,
+            n_heads=n_heads,
             attn_dropout=attn_dropout,
             res_attention=self.res_attention,
             lsa=lsa,
@@ -243,7 +252,7 @@ class MultiheadAttention(nn.Module):
         prev: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-    ):
+    ) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         bs = Q.size(0)
         if K is None:
             K = Q
@@ -261,16 +270,20 @@ class MultiheadAttention(nn.Module):
         # Apply Scaled Dot-Product Attention (multiple heads)
         if self.res_attention:
             output, attn_weights, attn_scores = self.sdp_attn(
-                q_s,
-                k_s,
-                v_s,
+                q=q_s,
+                k=k_s,
+                v=v_s,
                 prev=prev,
                 key_padding_mask=key_padding_mask,
                 attn_mask=attn_mask,
             )
         else:
             output, attn_weights = self.sdp_attn(
-                q_s, k_s, v_s, key_padding_mask=key_padding_mask, attn_mask=attn_mask
+                q=q_s,
+                k=k_s,
+                v=v_s,
+                key_padding_mask=key_padding_mask,
+                attn_mask=attn_mask,
             )
         # output: [bs x n_heads x q_len x d_v], attn: [bs x n_heads x q_len x q_len], scores: [bs x n_heads x max_q_len x q_len]
 
@@ -293,8 +306,13 @@ class ScaledDotProductAttention(nn.Module):
     by Lee et al, 2021)"""
 
     def __init__(
-        self, d_model, n_heads, attn_dropout=0.0, res_attention=False, lsa=False
-    ):
+        self,
+        d_model: int,
+        n_heads: int,
+        attn_dropout: float = 0.0,
+        res_attention: bool = False,
+        lsa: bool = False,
+    ) -> None:
         super().__init__()
         self.attn_dropout = nn.Dropout(attn_dropout)
         self.res_attention = res_attention
@@ -310,7 +328,7 @@ class ScaledDotProductAttention(nn.Module):
         prev: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-    ):
+    ) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         """
         Input shape:
             q               : [bs x n_heads x max_q_len x d_k]
@@ -367,7 +385,9 @@ class ScaledDotProductAttention(nn.Module):
             return output, attn_weights
 
 
-def get_activation_fn(activation):
+def get_activation_fn(activation: str | type[nn.Module]) -> nn.Module:
+    """Build a supported activation module."""
+
     if callable(activation):
         return activation()
     elif activation.lower() == "relu":

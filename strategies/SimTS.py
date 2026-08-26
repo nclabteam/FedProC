@@ -1,84 +1,61 @@
+from typing import Any
+
 import torch
 
 from .nFL import nFL, nFL_Client
 
 
 class SimTS(nFL):
-    """
-    SimTS: local self-supervised contrastive pre-training + supervised fine-tuning.
-
-    Each client trains independently (no federation):
-      Round t:
-        1. Self-supervised pre-training — encoder + predictor optimised with the
-           SimTS cosine similarity loss (pretrain_epochs epochs, pretrain_lr).
-        2. Supervised fine-tuning — full model optimised with the task loss
-           (epochs epochs, learning_rate).
-
-    Designed to be paired with --model SimTS.  The model must expose a
-    ``pretrain_loss(x)`` method; if it does not, the pre-training phase is
-    silently skipped so the strategy degrades gracefully to pure local training.
-
-    Reference: Zheng & Ma, "SimTS: Rethinking Contrastive Representation
-    Learning for Time Series Forecasting", arXiv:2303.18205.
-    Short version accepted at ICASSP 2024 (doi:10.1109/ICASSP48485.2024.10446875).
-    """
+    """Local SimTS representation pretraining followed by frozen ridge fitting."""
 
     compulsory = {"model": "SimTS"}
     optional = {
-        "pretrain_epochs": 10,
+        "pretrain_epochs": 500,
         "pretrain_lr": 1e-3,
+        "ridge_alpha": 1.0,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--pretrain_epochs", type=int, default=None)
         parser.add_argument("--pretrain_lr", type=float, default=None)
-
-    def aggregate_client_updates(self, packages) -> None:
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
-
-    def evaluate_generalization(self, *args, **kwargs):
-        pass
+        parser.add_argument("--ridge_alpha", type=float, default=None)
 
 
 class SimTS_Client(nFL_Client):
 
     def fit(self) -> None:
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         train_loader = self.load_train_data()
 
         self.model.to(self.device)
-
-        if hasattr(self.model, "pretrain_loss") and self.pretrain_epochs > 0:
-            self._pretrain(train_loader)
-
-        offload_after_epoch = self.efficiency == "low"
-        for _ in range(self.epochs):
-            self.train_one_epoch(
+        if not self.auxiliary_state.get("simts_pretrained"):
+            if self.pretrain_epochs > 0:
+                self._pretrain(train_loader=train_loader)
+            self.fit_ridge_head(
                 model=self.model,
                 dataloader=train_loader,
-                optimizer=self.optimizer,
-                criterion=self.loss,
-                scheduler=self.scheduler,
                 device=self.device,
-                offload_after=offload_after_epoch,
+                alpha=self.ridge_alpha,
             )
+            self.auxiliary_state["simts_pretrained"] = True
 
-        if self.efficiency == "med":
+        if self.efficiency != "high":
             self.model.to("cpu")
 
-    def _pretrain(self, train_loader):
-        """Self-supervised phase: train encoder + predictor with cosine loss."""
+    def _pretrain(self, train_loader: Any) -> None:
+        """Pretrain the encoder and predictor."""
         pretrain_opt = torch.optim.SGD(
             [
                 {"params": list(self.model.encoder.parameters())},
                 {
                     "params": list(self.model.predictor.parameters()),
-                    "lr": self.pretrain_lr * 0.01,
+                    "lr": self.pretrain_lr * 0.0001,
                 },
             ],
             lr=self.pretrain_lr,
+            momentum=0.9,
+            weight_decay=1e-4,
         )
         self.model.train()
         for _ in range(self.pretrain_epochs):
@@ -86,6 +63,7 @@ class SimTS_Client(nFL_Client):
                 batch_x = batch_x.to(
                     device=self.device, dtype=torch.float32, non_blocking=True
                 )
+                # Paper Algorithm 1: optimize the cosine prediction loss.
                 loss = self.model.pretrain_loss(batch_x)
                 pretrain_opt.zero_grad(set_to_none=True)
                 loss.backward()

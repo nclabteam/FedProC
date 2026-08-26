@@ -134,7 +134,7 @@ class Encoder(nn.Module):
         in_seg_num=10,
         factor=10,
     ):
-        super(Encoder, self).__init__()
+        super().__init__()
         self.encode_blocks = nn.ModuleList()
 
         self.encode_blocks.append(
@@ -184,7 +184,7 @@ class Decoder(nn.Module):
         out_seg_num=10,
         factor=10,
     ):
-        super(Decoder, self).__init__()
+        super().__init__()
 
         self.router = router
         self.decode_layers = nn.ModuleList()
@@ -233,7 +233,7 @@ class DecoderLayer(nn.Module):
         out_seg_num=10,
         factor=10,
     ):
-        super(DecoderLayer, self).__init__()
+        super().__init__()
         self.self_attention = TwoStageAttentionLayer(
             out_seg_num, factor, d_model, n_heads, d_ff, dropout
         )
@@ -328,7 +328,7 @@ class scale_block(nn.Module):
     def __init__(
         self, win_size, d_model, n_heads, d_ff, depth, dropout, seg_num=10, factor=10
     ):
-        super(scale_block, self).__init__()
+        super().__init__()
 
         if win_size > 1:
             self.merge_layer = SegMerging(d_model, win_size, nn.LayerNorm)
@@ -356,7 +356,7 @@ class scale_block(nn.Module):
 
 class DSW_embedding(nn.Module):
     def __init__(self, seg_len, d_model):
-        super(DSW_embedding, self).__init__()
+        super().__init__()
         self.seg_len = seg_len
 
         self.linear = nn.Linear(seg_len, d_model)
@@ -381,7 +381,7 @@ class FullAttention(nn.Module):
     """
 
     def __init__(self, scale=None, attention_dropout=0.1):
-        super(FullAttention, self).__init__()
+        super().__init__()
         self.scale = scale
         self.dropout = nn.Dropout(attention_dropout)
 
@@ -403,7 +403,7 @@ class AttentionLayer(nn.Module):
     """
 
     def __init__(self, d_model, n_heads, d_keys=None, d_values=None, dropout=0.1):
-        super(AttentionLayer, self).__init__()
+        super().__init__()
 
         d_keys = d_keys or (d_model // n_heads)
         d_values = d_values or (d_model // n_heads)
@@ -442,7 +442,7 @@ class TwoStageAttentionLayer(nn.Module):
     """
 
     def __init__(self, seg_num, factor, d_model, n_heads, d_ff=None, dropout=0.1):
-        super(TwoStageAttentionLayer, self).__init__()
+        super().__init__()
         d_ff = d_ff or 4 * d_model
         self.time_attention = AttentionLayer(d_model, n_heads, dropout=dropout)
         self.dim_sender = AttentionLayer(d_model, n_heads, dropout=dropout)

@@ -96,7 +96,7 @@ class xLSTM(nn.Module):
     stack_pattern = None
 
     def __init__(self, configs):
-        super(xLSTM, self).__init__()
+        super().__init__()
         self.enc_in = configs.input_channels
         self.pred_len = configs.output_len
         self.embedding_dim = configs.embedding_dim

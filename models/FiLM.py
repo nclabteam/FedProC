@@ -19,7 +19,7 @@ class FiLM(nn.Module):
         parser.add_argument("--ratio", type=float, default=None)
 
     def __init__(self, configs):
-        super(FiLM, self).__init__()
+        super().__init__()
         self.seq_len = configs.input_len
         self.pred_len = configs.output_len
         self.enc_in = configs.input_channels
@@ -97,7 +97,7 @@ class HiPPO_LegT(nn.Module):
         N: the order of the HiPPO projection
         dt: discretization step size - should be roughly inverse to the length of the sequence
         """
-        super(HiPPO_LegT, self).__init__()
+        super().__init__()
         self.device = device
         self.N = N
         A, B = transition(N)
@@ -140,7 +140,7 @@ class SpectralConv1d(nn.Module):
         """
         1D Fourier layer. It does FFT, linear transform, and Inverse FFT.
         """
-        super(SpectralConv1d, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.ratio = ratio

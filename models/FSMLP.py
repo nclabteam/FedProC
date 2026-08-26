@@ -154,17 +154,17 @@ class FSMLP_Backbone(nn.Module):
         c_in: int,
         context_window: int,
         target_window: int,
-        period,
-        patch_len,
-        stride,
-        kernel_list,
-        serial_conv=False,
-        wo_conv=False,
-        add=False,
-        m_model=512,
+        period: list[int],
+        patch_len: list[int],
+        stride: Optional[list[int]],
+        kernel_list: list[int],
+        serial_conv: bool = False,
+        wo_conv: bool = False,
+        add: bool = False,
+        m_model: int = 512,
         n_layers: int = 3,
-        d_model=128,
-        n_heads=16,
+        d_model: int = 128,
+        n_heads: int = 16,
         d_k: Optional[int] = None,
         d_v: Optional[int] = None,
         d_ff: int = 256,
@@ -178,13 +178,13 @@ class FSMLP_Backbone(nn.Module):
         pe: str = "zeros",
         learn_pe: bool = True,
         fc_dropout: float = 0.0,
-        head_dropout=0,
-        individual=False,
-        affine=True,
-        subtract_last=False,
-        f_model=0,
-        m_layers=1,
-    ):
+        head_dropout: float = 0,
+        individual: bool = False,
+        affine: bool = True,
+        subtract_last: bool = False,
+        f_model: int = 0,
+        m_layers: int = 1,
+    ) -> None:
         super().__init__()
         self.n = 3
         self.revin_layer = RevIN(c_in, affine=affine, subtract_last=subtract_last)
@@ -482,7 +482,7 @@ class TSTiEncoder(nn.Module):
             pos=self.W_pos,
         )
 
-    def forward(self, x) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         # x: [bs x nvars x patch_len x patch_num]
 
         n_vars = x.shape[1]
@@ -552,7 +552,7 @@ class TSTEncoder(nn.Module):
     def forward(
         self,
         src: Tensor,
-    ):
+    ) -> Tensor:
         output = src
         for mod in self.layers:
             output = mod(output)
@@ -707,7 +707,7 @@ class _MultiheadAttention(nn.Module):
         prev: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-    ):
+    ) -> tuple[Tensor, ...]:
 
         bs = Q.size(0)
         if K is None:
@@ -782,9 +782,9 @@ class _ScaledDotProductAttention(nn.Module):
         prev: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         attn_mask: Optional[Tensor] = None,
-        q_p=None,
-        k_p=None,
-    ):
+        q_p: Optional[Tensor] = None,
+        k_p: Optional[Tensor] = None,
+    ) -> tuple[Tensor, Tensor]:
         """
 
         Input shape:
@@ -970,7 +970,7 @@ class channel_mix(nn.Module):
 
 class HyperNetwork(nn.Module):
     def __init__(self, d, hidden_dim, output_dim):
-        super(HyperNetwork, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(d, hidden_dim)
         # generate weight matrix
         self.fc2 = nn.Linear(hidden_dim, output_dim * output_dim)

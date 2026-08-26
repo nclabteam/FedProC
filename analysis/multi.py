@@ -614,6 +614,7 @@ class ExperimentComparison:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Cross-experiment analysis: pivot and ranking tables.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -646,6 +647,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Build and save cross-experiment comparison tables."""
     args = parse_args()
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)

@@ -10,7 +10,9 @@ from .base import BaseDataset, CustomOnSingleDataset
 
 
 class Traffic(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Hourly road-occupancy series split by sensor."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Set the dataset name and path
         self.save_path = os.path.join("datasets", "Traffic")
@@ -26,7 +28,8 @@ class Traffic(BaseDataset):
         self.url = "https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/master/traffic/traffic.txt.gz"
         self.split_files = True
 
-    def download(self):
+    def download(self) -> None:
+        """Download, extract, timestamp, and optionally split traffic data."""
         # Create the directory if it doesn't exist
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)
@@ -74,7 +77,9 @@ class Traffic(BaseDataset):
 
 
 class TrafficOG(Traffic):
-    def __init__(self, *args, **kwargs):
+    """Multivariate form of the traffic dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Set the paths for the dataset
         self.save_path = os.path.join("datasets", "TrafficOG")
@@ -88,7 +93,9 @@ class TrafficOG(Traffic):
 
 
 class TrafficOutVar1(CustomOnSingleDataset):
-    def __init__(self, *args, **kwargs):
+    """Mixed-horizon traffic client configuration."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Traffic", "3_96_96-1_96_720")
         self.sets = [

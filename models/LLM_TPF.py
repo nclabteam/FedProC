@@ -8,6 +8,7 @@ from transformers import GPT2Tokenizer
 
 from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
 from layers.RevIN import RevIN
+from models import CHECKPOINT_DIR
 
 # ---------------------------------------------------------------------------
 # Inception blocks (used only by LLM_TPF via Freq_Block)
@@ -280,15 +281,27 @@ class LLM_TPF(nn.Module):
         )
 
         self.gpt2 = AccustumGPT2Model.from_pretrained(
-            "gpt2", output_attentions=True, output_hidden_states=True
+            pretrained_model_name_or_path="gpt2",
+            output_attentions=True,
+            output_hidden_states=True,
+            cache_dir=str(CHECKPOINT_DIR),
         )
         self.gpt2_fussion = AccustumGPT2Model.from_pretrained(
-            "gpt2", output_attentions=True, output_hidden_states=True
+            pretrained_model_name_or_path="gpt2",
+            output_attentions=True,
+            output_hidden_states=True,
+            cache_dir=str(CHECKPOINT_DIR),
         )
         self.gpt2_prompt = AccustumGPT2Model.from_pretrained(
-            "gpt2", output_attentions=True, output_hidden_states=True
+            pretrained_model_name_or_path="gpt2",
+            output_attentions=True,
+            output_hidden_states=True,
+            cache_dir=str(CHECKPOINT_DIR),
         )
-        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        self.tokenizer = GPT2Tokenizer.from_pretrained(
+            pretrained_model_name_or_path="gpt2",
+            cache_dir=str(CHECKPOINT_DIR),
+        )
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.gpt2.h = self.gpt2.h[: configs.gpt_layers]

@@ -19,9 +19,7 @@ from data_factory.AssetOpsBench import (
 class TestAssetOpsBench(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
-        self.root = (
-            Path(self.temporary_directory.name) / "AssetOpsBench"
-        )
+        self.root = Path(self.temporary_directory.name) / "AssetOpsBench"
         self.configs = Namespace(
             input_len=2,
             output_len=1,
@@ -75,12 +73,7 @@ class TestAssetOpsBench(unittest.TestCase):
                 "timestamp": timestamp,
                 "Chiller 6 Schedule": 1,
             }
-            row.update(
-                {
-                    column: value
-                    for column in dataset.measurement_columns
-                }
-            )
+            row.update({column: value for column in dataset.measurement_columns})
             rows.append(row)
         source_path = source_dir / "chiller_6.json"
         source_path.write_text(
@@ -96,8 +89,7 @@ class TestAssetOpsBench(unittest.TestCase):
             save_path=str(source_path),
         )
         output = pl.read_csv(
-            Path(dataset.path_raw)
-            / "AssetOpsBenchChiller.csv",
+            Path(dataset.path_raw) / "AssetOpsBenchChiller.csv",
             try_parse_dates=True,
         )
         self.assertEqual(output.shape, (2, 11))

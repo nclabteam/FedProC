@@ -263,14 +263,14 @@ class InferenceEvaluator:
         results = []
 
         # Load configuration and data info
-        config = self._load_config(experiment_name)
+        config = self._load_config(experiment_name=experiment_name)
         if not config:
             logger.error("Could not load config for experiment %s", experiment_name)
             return results
 
-        data_info = self._load_data_info(config["path_info"])
+        data_info = self._load_data_info(path_info=config["path_info"])
         target_data_info = self._load_data_info(
-            config["path_info"].replace(config["dataset"], target_dataset)
+            path_info=config["path_info"].replace(config["dataset"], target_dataset)
         )
 
         if not target_data_info:
@@ -293,7 +293,7 @@ class InferenceEvaluator:
                     continue
 
                 model_path = trial_path / weights_file
-                model = self._load_model(model_path)
+                model = self._load_model(model_path=model_path)
                 if model is None:
                     continue
 
@@ -309,9 +309,9 @@ class InferenceEvaluator:
 
                 for mode in modes_to_eval:
                     metrics = self.evaluate_model_on_dataset(
-                        model,
-                        target_data_info,
-                        config,
+                        model=model,
+                        data_info=target_data_info,
+                        config=config,
                         denormalize=(mode == "denorm"),
                     )
 
@@ -441,13 +441,17 @@ def main() -> None:
         logger.info("Processing experiment: %s", experiment)
 
         results = evaluator.evaluate_experiment(
-            experiment,
-            args.target_dataset,
-            args.norm_mode,
+            experiment_name=experiment,
+            target_dataset=args.target_dataset,
+            norm_mode=args.norm_mode,
         )
 
         if results:
-            evaluator.save_results(results, experiment, args.target_dataset)
+            evaluator.save_results(
+                results=results,
+                experiment_name=experiment,
+                target_dataset=args.target_dataset,
+            )
         else:
             logger.warning("No results generated for experiment %s", experiment)
 

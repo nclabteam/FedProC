@@ -8,18 +8,7 @@ from .pFL import pFL, pFL_Client
 
 
 class Ditto(pFL):
-    """Ditto: Fair and Robust Personalized Federated Learning (Li et al., ICML 2021).
-
-    Each client maintains a global model (updated via FedAvg) and a separate
-    personalized model trained with a proximal regularization term anchored to
-    the global model. Evaluation and saving use the personalized model.
-
-    Objective: min_v F_k(v) + (λ/2)||v - w*||² where w* is the optimal global model.
-    Solved by alternating between local personalised SGD and global FedAvg.
-
-    Default hyperparameters (paper explores): λ ∈ {0.1, 1, 5}; plocal_epochs=1.
-    Reference: arXiv:2012.04221. ICML 2021.
-    """
+    """Ditto: Fair and Robust Personalized Federated Learning (Li et al., ICML 2021)."""
 
     optional = {
         "mu": 0.1,
@@ -27,11 +16,11 @@ class Ditto(pFL):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--mu", type=float, default=None)
         parser.add_argument("--plocal_epochs", type=int, default=None)
 
-    def __init__(self, configs, times):
+    def __init__(self, configs: Any, times: Any) -> None:
         super().__init__(configs=configs, times=times)
         init_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
         for cid in range(self.num_clients):
@@ -41,27 +30,21 @@ class Ditto(pFL):
 
 
 class Ditto_Client(pFL_Client):
-    """Client for Ditto. Maintains two models:
-    - model: global model trained with standard FedAvg objective
-    - model_per: personalized model trained with proximal regularization to model
+    """Client for Ditto."""
 
-    Per-client persistent state stored in personal_model_params:
-    - "model_per": state dict of the personalized model
-    """
-
-    def __init__(self, configs, times, device):
-        super().__init__(configs, times, device)
+    def __init__(self, configs: Any, times: Any, device: Any) -> None:
+        super().__init__(configs=configs, times=times, device=device)
         self.model_per = copy.deepcopy(self.model)
         self._global_params = []
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        super().set_parameters(package)
+        super().set_parameters(package=package)
         self.model_per.load_state_dict(package["personal_model_params"]["model_per"])
         self._global_params = [p.data.clone() for p in self.model.parameters()]
 
     def fit(self) -> None:
         # Step 1: train model_per with proximal regularization anchored to global model
-        self._set_worker_seed(self._loader_seed("train"))
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
         loader = self.load_train_data()
         global_params = [g.to(self.device) for g in self._global_params]
         self.model_per.to(self.device)
@@ -95,23 +78,25 @@ class Ditto_Client(pFL_Client):
     def package(self) -> Dict[str, Any]:
         result = super().package()
         result["personal_model_params"]["model_per"] = {
-            k: v.detach().cpu().clone()
-            for k, v in self.model_per.state_dict().items()
+            k: v.detach().cpu().clone() for k, v in self.model_per.state_dict().items()
         }
         return result
 
     def evaluate_personalized(
-        self, client_id, global_params, personal_params, dataset_type, current_iter
+        self,
+        client_id: Any,
+        global_params: Any,
+        personal_params: Any,
+        dataset_type: Any,
+        current_iter: Any,
     ) -> float:
         self.id = client_id
         self.current_iter = current_iter
-        self._load_private(client_id)
+        self._load_private(client_id=client_id)
         self.model.load_state_dict(global_params, strict=False)
         self.model.load_state_dict(personal_params["model_per"], strict=False)
         loader = (
-            self.load_test_data()
-            if dataset_type == "test"
-            else self.load_train_data()
+            self.load_test_data() if dataset_type == "test" else self.load_train_data()
         )
         losses = self.calculate_loss(
             model=self.model,

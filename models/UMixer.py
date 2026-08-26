@@ -108,7 +108,7 @@ class UMixer(nn.Module):
 
 class PatchEmbedding(nn.Module):
     def __init__(self, d_model, patch_len, stride, dropout):
-        super(PatchEmbedding, self).__init__()
+        super().__init__()
         # Patching
         self.patch_len = patch_len
         self.stride = stride
@@ -138,7 +138,7 @@ class PatchEmbedding(nn.Module):
 
 class TokenEmbedding(nn.Module):
     def __init__(self, c_in, d_model):
-        super(TokenEmbedding, self).__init__()
+        super().__init__()
         padding = 1 if torch.__version__ >= "1.5.0" else 2
         self.tokenConv = nn.Conv1d(
             in_channels=c_in,
@@ -196,7 +196,7 @@ class moving_avg(nn.Module):
     """
 
     def __init__(self, kernel_size, stride):
-        super(moving_avg, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
 
@@ -217,7 +217,7 @@ class series_decomp(nn.Module):
     """
 
     def __init__(self, kernel_size):
-        super(series_decomp, self).__init__()
+        super().__init__()
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
     def forward(self, x, **kwargs):
@@ -232,7 +232,7 @@ class series_decomp_multi(nn.Module):
     """
 
     def __init__(self, kernel_size):
-        super(series_decomp_multi, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.moving_avg = [moving_avg(kernel, stride=1) for kernel in kernel_size]
 
@@ -252,7 +252,7 @@ class series_decomp_multi(nn.Module):
 
 class channelMix_CI_pat(nn.Module):
     def __init__(self, configs, patnum):
-        super(channelMix_CI_pat, self).__init__()
+        super().__init__()
         self.conv1 = nn.ModuleList(
             nn.Linear(patnum, patnum) for _ in range(configs.d_model)
         )
@@ -275,7 +275,7 @@ class channelMix_CI_pat(nn.Module):
 
 class tempolMix_CI_pat(nn.Module):
     def __init__(self, configs, patnum):
-        super(tempolMix_CI_pat, self).__init__()
+        super().__init__()
         self.conv1 = nn.ModuleList(
             nn.Linear(configs.d_model, configs.d_model) for _ in range(patnum)
         )

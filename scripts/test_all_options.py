@@ -15,137 +15,56 @@ import itertools
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from utils.options import Options
 
-def validate_registries():
+
+def validate_registries() -> list[str]:
     """Validate all registry entries have correct class-level attributes."""
     errors = []
 
-    # Strategies
-    from strategies import STRATEGIES
-    from strategies import args_update_functions as s_args
-    from strategies import compulsory as s_comp
-    from strategies import optional as s_opt
-
-    skip = {"base"}
-    for name in STRATEGIES:
-        if name in skip:
-            continue
-        try:
-            opt = s_opt[name]
-            if not isinstance(opt, dict):
+    for module_name in Options.COMPONENTS.values():
+        module = importlib.import_module(module_name)
+        components = getattr(module, module_name.upper())
+        for name in components:
+            for registry_name in ("optional", "compulsory"):
+                try:
+                    value = getattr(module, registry_name)[name]
+                    if not isinstance(value, dict):
+                        errors.append(
+                            f"{module_name}/{name}: {registry_name} is "
+                            f"{type(value).__name__}, expected dict"
+                        )
+                except Exception as error:
+                    errors.append(
+                        f"{module_name}/{name}: {registry_name} lookup failed: "
+                        f"{error}"
+                    )
+            try:
+                update = module.args_update_functions[name]
+                if update is not None and not callable(update):
+                    errors.append(
+                        f"{module_name}/{name}: args_update is "
+                        f"{type(update).__name__}, expected callable or None"
+                    )
+            except Exception as error:
                 errors.append(
-                    f"strategies/{name}: optional is {type(opt).__name__}, expected dict"
+                    f"{module_name}/{name}: args_update lookup failed: {error}"
                 )
-        except Exception as e:
-            errors.append(f"strategies/{name}: optional lookup failed: {e}")
-        try:
-            comp = s_comp[name]
-            if not isinstance(comp, dict):
-                errors.append(
-                    f"strategies/{name}: compulsory is {type(comp).__name__}, expected dict"
-                )
-        except Exception as e:
-            errors.append(f"strategies/{name}: compulsory lookup failed: {e}")
-        try:
-            func = s_args[name]
-            if func is not None and not callable(func):
-                errors.append(
-                    f"strategies/{name}: args_update is {type(func).__name__}, expected callable or None"
-                )
-        except Exception as e:
-            errors.append(f"strategies/{name}: args_update lookup failed: {e}")
-
-    # Models
-    from models import MODELS
-    from models import args_update_functions as m_args
-    from models import optional as m_opt
-
-    for name in MODELS:
-        try:
-            opt = m_opt[name]
-            if not isinstance(opt, dict):
-                errors.append(
-                    f"models/{name}: optional is {type(opt).__name__}, expected dict"
-                )
-        except Exception as e:
-            errors.append(f"models/{name}: optional lookup failed: {e}")
-        try:
-            func = m_args[name]
-            if func is not None and not callable(func):
-                errors.append(
-                    f"models/{name}: args_update is {type(func).__name__}, expected callable or None"
-                )
-        except Exception as e:
-            errors.append(f"models/{name}: args_update lookup failed: {e}")
-
-    # Optimizers
-    from optimizers import OPTIMIZERS
-    from optimizers import args_update_functions as o_args
-    from optimizers import optional as o_opt
-
-    for name in OPTIMIZERS:
-        try:
-            opt = o_opt[name]
-            if not isinstance(opt, dict):
-                errors.append(
-                    f"optimizers/{name}: optional is {type(opt).__name__}, expected dict"
-                )
-        except Exception as e:
-            errors.append(f"optimizers/{name}: optional lookup failed: {e}")
-        try:
-            func = o_args[name]
-            if func is not None and not callable(func):
-                errors.append(
-                    f"optimizers/{name}: args_update is {type(func).__name__}, expected callable or None"
-                )
-        except Exception as e:
-            errors.append(f"optimizers/{name}: args_update lookup failed: {e}")
-
-    # Schedulers
-    from schedulers import SCHEDULERS
-    from schedulers import args_update_functions as sc_args
-    from schedulers import optional as sc_opt
-
-    for name in SCHEDULERS:
-        try:
-            opt = sc_opt[name]
-            if not isinstance(opt, dict):
-                errors.append(
-                    f"schedulers/{name}: optional is {type(opt).__name__}, expected dict"
-                )
-        except Exception as e:
-            errors.append(f"schedulers/{name}: optional lookup failed: {e}")
-        try:
-            func = sc_args[name]
-            if func is not None and not callable(func):
-                errors.append(
-                    f"schedulers/{name}: args_update is {type(func).__name__}, expected callable or None"
-                )
-        except Exception as e:
-            errors.append(f"schedulers/{name}: args_update lookup failed: {e}")
 
     return errors
 
 
-def validate_args_update_callable():
+def validate_args_update_callable() -> list[str]:
     """Test that args_update functions work with argparse."""
     errors = []
-    skip = {"base"}
-    registries = [
-        ("strategies", "args_update_functions"),
-        ("models", "args_update_functions"),
-        ("optimizers", "args_update_functions"),
-        ("schedulers", "args_update_functions"),
-    ]
-    for mod_name, attr_name in registries:
-        mod = importlib.import_module(mod_name)
-        funcs = getattr(mod, attr_name)
+    for module_name in Options.COMPONENTS.values():
+        module = importlib.import_module(module_name)
+        funcs = module.args_update_functions
         for name in funcs:
-            if name in skip:
-                continue
             try:
                 func = funcs[name]
             except (AttributeError, KeyError):
@@ -154,13 +73,17 @@ def validate_args_update_callable():
                 continue
             try:
                 p = argparse.ArgumentParser()
-                func(p)
-            except Exception as e:
-                errors.append(f"{mod_name}/{name}: args_update failed: {e}")
+                func(parser=p)
+            except Exception as error:
+                errors.append(f"{module_name}/{name}: args_update failed: {error}")
     return errors
 
 
-def build_main_commands(strategy_filter=None, model_filter=None, max_runs=None):
+def build_main_commands(
+    strategy_filter: Sequence[str] | None = None,
+    model_filter: Sequence[str] | None = None,
+    max_runs: int | None = None,
+) -> list[tuple[str, str, list[str]]]:
     """Generate main.py commands for all strategy+model combos."""
     from models import MODELS
     from strategies import STRATEGIES
@@ -210,7 +133,8 @@ def build_main_commands(strategy_filter=None, model_filter=None, max_runs=None):
     return commands
 
 
-def main():
+def main() -> int:
+    """Validate registries and optionally execute generated commands."""
     parser = argparse.ArgumentParser(description="Validate all registry options")
     parser.add_argument(
         "--dry-run", action="store_true", help="Print main.py commands without running"
@@ -265,7 +189,11 @@ def main():
     print("=" * 60)
     print("Step 3: main.py command generation")
     print("=" * 60)
-    commands = build_main_commands(args.strategy, args.model, args.max_runs)
+    commands = build_main_commands(
+        strategy_filter=args.strategy,
+        model_filter=args.model,
+        max_runs=args.max_runs,
+    )
     print(f"Generated {len(commands)} commands")
 
     if args.dry_run:
@@ -283,12 +211,12 @@ def main():
             print(f"[{i}/{len(commands)}] {strategy} + {model}")
             try:
                 subprocess.run(cmd, check=True, capture_output=True, timeout=300)
-                print(f"  PASSED")
+                print("  PASSED")
             except subprocess.CalledProcessError as e:
                 print(f"  FAILED (exit code {e.returncode})")
                 failed.append((strategy, model, e.returncode))
             except subprocess.TimeoutExpired:
-                print(f"  TIMEOUT")
+                print("  TIMEOUT")
                 failed.append((strategy, model, "timeout"))
             except Exception as e:
                 print(f"  ERROR: {e}")

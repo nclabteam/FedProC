@@ -2,11 +2,9 @@ import json
 import os
 import re
 import time
-from pathlib import Path
 
 import numpy as np
 import polars as pl
-from scipy.stats import entropy
 
 from .data_frame_optimizer import DataFrameOptimizer
 from .file_manager import FileManager
@@ -272,7 +270,12 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
         return df.filter((pl.col(date_column) >= start) & (pl.col(date_column) < end))
 
     @staticmethod
-    def sliding_window(df: pl.DataFrame, seq_len: int, offset_len: int, pred_len: int):
+    def sliding_window(
+        df: pl.DataFrame,
+        seq_len: int,
+        offset_len: int,
+        pred_len: int,
+    ) -> pl.DataFrame:
         """
         Creates lagged features using a sliding window approach.
 
@@ -308,7 +311,8 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
         df = df.drop_nulls()
         return df
 
-    def dir(self):
+    def dir(self) -> None:
+        """Create output directories for the configured sequence lengths."""
         name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
         self.path_save = os.path.join(self.save_path, name)
         self.path_info = os.path.join(self.path_save, "info.json")
@@ -328,7 +332,7 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             if not os.path.exists(path):
                 os.makedirs(path)
 
-    def get_config(self):
+    def get_config(self) -> dict:
         """Constructs the configuration dictionary."""
         return {
             "train_ratio": self.train_ratio,
@@ -344,12 +348,12 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             "output_channels": len(self.column_target),
         }
 
-    def save_info(self):
+    def save_info(self) -> None:
         """Saves the configuration to a file."""
         with open(self.path_info, "w") as f:
             json.dump(self.info, f, indent=4)
 
-    def check(self):
+    def check(self) -> bool:
         """Checks if the saved configuration matches the current settings, excluding 'clients'."""
         if os.path.exists(self.path_info):
             with open(self.path_info, "r") as f:
@@ -367,7 +371,8 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                 return True
         return False
 
-    def fix_params(self):
+    def fix_params(self) -> None:
+        """Normalize granularity units and collect the columns in use."""
         self.granularity_unit = self.convert_granularity_unit(self.granularity_unit)
         self.column_used = list(set(self.column_train) | set(self.column_target))
 
@@ -379,6 +384,7 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
         end=None,
         granularity: str = "1d",
     ) -> pl.DataFrame:
+        """Fill missing timestamps unless the dataset permits date gaps."""
         # Skip filling dates for discontinuous datasets (e.g., stock data with no weekends)
         if self.skip_fill_date:
             return df
@@ -405,7 +411,8 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             coalesce=True,
         )
 
-    def get_statistic(self, df: pl.DataFrame):
+    def get_statistic(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
+        """Compute descriptive and temporal statistics for each column."""
         statistics = (
             df.select(
                 count=pl.struct(pl.all().count()),
@@ -470,7 +477,13 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
 
         return statistics
 
-    def split_x_y(self, df, x_used_cols, y_used_cols):
+    def split_x_y(
+        self,
+        df: pl.DataFrame,
+        x_used_cols: list[str],
+        y_used_cols: list[str],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Build model input and target arrays from a time-series frame."""
         ori_cols = df.columns
         df = self.sliding_window(
             df=df,
@@ -506,7 +519,8 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
 
         return x, y
 
-    def correct_indices(self, df):
+    def correct_indices(self, df: pl.DataFrame) -> list[list[object]]:
+        """Calculate chronological train and test boundaries."""
         dates = df[self.column_date].to_list()
         if self.total_null != 0 and not self.skip_fill_date:
             temp = self.sliding_window(
@@ -547,12 +561,14 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             )
         return fres
 
-    def prepossess(self, df):
+    def prepossess(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Optimize and clean a raw client DataFrame."""
         df = self.reduce_polars_df(df=df, info=True)
         df = df.shrink_to_fit().unique().drop_nulls()
         return df
 
-    def get_file_paths(self):
+    def get_file_paths(self) -> None:
+        """Collect raw client files in natural sort order."""
         self.file_pahts_list = [
             os.path.join(self.path_raw, path) for path in os.listdir(self.path_raw)
         ]
@@ -564,18 +580,19 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
             ]
         )
 
-    def generate(self):
+    def generate(self) -> None:
+        """Generate train and test arrays for each raw client file."""
         for path in self.file_pahts_list:
             start_time = time.time()
             print(f"{path = }")
 
             # read file
-            df = self.read(path)
+            df = self.read(path=path)
             if df is None:
                 continue
 
             # prepossess data
-            df = self.prepossess(df)
+            df = self.prepossess(df=df)
 
             # sort by date
             df = df.sort(self.column_date)
@@ -586,12 +603,12 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                 column_date=self.column_date,
                 granularity=str(self.granularity) + self.granularity_unit,
             )
-            raw_stats = self.get_statistic(df.select(self.column_used))
+            raw_stats = self.get_statistic(df=df.select(self.column_used))
             self.total_null = sum(raw_stats[column]["n_null"] for column in raw_stats)
 
             # compute correct split indices
             split_indices = self.correct_indices(
-                df.select([self.column_date] + self.column_used)
+                df=df.select([self.column_date] + self.column_used)
             )
             if not split_indices:
                 continue
@@ -637,7 +654,7 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
 
                 # Get statistic
                 split_df = split_df.select(self.column_used)
-                split_stats = self.get_statistic(split_df)
+                split_stats = self.get_statistic(df=split_df)
 
                 # Split data
                 split_x, split_y = self.split_x_y(
@@ -687,10 +704,11 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
                 print(json.dumps(self.info[-1], indent=4))
                 print(f"Time elapsed: {time.time() - start_time:.2f} seconds\n{'='*50}")
 
-    def download(self):
-        pass
+    def download(self) -> None:
+        """Download raw dataset files in subclasses."""
 
-    def execute(self):
+    def execute(self) -> None:
+        """Run the complete dataset preparation pipeline."""
         if not os.path.exists(self.path_raw) or len(os.listdir(self.path_raw)) == 0:
             self.download()
         self.dir()
@@ -703,18 +721,23 @@ class BaseDataset(TimeSeriesCharacteristics, FileManager, DataFrameOptimizer):
 
 
 class CustomDataset(BaseDataset):
-    def execute(self):
+    """Combine clients generated by multiple configured datasets."""
+
+    def execute(self) -> None:
+        """Generate and save the combined dataset metadata."""
         self.dir()
         self.generate()
         self.save_info()
 
-    def dir(self):
+    def dir(self) -> None:
+        """Create the combined dataset output directory."""
         name = f"seq_{self.seq_len}-offset_{self.offset_len}-pred_{self.pred_len}"
         self.path_save = os.path.join(self.save_path, name)
         self.path_info = os.path.join(self.path_save, "info.json")
         os.makedirs(self.path_save, exist_ok=True)
 
-    def generate(self):
+    def generate(self) -> None:
+        """Execute each configured dataset and merge its client metadata."""
         for info in self.sets:
             for k, v in info.items():
                 if k not in ["dataset", "column_train", "column_target"]:
@@ -730,12 +753,15 @@ class CustomDataset(BaseDataset):
 
 
 class CustomOnSingleDataset(CustomDataset):
-    def dir(self):
+    """Combine multiple configurations of one underlying dataset."""
+
+    def dir(self) -> None:
+        """Use the configured save path directly for combined output."""
         self.path_save = self.save_path
         self.path_info = os.path.join(self.path_save, "info.json")
         os.makedirs(self.path_save, exist_ok=True)
 
-    def generate(self):
+    def generate(self) -> None:
         """
         Processes multiple times, automatically calculates slice sizes, and extracts info.
         WARNING: Leads to incorrect .npz files due to overwriting.

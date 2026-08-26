@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from typing import Any
+
 import torch
 
 from .base import Attack
@@ -13,7 +16,12 @@ class GaussianNoise(Attack):
 
     noise_scale: float = 1.0
 
-    def craft(self, packages, malicious_ids, ctx):
+    def craft(
+        self,
+        packages: OrderedDict[int, dict[str, Any]],
+        malicious_ids: list[int],
+        ctx: Any,
+    ) -> OrderedDict[int, dict[str, Any]]:
         for cid in malicious_ids:
             pkg = packages[cid]
             pkg["regular_model_params"] = {

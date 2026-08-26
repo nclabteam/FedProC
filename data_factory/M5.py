@@ -63,9 +63,7 @@ class M5(BaseDataset):
         missing_days = [day for day in day_names if day not in dates_by_day]
         if missing_days:
             preview = ", ".join(missing_days[:5])
-            raise ValueError(
-                f"{calendar_path} is missing M5 day labels: {preview}"
-            )
+            raise ValueError(f"{calendar_path} is missing M5 day labels: {preview}")
         return [dates_by_day[day] for day in day_names]
 
     def prepare_raw(self) -> None:
@@ -87,9 +85,7 @@ class M5(BaseDataset):
             header = next(reader)
             id_index = header.index("id")
             day_indices = [
-                index
-                for index, column in enumerate(header)
-                if column.startswith("d_")
+                index for index, column in enumerate(header) if column.startswith("d_")
             ]
             if not day_indices:
                 raise ValueError(f"No M5 day columns found in {sales_path}")
@@ -111,13 +107,13 @@ class M5(BaseDataset):
                     writer = csv.writer(output)
                     writer.writerow([self.column_date, "Value"])
                     writer.writerows(
-                        (date, row[index])
-                        for date, index in zip(dates, day_indices)
+                        (date, row[index]) for date, index in zip(dates, day_indices)
                     )
 
         Path(self.path_prepared).touch()
 
     def execute(self) -> None:
+        """Prepare the manual source files before running the base pipeline."""
         if not Path(self.path_prepared).is_file():
             self.prepare_raw()
         super().execute()

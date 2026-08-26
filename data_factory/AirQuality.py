@@ -34,10 +34,7 @@ class AirQuality(BaseDataset):
         self.column_train = list(self.measurement_columns)
         self.granularity = 1
         self.granularity_unit = "hour"
-        self.url = (
-            "https://archive.ics.uci.edu/static/public/360/"
-            "air+quality.zip"
-        )
+        self.url = "https://archive.ics.uci.edu/static/public/360/" "air+quality.zip"
 
     def download(self) -> None:
         """Download UCI data and normalize its locale-specific CSV."""
@@ -71,8 +68,6 @@ class AirQuality(BaseDataset):
             .str.to_datetime("%d/%m/%Y %H.%M.%S")
             .alias(self.column_date)
         )
-        frame.select(
-            [self.column_date] + self.measurement_columns
-        ).write_csv(
+        frame.select([self.column_date] + self.measurement_columns).write_csv(
             os.path.join(self.path_raw, "AirQuality.csv")
         )

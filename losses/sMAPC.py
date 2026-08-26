@@ -1,36 +1,22 @@
 import torch
-import torch.nn as nn
+from torch import Tensor
+
+from .base import Loss
 
 
-class sMAPC(nn.Module):
+class sMAPC(Loss):
+    """Measure symmetric percentage change between aligned forecasts."""
 
-    eval_only = True
+    context_only = True
 
-    def __init__(self):
-        super(sMAPC, self).__init__()
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        if input.shape != target.shape:
+            raise ValueError("current and previous forecasts must have the same shape")
 
-    def forward(self, input, target):
-        # y_t_n is from step 2 to h
-        y_t_n = input[:, 1:]  # shape [batch, h-1]
-        # y_t_n_minus_1 is previous forecast (shifted)
-        y_t_n_minus_1 = input[:, :-1]  # shape [batch, h-1]
-
-        h = input.shape[1]
-
-        numerator = torch.abs(y_t_n - y_t_n_minus_1)
-        denominator = torch.abs(y_t_n) - torch.abs(y_t_n_minus_1)
-
-        epsilon = 1e-8
-        ratio = numerator / (denominator + epsilon)
-
-        loss = (200.0 / (h - 1)) * torch.sum(ratio, dim=-1)
-        return loss.mean()
-
-
-if __name__ == "__main__":
-    # Example usage
-    criterion = sMAPC()
-    y_pred = torch.randn(32, 96, 7)  # Example predicted values
-    y_true = torch.randn(32, 96, 7)  # Example true values
-    loss = criterion(y_pred, y_true)
-    print(loss)
+        # Paper sMAPC definition: compare forecasts for the same periods at adjacent origins.
+        return 200 * torch.mean(
+            self.divide_no_nan(
+                a=torch.abs(input - target),
+                b=torch.abs(input) + torch.abs(target),
+            )
+        )

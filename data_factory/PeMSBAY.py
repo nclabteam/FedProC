@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class PeMSBAY(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Five-minute traffic-speed series from Bay Area sensors."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "PeMSBAY", "raw")
         self.path_temp = os.path.join("datasets", "PeMSBAY", "temp")
@@ -19,7 +21,8 @@ class PeMSBAY(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "1wD-mHlqAb2mtHOe_68fZvDh1LpDegMMq"
 
-    def download(self):
+    def download(self) -> None:
+        """Download PeMS-BAY and split it into per-sensor CSV files."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

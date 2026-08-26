@@ -34,9 +34,7 @@ class TestAnemometer(unittest.TestCase):
         dataset.save_path = str(self.root / name)
         dataset.path_raw = str(self.root / name / "raw")
         dataset.path_temp = str(self.root / "temp")
-        dataset.path_prepared = str(
-            self.root / name / ".raw_ready"
-        )
+        dataset.path_prepared = str(self.root / name / ".raw_ready")
 
     def test_download_explains_manual_archive_placement(self) -> None:
         dataset = AnemometerPaired(self.configs)
@@ -76,11 +74,7 @@ class TestAnemometer(unittest.TestCase):
         source_dir.mkdir(parents=True)
         date = "06/30/2003 09:50:00"
         shear3 = ",".join(["49", "39", "30"] + ["1"] * 20 + [date])
-        shear4 = ",".join(
-            ["49", "39", "30", "10"]
-            + ["1"] * 24
-            + ["2/23/2007 14:10"]
-        )
+        shear4 = ",".join(["49", "39", "30", "10"] + ["1"] * 24 + ["2/23/2007 14:10"])
         with zipfile.ZipFile(source_dir / "shear.zip", "w") as archive:
             archive.writestr("shear3.txt", shear3)
             archive.writestr("shear4.txt", shear4)
@@ -102,12 +96,8 @@ class TestAnemometer(unittest.TestCase):
         )
         self.assertEqual(output3.shape, (1, 21))
         self.assertEqual(output4.shape, (1, 25))
-        self.assertFalse(
-            (Path(dataset3.path_raw) / "shear4.csv").exists()
-        )
-        self.assertFalse(
-            (Path(dataset4.path_raw) / "shear3.csv").exists()
-        )
+        self.assertFalse((Path(dataset3.path_raw) / "shear4.csv").exists())
+        self.assertFalse((Path(dataset4.path_raw) / "shear3.csv").exists())
 
     def test_merged_datasets_reference_homogeneous_loaders(self) -> None:
         shear = AnemometerShear(self.configs)

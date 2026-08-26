@@ -27,7 +27,7 @@ if __name__ == "__main__":
     )
     dataset.execute()
     options.update_args(
-        {
+        params={
             "path_info": dataset.path_info,
             "granularity_unit": dataset.info[0]["granularity_unit"],
             "num_clients": len(dataset.info),
@@ -51,7 +51,10 @@ if __name__ == "__main__":
             SetSeed(seed=args.seed + t).set()
             start = time.time()
             print("Creating server and clients ...")
-            server = getattr(__import__("strategies"), args.strategy)(args, t)
+            server = getattr(__import__("strategies"), args.strategy)(
+                configs=args,
+                times=t,
+            )
             server.train()
             elapsed = time.time() - start
             timings.append({"run": t, "seconds": round(elapsed, 2)})
@@ -63,11 +66,11 @@ if __name__ == "__main__":
         print(f"Timings saved to {timing_path}")
 
         # Analyze before compact so run-level CSVs are still available
-        results_path = ExperimentAnalysis(args.save_path).save()
+        results_path = ExperimentAnalysis(experiment_dir=args.save_path).save()
         print(f"Analysis saved to {results_path}")
 
         if args.compact:
-            compact_summary = compact_experiment_runs(args.save_path)
+            compact_summary = compact_experiment_runs(save_path=args.save_path)
             print("Compact summary:", compact_summary)
     except KeyboardInterrupt:
         if not args.keep_useless_run:

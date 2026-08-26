@@ -5,6 +5,7 @@ from peft import LoraConfig, TaskType, get_peft_model
 
 from layers.AccustumGPT2 import AccustumGPT2Model, gpt2_pca_embeddings
 from layers.RevIN import RevIN
+from models import CHECKPOINT_DIR
 
 
 class CALF(nn.Module):
@@ -43,18 +44,18 @@ class CALF(nn.Module):
         # Load pretrained GPT-2 models with error handling and caching
         try:
             self.gpt2 = AccustumGPT2Model.from_pretrained(
-                "gpt2",
+                pretrained_model_name_or_path="gpt2",
                 output_attentions=True,
                 output_hidden_states=True,
                 local_files_only=False,
-                cache_dir=None,
+                cache_dir=str(CHECKPOINT_DIR),
             )
             self.gpt2_text = AccustumGPT2Model.from_pretrained(
-                "gpt2",
+                pretrained_model_name_or_path="gpt2",
                 output_attentions=True,
                 output_hidden_states=True,
                 local_files_only=False,
-                cache_dir=None,
+                cache_dir=str(CHECKPOINT_DIR),
             )
         except Exception as e:
             raise RuntimeError(f"Error loading GPT-2 models: {e}")
@@ -190,7 +191,7 @@ class Encoder_PCA(nn.Module):
         num_heads=12,
         num_encoder_layers=1,
     ):
-        super(Encoder_PCA, self).__init__()
+        super().__init__()
         self.linear = nn.Linear(input_dim, hidden_dim)
 
         self.transformer_encoder = nn.TransformerEncoder(

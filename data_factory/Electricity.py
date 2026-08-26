@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class Electricity(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Fifteen-minute electricity consumption series split by client."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "Electricity")
         self.path_raw = os.path.join("datasets", "Electricity", "raw")
@@ -20,9 +22,12 @@ class Electricity(BaseDataset):
         self.url = "https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/refs/heads/master/electricity/electricity.txt.gz"
         self.split_files = True
 
-    def download(self):
+    def download(self) -> None:
+        """Download, timestamp, and optionally split electricity series."""
         os.makedirs(self.path_raw, exist_ok=True)
-        extracted_path = self.download_and_extract_gz(url=self.url, save_dir=self.path_temp)
+        extracted_path = self.download_and_extract_gz(
+            url=self.url, save_dir=self.path_temp
+        )
         df = pl.scan_csv(extracted_path, separator=",", has_header=False).collect()
         start_date = datetime(2012, 1, 1, 0, 15)
         df = df.with_columns(

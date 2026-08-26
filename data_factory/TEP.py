@@ -28,7 +28,7 @@ class TEP(BaseDataset):
     simulation_run = 1
     epoch = datetime.datetime(2000, 1, 1)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "TEP")
         self.path_raw = os.path.join("datasets", "TEP", "raw")
@@ -44,7 +44,8 @@ class TEP(BaseDataset):
 
         self.url = "https://dataverse.harvard.edu/api/access/datafile/3031241"
 
-    def download(self):
+    def download(self) -> None:
+        """Download one fault-free run and add synthetic timestamps."""
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)
 

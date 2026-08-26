@@ -1,9 +1,19 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
+    """Apply attention followed by a convolutional feed-forward block."""
+
+    def __init__(
+        self,
+        attention: nn.Module,
+        d_model: int,
+        d_ff: int | None = None,
+        dropout: float = 0.1,
+        activation: str = "relu",
+    ) -> None:
         super().__init__()
         d_ff = d_ff or 4 * d_model
         self.attention = attention
@@ -14,7 +24,11 @@ class EncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.activation = F.relu if activation == "relu" else F.gelu
 
-    def forward(self, x, attn_mask=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         new_x, attn = self.attention(x, x, x, attn_mask=attn_mask)
         x = x + self.dropout(new_x)
         y = x = self.norm1(x)
@@ -24,7 +38,14 @@ class EncoderLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, attn_layers, conv_layers=None, norm_layer=None):
+    """Stack transformer encoder layers with optional downsampling."""
+
+    def __init__(
+        self,
+        attn_layers: list[nn.Module],
+        conv_layers: list[nn.Module] | None = None,
+        norm_layer: nn.Module | None = None,
+    ) -> None:
         super().__init__()
         self.attn_layers = nn.ModuleList(attn_layers)
         self.conv_layers = (
@@ -32,7 +53,11 @@ class Encoder(nn.Module):
         )
         self.norm = norm_layer
 
-    def forward(self, x, attn_mask=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, list[torch.Tensor | None]]:
         attns = []
         if self.conv_layers is not None:
             for attn_layer, conv_layer in zip(self.attn_layers, self.conv_layers):
@@ -51,15 +76,17 @@ class Encoder(nn.Module):
 
 
 class DecoderLayer(nn.Module):
+    """Apply self-attention, cross-attention, and feed-forward decoding."""
+
     def __init__(
         self,
-        self_attention,
-        cross_attention,
-        d_model,
-        d_ff=None,
-        dropout=0.1,
-        activation="relu",
-    ):
+        self_attention: nn.Module,
+        cross_attention: nn.Module,
+        d_model: int,
+        d_ff: int | None = None,
+        dropout: float = 0.1,
+        activation: str = "relu",
+    ) -> None:
         super().__init__()
         d_ff = d_ff or 4 * d_model
         self.self_attention = self_attention
@@ -72,7 +99,13 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.activation = F.relu if activation == "relu" else F.gelu
 
-    def forward(self, x, cross, x_mask=None, cross_mask=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        cross: torch.Tensor,
+        x_mask: torch.Tensor | None = None,
+        cross_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         x = x + self.dropout(self.self_attention(x, x, x, attn_mask=x_mask)[0])
         x = self.norm1(x)
         x = x + self.dropout(
@@ -85,13 +118,26 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, layers, norm_layer=None, projection=None):
+    """Stack transformer decoder layers with optional output projection."""
+
+    def __init__(
+        self,
+        layers: list[nn.Module],
+        norm_layer: nn.Module | None = None,
+        projection: nn.Module | None = None,
+    ) -> None:
         super().__init__()
         self.layers = nn.ModuleList(layers)
         self.norm = norm_layer
         self.projection = projection
 
-    def forward(self, x, cross, x_mask=None, cross_mask=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        cross: torch.Tensor,
+        x_mask: torch.Tensor | None = None,
+        cross_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         for layer in self.layers:
             x = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
         if self.norm is not None:
@@ -102,7 +148,9 @@ class Decoder(nn.Module):
 
 
 class ConvLayer(nn.Module):
-    def __init__(self, c_in):
+    """Downsample a sequence with convolution and max pooling."""
+
+    def __init__(self, c_in: int) -> None:
         super().__init__()
         self.downConv = nn.Conv1d(
             in_channels=c_in,
@@ -115,7 +163,7 @@ class ConvLayer(nn.Module):
         self.activation = nn.ELU()
         self.maxPool = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.downConv(x.permute(0, 2, 1))
         x = self.norm(x)
         x = self.activation(x)

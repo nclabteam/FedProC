@@ -23,7 +23,7 @@ class CrossLinear(nn.Module):
         parser.add_argument("--beta", type=float, default=None)
 
     def __init__(self, configs):
-        super(CrossLinear, self).__init__()
+        super().__init__()
         self.EPS = 1e-5
         patch_len = configs.patch_len
         patch_num = math.ceil(configs.input_len / patch_len)
@@ -86,7 +86,7 @@ class CrossLinear(nn.Module):
 
 class Patch_Embedding(nn.Module):
     def __init__(self, seq_len, patch_num, patch_len, d_model, d_ff, variate_num):
-        super(Patch_Embedding, self).__init__()
+        super().__init__()
         self.pad_num = patch_num * patch_len - seq_len
         self.patch_len = patch_len
         self.linear = nn.Sequential(
@@ -108,7 +108,7 @@ class Patch_Embedding(nn.Module):
 
 class De_Patch_Embedding(nn.Module):
     def __init__(self, pred_len, patch_num, d_model, d_ff, variate_num):
-        super(De_Patch_Embedding, self).__init__()
+        super().__init__()
         self.linear = nn.Sequential(
             nn.Flatten(2),
             nn.Linear(patch_num * d_model, d_ff),

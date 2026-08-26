@@ -1,39 +1,105 @@
-from collections import OrderedDict
+from argparse import Namespace
+from typing import Any, Mapping, Sequence
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from .dFL import dFL, dFL_Client
-from .tFL import tFL as Server
+from .tFL import tFL
 
 
-class FedAWA(Server):
-    """Federated learning with Adaptive Weight Aggregation (Ren et al., CVPR 2025).
+class FedAWAShared:
+    """FedAWA operations shared by central and decentralized aggregation."""
 
-    Adaptively learns per-client aggregation weights on the server side without
-    requiring a proxy dataset. Defines client vector τ_k = θ_k - θ_g.
-    Optimizes softmax-weighted aggregation (paper Eq. 3):
-      min_λ  Σ_k λ_k ||τ_k - τ_g||₂ + d(Σ_k λ_k θ_k, θ_g)
-    where τ_g = Σ_k λ_k τ_k is the merged global vector and
-    d(·,·) = 1 - cosine_similarity (default).
+    @staticmethod
+    def flatten_params(params: Mapping[str, torch.Tensor]) -> torch.Tensor:
+        return torch.cat([value.reshape(-1).float() for value in params.values()])
 
-    Default hyperparameters: server_epochs=1, server_lr=0.01, reg_distance=cos.
-    Reference: arXiv:2503.15842.
-    """
+    @staticmethod
+    def cost_matrix(
+        x: torch.Tensor,
+        y: torch.Tensor,
+        distance: str = "cos",
+        power: int = 2,
+    ) -> torch.Tensor:
+        x_col, y_line = x.unsqueeze(-2), y.unsqueeze(-3)
+        if torch.is_complex(x_col):
+            x_col = x_col.real
+        if torch.is_complex(y_line):
+            y_line = y_line.real
+        if distance == "cos":
+            return 1 - F.cosine_similarity(x_col, y_line, dim=-1, eps=1e-8)
+        if distance == "euc":
+            return torch.mean(torch.abs(x_col - y_line) ** power, dim=-1)
+        raise ValueError(f"Unsupported distance type: {distance}")
+
+    @staticmethod
+    def optimize_weights(
+        models: Sequence[Mapping[str, torch.Tensor]],
+        reference: Mapping[str, torch.Tensor],
+        initial_logits: torch.Tensor,
+        epochs: int,
+        learning_rate: float,
+        optimizer_name: str,
+        distance: str,
+        device: str | torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Optimize aggregation weights."""
+        if not models:
+            raise ValueError("at least one model is required")
+        if initial_logits.numel() != len(models):
+            raise ValueError("one initial logit per model is required")
+
+        local = torch.stack(
+            [FedAWAShared.flatten_params(params=model) for model in models]
+        ).to(device=device)
+        old = FedAWAShared.flatten_params(params=reference).to(device=device)
+        logits = initial_logits.detach().clone().to(device=device).requires_grad_(True)
+        if optimizer_name.lower() == "adam":
+            optimizer = torch.optim.Adam([logits], lr=learning_rate, betas=(0.5, 0.999))
+        elif optimizer_name.lower() == "sgd":
+            optimizer = torch.optim.SGD(
+                [logits], lr=learning_rate, momentum=0.9, weight_decay=5e-4
+            )
+        else:
+            raise ValueError(f"Unsupported server optimizer: {optimizer_name}")
+
+        updates = local - old
+        for _ in range(epochs):
+            optimizer.zero_grad()
+            weights = F.softmax(logits, dim=0)
+            merged_update = torch.matmul(weights, updates)
+            # Paper Eq. 3: sum_k lambda_k ||tau_k - tau_g||_2.
+            similarity = torch.dot(
+                weights,
+                torch.linalg.vector_norm(updates - merged_update, dim=1),
+            )
+            merged_model = torch.matmul(weights, local)
+            # Paper Eq. 3: d(sum_k lambda_k theta_k, theta_g).
+            regularizer = FedAWAShared.cost_matrix(
+                x=merged_model.unsqueeze(0),
+                y=old.unsqueeze(0),
+                distance=distance,
+            ).squeeze()
+            (similarity + regularizer).backward()
+            optimizer.step()
+
+        logits = logits.detach().cpu()
+        return F.softmax(logits, dim=0), logits
+
+
+class FedAWA(FedAWAShared, tFL):
+    """Adaptive server aggregation using client update vectors."""
 
     optional = {
         "server_epochs": 1,
         "reg_distance": "cos",
-        "server_lr": 0.01,
+        "server_lr": 0.001,
         "server_optimizer": "Adam",
     }
 
-    awa_weights = None
-    _awa_optimizer = None
-
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--server_epochs", type=int, default=None)
         parser.add_argument(
             "--reg_distance", type=str, default=None, choices=["cos", "euc"]
@@ -43,153 +109,102 @@ class FedAWA(Server):
             "--server_optimizer", type=str, default=None, choices=["SGD", "Adam"]
         )
 
-    @staticmethod
-    def _flatten_params(model):
-        """Helper function to flatten model parameters into a single vector."""
-        return torch.cat([p.data.view(-1) for p in model.parameters()])
+    def __init__(self, configs: Namespace, times: int) -> None:
+        super().__init__(configs=configs, times=times)
+        self.awa_weights: dict[Any, torch.Tensor] = {}
 
-    @staticmethod
-    def _cost_matrix(x, y, dis="cos", p=2):
-        """
-        Calculates the cost matrix between representations x and y.
-        Adapted from the original FedAWA code.
-
-        Args:
-            x: Tensor (e.g., global model flat params), shape [..., features]
-            y: Tensor (e.g., client model flat params), shape [..., features]
-            dis: Distance metric ('cos' or 'euc').
-            p: Power for Euclidean distance.
-
-        Returns:
-            Tensor: Cost matrix.
-        """
-        x_col = x.unsqueeze(-2)
-        y_lin = y.unsqueeze(-3)
-        if torch.is_complex(x_col):
-            x_col = x_col.real
-        if torch.is_complex(y_lin):
-            y_lin = y_lin.real
-        if dis == "cos":
-            d_cosine = nn.CosineSimilarity(dim=-1, eps=1e-8)
-            C = 1 - d_cosine(x_col, y_lin)
-        elif dis == "euc":
-            C = torch.mean((torch.abs(x_col - y_lin)) ** p, -1)
-        else:
-            raise ValueError(f"Unsupported distance type: {dis}")
-        return C
-
-    def aggregate_client_updates(self, packages) -> None:
-        cids = list(packages.keys())
-        num_clients = len(cids)
-        scores = [packages[cid]["score"] for cid in cids]
-
-        client_params = [packages[cid]["regular_model_params"] for cid in cids]
-        client_flats = torch.stack([
-            torch.cat([p.view(-1).float() for p in params.values()])
-            for params in client_params
-        ]).to(self.device)
-
-        global_flat = torch.cat(
-            [p.view(-1).float() for p in self.public_model_params.values()]
-        ).to(self.device)
-
-        if self.awa_weights is None or self.awa_weights.shape[0] != num_clients:
-            ts = torch.tensor(scores, dtype=torch.float32, device=self.device)
-            self.awa_weights = torch.log(ts + 1e-9).clone().detach().requires_grad_(True)
-            obj = self._get_objective_function("optimizers", self.server_optimizer)
-            self._awa_optimizer = obj(
-                params=[self.awa_weights],
-                configs=type(
-                    "Config",
-                    (),
-                    {
-                        "learning_rate": self.server_lr,
-                        "momentum": 0.9,
-                        "beta1": 0.9,
-                        "beta2": 0.999,
-                        "epsilon": 1e-8,
-                        "weight_decay": 0,
-                        "amsgrad": False,
-                    },
-                )(),
-            )
-        else:
-            self.awa_weights = self.awa_weights.clone().detach().requires_grad_(True)
-
-        self.awa_weights = self.awa_weights.to(self.device).requires_grad_(True)
-
-        for _ in range(self.server_epochs):
-            self._awa_optimizer.zero_grad()
-
-            probability_train = torch.nn.functional.softmax(self.awa_weights, dim=0)
-
-            # paper Eq. 3: reg = d(Σ_k λ_k θ_k, θ_g)
-            agg_flat = torch.sum(client_flats * probability_train.unsqueeze(1), dim=0)
-            if self.reg_distance == "cos":
-                reg_loss = 1.0 - F.cosine_similarity(
-                    agg_flat.unsqueeze(0), global_flat.unsqueeze(0)
-                ).squeeze()
-            else:  # euc
-                reg_loss = torch.mean(torch.abs(agg_flat - global_flat) ** 2)
-
-            client_updates = client_flats - global_flat
-            weighted_avg_update = torch.sum(
-                client_updates * probability_train.unsqueeze(1), dim=0, keepdim=True
-            )
-            l2_distance = torch.norm(client_updates - weighted_avg_update, p=2, dim=1)
-            sim_loss = torch.sum(probability_train * l2_distance)
-
-            total_loss = sim_loss + reg_loss
-            total_loss.backward()
-            self._awa_optimizer.step()
-
-        self.awa_weights = self.awa_weights.detach().clone()
-        weights = torch.nn.functional.softmax(self.awa_weights, dim=0)
-
-        new_params = OrderedDict()
-        for name in self.public_model_params:
-            stacked = torch.stack(
-                [client_params[i][name].float().to(self.device) for i in range(num_clients)],
-                dim=-1,
-            )
-            new_params[name] = (
-                torch.sum(stacked * weights.to(stacked.dtype), dim=-1)
-                .to(self.public_model_params[name].dtype)
-                .cpu()
-            )
-        self._commit_global(new_params)
+    def aggregate_client_updates(self, packages: Mapping[int, dict[str, Any]]) -> None:
+        client_ids = list(packages)
+        models = [
+            packages[client_id]["regular_model_params"] for client_id in client_ids
+        ]
+        initial_logits = torch.stack(
+            [
+                self.awa_weights.get(
+                    client_id,
+                    torch.tensor(max(float(packages[client_id]["score"]), 1e-12)).log(),
+                )
+                for client_id in client_ids
+            ]
+        )
+        weights, logits = self.optimize_weights(
+            models=models,
+            reference=self.public_model_params,
+            initial_logits=initial_logits,
+            epochs=self.server_epochs,
+            learning_rate=self.server_lr,
+            optimizer_name=self.server_optimizer,
+            distance=self.reg_distance,
+            device=self.device,
+        )
+        self.awa_weights.update(
+            {client_id: logit.clone() for client_id, logit in zip(client_ids, logits)}
+        )
+        self._commit_global(new_params=self.mean_models(models=models, weights=weights))
 
 
 class DFedAWA(FedAWA, dFL):
-    """Decentralized FedAWA: learn adaptive aggregation weights per receiver."""
+    """Apply FedAWA independently over each node's neighborhood."""
 
     @classmethod
-    def args_update(cls, parser):
-        dFL.args_update(parser)
-        FedAWA.args_update(parser)
+    def args_update(cls, parser: Any) -> None:
+        dFL.args_update(parser=parser)
+        FedAWA.args_update(parser=parser)
 
-    def calculate_aggregation_weights(self):
-        dFL.calculate_aggregation_weights(
-            self
-        )  # delegate to dFL's client-orchestrating version
+    def train_one_round(self) -> dict[str, Any]:
+        self._round_reference_models = {
+            client_id: dict(
+                self.clients_personal_model_params[client_id]
+                or self.public_model_params
+            )
+            for client_id in self.selected_clients
+        }
+        return super().train_one_round()
+
+    def aggregate_client_updates(self, packages: Mapping[int, dict[str, Any]]) -> None:
+        trained = {
+            client_id: package["regular_model_params"]
+            for client_id, package in packages.items()
+        }
+        references = getattr(self, "_round_reference_models", {})
+        aggregated = {}
+        for client_id in packages:
+            peers = [
+                client_id,
+                *(peer for peer in self.topology[client_id] if peer in packages),
+            ]
+            models = [trained[peer] for peer in peers]
+            initial_logits = torch.stack(
+                [
+                    self.awa_weights.get(
+                        (client_id, peer),
+                        torch.tensor(max(float(packages[peer]["score"]), 1e-12)).log(),
+                    )
+                    for peer in peers
+                ]
+            )
+            reference = references.get(client_id) or (
+                self.clients_personal_model_params[client_id]
+                or self.public_model_params
+            )
+            weights, logits = self.optimize_weights(
+                models=models,
+                reference=reference,
+                initial_logits=initial_logits,
+                epochs=self.server_epochs,
+                learning_rate=self.server_lr,
+                optimizer_name=self.server_optimizer,
+                distance=self.reg_distance,
+                device=self.device,
+            )
+            self.awa_weights.update(
+                {(client_id, peer): logit.clone() for peer, logit in zip(peers, logits)}
+            )
+            aggregated[client_id] = self.mean_models(models=models, weights=weights)
+
+        for client_id, model in aggregated.items():
+            self.clients_personal_model_params[client_id].update(model)
 
 
 class DFedAWA_Client(dFL_Client):
-    _flatten_params = staticmethod(FedAWA._flatten_params)
-    _cost_matrix = staticmethod(FedAWA._cost_matrix)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.awa_weights = None
-        self.awa_optimizer = None
-
-    def calculate_aggregation_weights(self):
-        self.client_data = [
-            {"model": model, "score": score}
-            for model, score in zip(self.models, self.scores)
-        ]
-        model_optimizer = self.optimizer
-        self.optimizer = self.awa_optimizer
-        FedAWA.calculate_aggregation_weights(self)
-        self.awa_optimizer = self.optimizer
-        self.optimizer = model_optimizer
+    """Stateless local trainer for decentralized FedAWA."""

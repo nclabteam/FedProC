@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class SolarEnergy(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Hourly Alabama solar-energy series split by plant."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "SolarEnergy")
         self.path_raw = os.path.join("datasets", "SolarEnergy", "raw")
@@ -20,9 +22,12 @@ class SolarEnergy(BaseDataset):
         self.url = "https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/master/solar-energy/solar_AL.txt.gz"
         self.split_files = True
 
-    def download(self):
+    def download(self) -> None:
+        """Download, timestamp, and optionally split solar series."""
         os.makedirs(self.path_raw, exist_ok=True)
-        extracted_path = self.download_and_extract_gz(url=self.url, save_dir=self.path_temp)
+        extracted_path = self.download_and_extract_gz(
+            url=self.url, save_dir=self.path_temp
+        )
         df = pl.read_csv(extracted_path, separator=",", has_header=False)
         start_date = datetime(2015, 1, 1, 0, 0)
         df = df.with_columns(
@@ -43,7 +48,9 @@ class SolarEnergy(BaseDataset):
 
 
 class SolarEnergyOG(SolarEnergy):
-    def __init__(self, *args, **kwargs):
+    """Multivariate form of the solar-energy dataset."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_path = os.path.join("datasets", "SolarEnergyOG")
         self.path_raw = os.path.join("datasets", "SolarEnergyOG", "raw")

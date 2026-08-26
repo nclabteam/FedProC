@@ -1,30 +1,32 @@
 import numpy as np
 
-from .BaseScaler import BaseScaler
+from .BaseScaler import BaseScaler, ScalerStats
 
 
 class Standard(BaseScaler):
-    def __init__(self, stat=None):
-        super().__init__()
-        if stat is not None:
-            self.mean = []
-            self.std = []
-            for key in stat.keys():
-                self.mean.append(stat[key]["mean"])
-                self.std.append(stat[key]["std"])
-            self.mean = np.array(self.mean)
-            self.std = np.array(self.std)
+    """Scale each feature to zero mean and unit variance."""
 
-    def fit(self, data):
+    def __init__(self, stat: ScalerStats | None = None) -> None:
+        super().__init__(stat=stat)
+        if stat is not None:
+            self.mean, self.std = self.extract_statistics(
+                stat=stat,
+                names=("mean", "std"),
+            )
+
+    def fit(self, data: np.ndarray) -> None:
         self.mean = data.mean(axis=0)
         self.std = data.std(axis=0)
 
-    def transform(self, data):
+    def transform(self, data: np.ndarray) -> np.ndarray:
         mean = np.asarray(self.mean, dtype=np.float32)
         std = np.asarray(self.std, dtype=np.float32)
-        return self.divide_no_nan((np.asarray(data, dtype=np.float32) - mean), std)
+        return self.divide_no_nan(
+            a=np.asarray(data, dtype=np.float32) - mean,
+            b=std,
+        )
 
-    def inverse_transform(self, data):
+    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
         return (
             np.asarray(data, dtype=np.float32) * np.asarray(self.std, dtype=np.float32)
         ) + np.asarray(self.mean, dtype=np.float32)

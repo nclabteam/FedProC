@@ -514,6 +514,7 @@ class LossLandscape:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Loss landscape visualization.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -559,6 +560,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Generate the requested loss landscape plots."""
     args = parse_args()
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)

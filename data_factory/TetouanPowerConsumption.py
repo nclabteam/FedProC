@@ -6,7 +6,9 @@ from .base import BaseDataset
 
 
 class TetouanPowerConsumption(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Ten-minute power and weather measurements from Tetouan zones."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "TetouanPowerConsumption", "raw")
         self.path_temp = os.path.join("datasets", "TetouanPowerConsumption", "temp")
@@ -32,7 +34,8 @@ class TetouanPowerConsumption(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "https://archive.ics.uci.edu/static/public/849/power+consumption+of+tetouan+city.zip"
 
-    def download(self):
+    def download(self) -> None:
+        """Download the city data and write one CSV per power zone."""
         # Create directories
         os.makedirs(self.path_temp, exist_ok=True)
         os.makedirs(self.path_raw, exist_ok=True)

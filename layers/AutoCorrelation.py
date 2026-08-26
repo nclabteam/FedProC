@@ -14,12 +14,12 @@ class AutoCorrelation(nn.Module):
 
     def __init__(
         self,
-        mask_flag=True,
-        factor=1,
-        scale=None,
-        attention_dropout=0.1,
-        output_attention=False,
-    ):
+        mask_flag: bool = True,
+        factor: float = 1,
+        scale: float | None = None,
+        attention_dropout: float = 0.1,
+        output_attention: bool = False,
+    ) -> None:
         super().__init__()
         self.factor = factor
         self.scale = scale
@@ -27,7 +27,11 @@ class AutoCorrelation(nn.Module):
         self.output_attention = output_attention
         self.dropout = nn.Dropout(attention_dropout)
 
-    def time_delay_agg_training(self, values, corr):
+    def time_delay_agg_training(
+        self,
+        values: torch.Tensor,
+        corr: torch.Tensor,
+    ) -> torch.Tensor:
         """
         SpeedUp version of Autocorrelation (a batch-normalization style design)
         This is for the training phase.
@@ -56,7 +60,11 @@ class AutoCorrelation(nn.Module):
             )
         return delays_agg
 
-    def time_delay_agg_inference(self, values, corr):
+    def time_delay_agg_inference(
+        self,
+        values: torch.Tensor,
+        corr: torch.Tensor,
+    ) -> torch.Tensor:
         """
         SpeedUp version of Autocorrelation (a batch-normalization style design)
         This is for the inference phase.
@@ -102,7 +110,11 @@ class AutoCorrelation(nn.Module):
             )
         return delays_agg
 
-    def time_delay_agg_full(self, values, corr):
+    def time_delay_agg_full(
+        self,
+        values: torch.Tensor,
+        corr: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Standard version of Autocorrelation
         """
@@ -134,7 +146,13 @@ class AutoCorrelation(nn.Module):
             delays_agg = delays_agg + pattern * (tmp_corr[..., i].unsqueeze(-1))
         return delays_agg
 
-    def forward(self, queries, keys, values, attn_mask):
+    def forward(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        attn_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         B, L, H, E = queries.shape
         _, S, _, D = values.shape
         if L > S:
@@ -154,11 +172,13 @@ class AutoCorrelation(nn.Module):
         # time delay agg
         if self.training:
             V = self.time_delay_agg_training(
-                values.permute(0, 2, 3, 1).contiguous(), corr
+                values=values.permute(0, 2, 3, 1).contiguous(),
+                corr=corr,
             ).permute(0, 3, 1, 2)
         else:
             V = self.time_delay_agg_inference(
-                values.permute(0, 2, 3, 1).contiguous(), corr
+                values=values.permute(0, 2, 3, 1).contiguous(),
+                corr=corr,
             ).permute(0, 3, 1, 2)
 
         if self.output_attention:
@@ -168,7 +188,16 @@ class AutoCorrelation(nn.Module):
 
 
 class AutoCorrelationLayer(nn.Module):
-    def __init__(self, correlation, d_model, n_heads, d_keys=None, d_values=None):
+    """Project tensors around an autocorrelation module."""
+
+    def __init__(
+        self,
+        correlation: nn.Module,
+        d_model: int,
+        n_heads: int,
+        d_keys: int | None = None,
+        d_values: int | None = None,
+    ) -> None:
         super().__init__()
 
         d_keys = d_keys or (d_model // n_heads)
@@ -181,7 +210,13 @@ class AutoCorrelationLayer(nn.Module):
         self.out_projection = nn.Linear(d_values * n_heads, d_model)
         self.n_heads = n_heads
 
-    def forward(self, queries, keys, values, attn_mask):
+    def forward(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        attn_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         B, L, _ = queries.shape
         _, S, _ = keys.shape
         H = self.n_heads

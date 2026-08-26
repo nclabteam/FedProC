@@ -1,16 +1,18 @@
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from argparse import ArgumentParser, Namespace
+
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import (
+    CosineAnnealingWarmRestarts as TorchCosineAnnealingWarmRestarts,
+)
 
 
-class CAWR(CosineAnnealingWarmRestarts):
+class CAWR(TorchCosineAnnealingWarmRestarts):
+    """Adapt PyTorch cosine annealing with warm restarts to FedProC configs."""
 
-    optional = {
-        "T_0": 1,
-        "T_mult": 1,
-        "eta_min": 0.0,
-    }
+    optional = {"T_0": 1, "T_mult": 1, "eta_min": 0.0}
 
-    @classmethod
-    def args_update(cls, parser):
+    @staticmethod
+    def args_update(parser: ArgumentParser) -> None:
         parser.add_argument(
             "--T_0",
             type=int,
@@ -24,10 +26,18 @@ class CAWR(CosineAnnealingWarmRestarts):
             help="Multiplier for the next restart period.",
         )
         parser.add_argument(
-            "--eta_min", type=float, default=None, help="Minimum learning rate."
+            "--eta_min",
+            type=float,
+            default=None,
+            help="Minimum learning rate.",
         )
 
-    def __init__(self, optimizer, configs, last_epoch=-1):
+    def __init__(
+        self,
+        optimizer: Optimizer,
+        configs: Namespace,
+        last_epoch: int = -1,
+    ) -> None:
         super().__init__(
             optimizer=optimizer,
             T_0=configs.T_0,

@@ -1,7 +1,11 @@
+from argparse import ArgumentParser, Namespace
+
 from torch.optim import SGD
+from torch.optim.optimizer import ParamsT
 
 
 class SGD(SGD):
+    """Adapt PyTorch SGD to FedProC configuration objects."""
 
     optional = {
         "momentum": 0,
@@ -11,14 +15,14 @@ class SGD(SGD):
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: ArgumentParser) -> None:
         parser.add_argument("--momentum", type=float, default=None)
         parser.add_argument("--dampening", type=float, default=None)
         parser.add_argument("--weight_decay", type=float, default=None)
         parser.add_argument("--nesterov", default=None, action="store_true")
 
-    def __init__(self, params, configs):
-        super(SGD, self).__init__(
+    def __init__(self, params: ParamsT, configs: Namespace) -> None:
+        super().__init__(
             params=params,
             lr=configs.learning_rate,
             momentum=configs.momentum,

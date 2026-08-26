@@ -1,19 +1,13 @@
 import torch
+from torch import Tensor
 
 from .base import Loss
 
 
 class MdAPE(Loss):
-    """
-    Median absolute percentage error
-    """
+    """Compute median absolute percentage error."""
 
-    def forward(self, input, target):
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return torch.median(
-            input=torch.abs(
-                self._percentage_error(
-                    input=input,
-                    target=target,
-                )
-            )
+            torch.abs(self._percentage_error(input=input, target=target))
         )

@@ -111,7 +111,11 @@ class DataFrameOptimizer:
                 if c_min is None or c_max is None:
                     continue
                 optimal_type = DataFrameOptimizer.cast_to_optimal_type(
-                    c_min, c_max, "float" if "float" in str(col_type).lower() else "int"
+                    c_min=c_min,
+                    c_max=c_max,
+                    current_type=(
+                        "float" if "float" in str(col_type).lower() else "int"
+                    ),
                 )
                 if optimal_type:
                     polars_type = np_to_pl_type_mapping.get(optimal_type)
@@ -123,7 +127,8 @@ class DataFrameOptimizer:
             reduction = 100.0 * (before - after) / before
             reduction_str = f"{reduction:.2f}% reduction"
             before, after, unit = DataFrameOptimizer.memory_unit_conversion(
-                before, after
+                before=before,
+                after=after,
             )
             print(
                 f"Polars DataFrame memory usage: {before:.4f} {unit} -> {after:.4f} {unit} ({reduction_str})"
@@ -288,5 +293,3 @@ class DataFrameOptimizer:
             unit_index += 1
 
         return before, after, units[unit_index]
-
-

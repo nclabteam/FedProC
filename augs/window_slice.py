@@ -1,28 +1,37 @@
-import numpy as np
+import math
+
 import torch
 import torch.nn.functional as F
 
 
 class window_slice:
-    def __init__(self, reduce_ratio=0.5):
+    """Crop a random window and interpolate it to the original length."""
+
+    def __init__(self, reduce_ratio: float = 0.5) -> None:
         self.reduce_ratio = reduce_ratio
 
-    def __call__(self, x):
-        # x: [B, T, D]
-        B, T, D = x.size()
-        target_len = int(np.ceil(self.reduce_ratio * T))
-        if target_len >= T:
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, sequence_length, channels = x.size()
+        target_length = math.ceil(self.reduce_ratio * sequence_length)
+        if target_length >= sequence_length:
             return x.clone()
 
-        starts = np.random.randint(low=0, high=T - target_len, size=B)
-        cropped = torch.stack(
-            [x[i, starts[i] : starts[i] + target_len, :] for i in range(B)], dim=0
+        starts = torch.randint(
+            low=0,
+            high=sequence_length - target_length + 1,
+            size=(batch_size, 1),
+            device=x.device,
         )
-
-        # Interpolate back to original size T
-        # cropped is [B, target_len, D] -> interpolate expects [B, D, target_len]
-        cropped_t = cropped.transpose(1, 2)
+        indices = starts + torch.arange(end=target_length, device=x.device)
+        cropped = torch.gather(
+            input=x,
+            dim=1,
+            index=indices.unsqueeze(-1).expand(-1, -1, channels),
+        )
         interpolated = F.interpolate(
-            cropped_t, size=T, mode="linear", align_corners=False
+            input=cropped.transpose(1, 2),
+            size=sequence_length,
+            mode="linear",
+            align_corners=False,
         )
         return interpolated.transpose(1, 2)

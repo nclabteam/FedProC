@@ -1,6 +1,9 @@
 import csv
+import json
 import math
 import os
+from collections.abc import Mapping
+from typing import Any
 
 from .base import Topology
 
@@ -11,7 +14,7 @@ class MekongGeoKNN(Topology):
     k = 8
     river_bonus = 0.75
 
-    def _station_metadata(self):
+    def _station_metadata(self) -> dict[str, dict[str, Any]]:
         metadata_path = os.path.join(
             "datasets",
             "MekongSalinity",
@@ -29,7 +32,7 @@ class MekongGeoKNN(Topology):
                 }
         return rows
 
-    def _client_station_codes(self):
+    def _client_station_codes(self) -> list[str]:
         info_path = os.path.join(
             "datasets",
             "MekongSalinity",
@@ -39,19 +42,16 @@ class MekongGeoKNN(Topology):
         if not os.path.exists(info_path):
             return []
 
-        import json
-
         with open(info_path, encoding="utf-8") as handle:
             info = json.load(handle)
 
-        codes = []
-        for item in info[: self.num_nodes]:
-            filename = os.path.basename(item["file"])
-            codes.append(os.path.splitext(filename)[0])
-        return codes
+        return [
+            os.path.splitext(os.path.basename(item["file"]))[0]
+            for item in info[: self.num_nodes]
+        ]
 
     @staticmethod
-    def _haversine_km(a, b):
+    def _haversine_km(a: Mapping[str, Any], b: Mapping[str, Any]) -> float:
         radius = 6371.0
         lat1 = math.radians(a["lat"])
         lat2 = math.radians(b["lat"])
@@ -63,7 +63,7 @@ class MekongGeoKNN(Topology):
         )
         return 2 * radius * math.asin(math.sqrt(h))
 
-    def _gen(self):
+    def _gen(self) -> dict[int, list[int]]:
         metadata = self._station_metadata()
         codes = self._client_station_codes()
         if len(codes) != self.num_nodes:
@@ -85,7 +85,7 @@ class MekongGeoKNN(Topology):
                 other = metadata.get(other_code)
                 if other is None:
                     continue
-                distance = self._haversine_km(current, other)
+                distance = self._haversine_km(a=current, b=other)
                 same_river = current["river"] and current["river"] == other["river"]
                 score = distance * (self.river_bonus if same_river else 1.0)
                 scored.append((score, other_idx))
@@ -101,7 +101,7 @@ class MekongGeoKNN(Topology):
             for node in range(self.num_nodes)
         }
 
-    def _fallback_ring(self):
+    def _fallback_ring(self) -> dict[int, list[int]]:
         neighbors = {}
         for node in range(self.num_nodes):
             values = set()

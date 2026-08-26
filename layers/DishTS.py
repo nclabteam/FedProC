@@ -4,8 +4,15 @@ import torch.nn.functional as F
 
 
 class DishTS(nn.Module):
+    """Normalize and denormalize series with learned statistics."""
 
-    def __init__(self, num_features, seq_len, dish_init="uniform", eps=1e-8):
+    def __init__(
+        self,
+        num_features: int,
+        seq_len: int,
+        dish_init: str = "uniform",
+        eps: float = 1e-8,
+    ) -> None:
         super().__init__()
         self.eps = eps
         if dish_init == "standard":
@@ -24,25 +31,25 @@ class DishTS(nn.Module):
         self.gamma = nn.Parameter(torch.ones(num_features))
         self.beta = nn.Parameter(torch.zeros(num_features))
 
-    def forward(self, x, mode="norm"):
+    def forward(self, x: torch.Tensor, mode: str = "norm") -> torch.Tensor | None:
         if mode == "norm":
             self.preget(x)
             return self.normalize(x)
         elif mode == "denorm":
             return self.denormalize(x)
 
-    def normalize(self, x):
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
         x = (x - self.phil) / torch.sqrt(self.xil + self.eps)
         x = x.mul(self.gamma) + self.beta
         return x
 
-    def denormalize(self, x):
+    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
         # x: B*H*D (forecasts)
         t1 = (x - self.beta) / self.gamma
         t2 = torch.sqrt(self.xih + self.eps)
         return t1 * t2 + self.phih
 
-    def preget(self, x):
+    def preget(self, x: torch.Tensor) -> None:
         # (B, T, N)
         x_transpose = x.permute(2, 0, 1)  # (N, B, T)
         theta = torch.bmm(x_transpose, self.reduce_mlayer).permute(1, 2, 0)

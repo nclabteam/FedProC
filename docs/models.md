@@ -7,7 +7,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | Name | Backbone | Type | Venue | Year | Paper | URL |
 |------|----------|------| ----- | ---- | ----- | --- |
 | Sonnet | Wavelet + Koopman + Attention | Multivariate | AAAI (Oral) | 2026 | Sonnet: Spectral Operator Neural Network for Multivariable Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2505.15312) - [GitHub](https://github.com/ClaudiaShu/Sonnet) |
-| SimTS | Causal CNN (contrastive pre-training) | Multivariate | ICASSP | 2024 | SimTS: Rethinking Contrastive Representation Learning for Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2303.18205) - [IEEE](https://ieeexplore.ieee.org/document/10446875) - [GitHub](https://github.com/xingyu617/SimTS_Representation_Learning) |
+| SimTS | Multi-scale causal CNN | Multivariate | ICASSP | 2024 | Simple Contrastive Representation Learning for Time Series Forecasting | [PUB](https://doi.org/10.1109/ICASSP48485.2024.10446875) - [Arxiv](https://arxiv.org/abs/2303.18205) - [GITHUB](https://github.com/xingyu617/SimTS_Representation_Learning) |
 | Amplifier | MLP | Multivariate | AAAI | 2025 | Amplifier: Bringing Attention to Neglected Low-Energy Components in Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2501.17216) - [REF](https://github.com/aikunyi/Amplifier/blob/main/models/Amplifier.py) |
 | MLP | MLP | Univariate | Nature | 1986 | Learning representations by back-propagating errors | [Nature](https://www.nature.com/articles/323533a0) |
 | Linear | MLP | Univariate | AAAI | 2023 | Are Transformers Effective for Time Series Forecasting? | [Arxiv](https://arxiv.org/abs/2205.13504) - [REF](https://github.com/cure-lab/LTSF-Linear/blob/main/models/Linear.py) |
@@ -55,7 +55,7 @@ Auxiliary (eg: static time-varying features, future time-varying features, etc)
 | ModernTCN | CNN || ICLR | 2024 | ModernTCN: A Modern Pure Convolution Structure for General Time Series Analysis | [OpenReview](https://openreview.net/forum?id=vpJMJerXHU) - [REF](https://github.com/luodhhh/ModernTCN/blob/main/ModernTCN-Long-term-forecasting/models/ModernTCN.py) |
 | xPatch | CNN | Univariate | AAAI | 2025 | xPatch: Dual-Stream Time Series Forecasting with Exponential Seasonal-Trend Decomposition | [Arxiv](https://arxiv.org/abs/2412.17323) |
 | TimePoint | CNN | Multivariate | ICML | 2025 | TimePoint: Accelerated Time Series Alignment via Self-Supervised Keypoint and Descriptor Learning | [OpenReview](https://openreview.net/forum?id=bUGdGaNFhi) - [Arxiv](https://arxiv.org/abs/2505.23475) - [REF](https://github.com/BGU-CS-VIL/TimePoint/blob/main/TimePoint/models/timepoint.py) |
-| InfoTS | Causal CNN + AutoAUG | Multivariate | ICLR | 2023 | InfoTS: Information-Aware Time Series Meta-Contrastive Learning | [Arxiv](https://arxiv.org/abs/2303.01186) - [REF](https://github.com/Sec-Sci-Lab/InfoTS) |
+| InfoTS | Dilated CNN + AutoAUG | Multivariate | AAAI | 2023 | Time Series Contrastive Learning with Information-Aware Augmentations | [PUB](https://doi.org/10.1609/aaai.v37i4.25575) - [Arxiv](https://arxiv.org/abs/2303.11911) - [GITHUB](https://github.com/chengw07/InfoTS) |
 ||||||||
 ||||||||
 | TimeKAN | KAN || ICLR | 2025 | TimeKAN: KAN-based Frequency Decomposition Learning Architecture for Long-term Time Series Forecasting | [Arxiv](https://arxiv.org/abs/2502.06910) - [REF](https://github.com/huangst21/TimeKAN/blob/main/models/TimeKAN.py) |

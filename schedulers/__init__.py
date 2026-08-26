@@ -1,40 +1,37 @@
 import importlib
-import os
-from typing import Any, Callable, Dict
+from argparse import ArgumentParser
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
-# Get the directory of the current file
-current_dir = os.path.dirname(os.path.abspath(__file__))
+schedulers: dict[str, type[Any]] = {}
+optional: dict[str, dict[str, Any]] = {}
+compulsory: dict[str, dict[str, Any]] = {}
+SCHEDULER_MODES = ("batch", "epoch", "iteration")
+args_update_functions: dict[
+    str,
+    Callable[[ArgumentParser], None] | None,
+] = {}
 
-# Initialize empty dictionaries to store the imported classes, optional dictionaries, and compulsory dictionaries
-schedulers = {}
-optional: Dict[Any, dict] = {}
-compulsory: Dict[Any, dict] = {}
-args_update_functions: Dict[str, Callable] = {}
+for path in sorted(
+    Path(__file__).parent.glob("*.py"), key=lambda item: item.stem.casefold()
+):
+    name = path.stem
+    if name == "__init__":
+        continue
+    module = importlib.import_module(f".{name}", package=__name__)
+    scheduler_type = getattr(module, name, None)
+    if not isinstance(scheduler_type, type):
+        continue
 
-for filename in os.listdir(current_dir):
-    if filename.endswith(".py") and filename != "__init__.py":
-        module_name = filename[:-3]  # Remove the .py extension
-        module = importlib.import_module(f".{module_name}", package=__package__)
+    schedulers[name] = scheduler_type
+    optional[name] = {
+        "scheduler_mode": "iteration",
+        **getattr(scheduler_type, "optional", {}),
+    }
+    compulsory[name] = getattr(scheduler_type, "compulsory", {})
+    args_update_functions[name] = getattr(scheduler_type, "args_update", None)
 
-        # Import the main class
-        class_name = module_name
-        if hasattr(module, class_name):
-            class_obj = getattr(module, class_name)
-            schedulers[class_name] = class_obj
-
-            # Import optional dictionary
-            optional[class_name] = getattr(class_obj, "optional", {})
-
-            # Import compulsory dictionary
-            compulsory[class_name] = getattr(class_obj, "compulsory", {})
-
-            # Import args_update function
-            args_update_functions[class_name] = getattr(class_obj, "args_update", None)
-
-# Add the imported classes to the module's namespace
 globals().update(schedulers)
-
-
-# Optionally, define __all__ to control what gets imported with "from strategies import *"
-__all__ = list(schedulers.keys())
-SCHEDULERS = list(schedulers.keys())
+__all__ = list(schedulers)
+SCHEDULERS = list(schedulers)

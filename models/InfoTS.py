@@ -1,12 +1,17 @@
-import random
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from augs import (cutout, jitter, magnitude_warp, scaling, subsequence,
-                  time_warp, window_slice, window_warp)
+from augs import (
+    cutout,
+    jitter,
+    scaling,
+    subsequence,
+    time_warp,
+    window_slice,
+    window_warp,
+)
 
 # ------------------------------------------------------------------
 # Backbone Components
@@ -88,30 +93,80 @@ class DilatedConvEncoder(nn.Module):
         return self.net(x)
 
 
+class InfoTSShared:
+    """Static paper formulations shared by the InfoTS components."""
+
+    @staticmethod
+    def continuous_mask(batch_size, length, count=5, span=0.1):
+        mask = torch.ones(batch_size, length, dtype=torch.bool)
+        count = int(count * length) if isinstance(count, float) else count
+        count = max(min(count, length // 2), 1)
+        span = int(span * length) if isinstance(span, float) else span
+        span = max(span, 1)
+        for row in range(batch_size):
+            for _ in range(count):
+                start = np.random.randint(length - span + 1)
+                mask[row, start : start + span] = False
+        return mask
+
+    @staticmethod
+    def binomial_mask(batch_size, length, probability=0.5):
+        return torch.from_numpy(
+            np.random.binomial(1, probability, size=(batch_size, length))
+        ).to(torch.bool)
+
+    @staticmethod
+    def global_info_nce(raw, augmented, temperature=1.0):
+        raw = raw.amax(dim=1)
+        augmented = augmented.amax(dim=1)
+        logits = raw @ augmented.T / temperature
+        return F.cross_entropy(logits, torch.arange(raw.shape[0], device=raw.device))
+
+    @staticmethod
+    def local_info_nce(augmented, temperature=1.0, segments=8):
+        batch_size, length, feature_dim = augmented.shape
+        segments = min(segments, length)
+        if segments < 2:
+            return augmented.new_zeros(())
+        segment_length = length // segments
+        cropped = augmented[:, : segment_length * segments].reshape(
+            batch_size, segments, segment_length, feature_dim
+        )
+        pooled = cropped.amax(dim=2)
+        similarity = pooled @ pooled.transpose(1, 2) / temperature
+        losses = []
+        for index in range(segments):
+            positive = index + 1 if index + 1 < segments else index - 1
+            candidates = [positive] + [
+                other for other in range(segments) if abs(other - index) > 1
+            ]
+            logits = similarity[:, index, candidates]
+            losses.append(
+                F.cross_entropy(
+                    logits,
+                    torch.zeros(batch_size, dtype=torch.long, device=logits.device),
+                )
+            )
+        return torch.stack(losses).mean()
+
+    @staticmethod
+    def l1out(raw, augmented):
+        if raw.shape[0] < 2:
+            return raw.new_zeros(())
+        raw = raw.amax(dim=1)
+        augmented = augmented.amax(dim=1)
+        similarity = raw @ augmented.T
+        positive = similarity.diagonal()
+        negatives = similarity.masked_fill(
+            torch.eye(raw.shape[0], dtype=torch.bool, device=raw.device),
+            float("-inf"),
+        )
+        return (positive - torch.logsumexp(negatives, dim=1)).mean()
+
+
 # ------------------------------------------------------------------
 # TS Encoder Wrapper
 # ------------------------------------------------------------------
-
-
-def generate_continuous_mask(B, T, n=5, l=0.1):
-    res = torch.full((B, T), True, dtype=torch.bool)
-    if isinstance(n, float):
-        n = int(n * T)
-    n = max(min(n, T // 2), 1)
-
-    if isinstance(l, float):
-        l = int(l * T)
-    l = max(l, 1)
-
-    for i in range(B):
-        for _ in range(n):
-            t = np.random.randint(T - l + 1)
-            res[i, t : t + l] = False
-    return res
-
-
-def generate_binomial_mask(B, T, p=0.5):
-    return torch.from_numpy(np.random.binomial(1, p, size=(B, T))).to(torch.bool)
 
 
 class TSEncoder(nn.Module):
@@ -148,9 +203,9 @@ class TSEncoder(nn.Module):
                 mask = "all_true"
 
         if mask == "binomial":
-            mask = generate_binomial_mask(x.size(0), x.size(1)).to(x.device)
+            mask = InfoTSShared.binomial_mask(x.size(0), x.size(1)).to(x.device)
         elif mask == "continuous":
-            mask = generate_continuous_mask(x.size(0), x.size(1)).to(x.device)
+            mask = InfoTSShared.continuous_mask(x.size(0), x.size(1)).to(x.device)
         elif mask == "all_true":
             mask = x.new_full((x.size(0), x.size(1)), True, dtype=torch.bool)
         elif mask == "all_false":
@@ -178,7 +233,9 @@ class TSEncoder(nn.Module):
 
 
 class AutoAUG(nn.Module):
-    def __init__(self, aug_p1=0.2, aug_p2=0.0):
+    """Paper Eq. 9-10 differentiable candidate-augmentation selector."""
+
+    def __init__(self):
         super().__init__()
         self.augs = [
             subsequence(),
@@ -189,135 +246,24 @@ class AutoAUG(nn.Module):
             window_slice(),
             window_warp(),
         ]
-        self.weight = nn.Parameter(torch.empty(2, len(self.augs)))
+        self.weight = nn.Parameter(torch.empty(len(self.augs)))
         nn.init.normal_(self.weight, mean=0.0, std=0.01)
-        self.aug_p1 = aug_p1
-        self.aug_p2 = aug_p2
 
-    def get_sampling(self, temperature=1.0, bias=0.0):
+    def get_sampling(self, temperature=1.0):
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
         if self.training:
-            bias = bias + 0.0001
-            eps = (bias - (1 - bias)) * torch.rand(
-                self.weight.size(), device=self.weight.device
-            ) + (1 - bias)
-            gate_inputs = torch.log(eps) - torch.log(1 - eps)
-            gate_inputs = (gate_inputs + self.weight) / temperature
-            return torch.softmax(gate_inputs, -1)
-        else:
-            return torch.softmax(self.weight, -1)
+            epsilon = torch.rand_like(self.weight).clamp_(1e-4, 1 - 1e-4)
+            return torch.sigmoid((torch.logit(epsilon) + self.weight) / temperature)
+        return torch.sigmoid(self.weight)
 
     def forward(self, x, temperature=1.0):
-        # x: [B, T, D]
-        if self.aug_p1 == 0.0 and self.aug_p2 == 0.0:
-            return x.clone(), x.clone()
-
-        para = self.get_sampling(temperature=temperature)
-
-        if random.random() > self.aug_p1 and self.training:
-            aug1 = x.clone()
-        else:
-            xs1_list = []
-            for aug in self.augs:
-                xs1_list.append(aug(x))
-            xs1 = torch.stack(xs1_list, 0)  # [num_augs, B, T, D]
-            xs1_flat = torch.reshape(xs1, (xs1.shape[0], -1))  # [num_augs, B * T * D]
-            aug1_flat = torch.unsqueeze(para[0], -1) * xs1_flat  # [num_augs, B * T * D]
-            aug1 = torch.reshape(aug1_flat, xs1.shape)
-            aug1 = torch.sum(aug1, dim=0)  # [B, T, D]
-
-        aug2 = x.clone()
-        return aug1, aug2
-
-
-# ------------------------------------------------------------------
-# Loss Functions
-# ------------------------------------------------------------------
-
-
-def InfoNCE(z1, z2, temperature=1.0):
-    batch_size = z1.size(0)
-    features = torch.cat([z1, z2], dim=0).squeeze(1)  # 2B x C
-
-    labels = torch.cat(
-        [torch.arange(batch_size, device=z1.device) for _ in range(2)], dim=0
-    )
-    labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
-
-    mask = torch.eye(labels.shape[0], dtype=torch.bool, device=z1.device)
-    labels = labels[~mask].view(labels.shape[0], -1)
-
-    similarity_matrix = torch.matmul(features, features.T)
-    similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
-
-    positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)
-    negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
-
-    logits = torch.cat([positives, negatives], dim=1)
-    logits = logits / temperature
-    logits = -F.log_softmax(logits, dim=-1)
-    return logits[:, 0].mean()
-
-
-def global_infoNCE(z1, z2, pooling="max", temperature=1.0):
-    if pooling == "max":
-        z1 = F.max_pool1d(
-            z1.transpose(1, 2).contiguous(), kernel_size=z1.size(1)
-        ).transpose(1, 2)
-        z2 = F.max_pool1d(
-            z2.transpose(1, 2).contiguous(), kernel_size=z2.size(1)
-        ).transpose(1, 2)
-    elif pooling == "mean":
-        z1 = torch.unsqueeze(torch.mean(z1, 1), 1)
-        z2 = torch.unsqueeze(torch.mean(z2, 1), 1)
-
-    return InfoNCE(z1, z2, temperature)
-
-
-def local_infoNCE(z1, z2, pooling="max", temperature=1.0, k=8):
-    B, T, D = z1.size()
-    crop_size = int(T / k)
-    crop_len = crop_size * k
-    if crop_len <= 0 or T < crop_len:
-        return torch.tensor(0.0, device=z1.device)
-
-    start = random.randint(0, T - crop_len)
-    crop_z1 = z1[:, start : start + crop_len, :]
-    crop_z1 = crop_z1.view(B, k, crop_size, D)
-
-    if pooling == "max":
-        crop_z1 = crop_z1.reshape(B * k, crop_size, D)
-        crop_z1_pooling = (
-            F.max_pool1d(crop_z1.transpose(1, 2).contiguous(), kernel_size=crop_size)
-            .transpose(1, 2)
-            .reshape(B, k, D)
-        )
-    elif pooling == "mean":
-        crop_z1_pooling = torch.unsqueeze(torch.mean(z1, 1), 1)
-
-    crop_z1_pooling_T = crop_z1_pooling.transpose(1, 2)
-    similarity_matrices = torch.bmm(crop_z1_pooling, crop_z1_pooling_T)
-
-    labels = torch.eye(k - 1, dtype=torch.float32, device=z1.device)
-    labels = torch.cat([labels, torch.zeros(1, k - 1, device=z1.device)], 0)
-    labels = torch.cat([torch.zeros(k, 1, device=z1.device), labels], -1)
-
-    pos_labels = labels.clone()
-    pos_labels[k - 1, k - 2] = 1.0
-
-    neg_labels = labels.T + labels + torch.eye(k, device=z1.device)
-    neg_labels[0, 2] = 1.0
-    neg_labels[-1, -3] = 1.0
-
-    similarity_matrix = similarity_matrices[0]
-    positives = similarity_matrix[pos_labels.bool()].view(labels.shape[0], -1)
-    negatives = similarity_matrix[~neg_labels.bool()].view(
-        similarity_matrix.shape[0], -1
-    )
-
-    logits = torch.cat([positives, negatives], dim=1)
-    logits = logits / temperature
-    logits = -F.log_softmax(logits, dim=-1)
-    return logits[:, 0].mean()
+        probabilities = self.get_sampling(temperature)
+        candidates = [
+            x + probability * (augmentation(x) - x)
+            for probability, augmentation in zip(probabilities, self.augs)
+        ]
+        return torch.stack(candidates).mean(dim=0), x.clone()
 
 
 # ------------------------------------------------------------------
@@ -325,17 +271,14 @@ def local_infoNCE(z1, z2, pooling="max", temperature=1.0, k=8):
 # ------------------------------------------------------------------
 
 
-class InfoTS(nn.Module):
+class InfoTS(InfoTSShared, nn.Module):
     optional = {
         "infots_repr_dim": 320,
         "infots_hidden_dim": 64,
         "infots_depth": 10,
         "infots_beta": 1.0,
         "infots_meta_beta": 1.0,
-        "infots_aug_p1": 0.2,
-        "infots_aug_p2": 0.0,
         "infots_k": 8,
-        "infots_meta_lr": 0.01,
     }
 
     @classmethod
@@ -345,10 +288,7 @@ class InfoTS(nn.Module):
         parser.add_argument("--infots_depth", type=int, default=None)
         parser.add_argument("--infots_beta", type=float, default=None)
         parser.add_argument("--infots_meta_beta", type=float, default=None)
-        parser.add_argument("--infots_aug_p1", type=float, default=None)
-        parser.add_argument("--infots_aug_p2", type=float, default=None)
         parser.add_argument("--infots_k", type=int, default=None)
-        parser.add_argument("--infots_meta_lr", type=float, default=None)
 
     def __init__(self, configs):
         super().__init__()
@@ -372,8 +312,7 @@ class InfoTS(nn.Module):
             depth=depth,
         )
 
-        # Differentiable learnable Auto-Augmentation
-        self.aug = AutoAUG(aug_p1=configs.infots_aug_p1, aug_p2=configs.infots_aug_p2)
+        self.aug = AutoAUG()
 
         # Supervised mapping head for forecasting
         self.head = nn.Linear(repr_dim, pred_len * out_ch)
@@ -382,7 +321,6 @@ class InfoTS(nn.Module):
 
         # Unsupervised/Supervised classifier head used for the Meta-Update
         self.meta_unsup_head = nn.Linear(repr_dim, configs.batch_size)
-        self.CE = nn.CrossEntropyLoss()
 
     def get_features(self, x, temperature=1.0):
         a1, a2 = self.aug(x, temperature=temperature)
@@ -403,71 +341,57 @@ class InfoTS(nn.Module):
         Returns:
             scalar loss tensor
         """
-        out1, out2 = self.get_features(x, temperature=temperature)
-        loss = (
-            global_infoNCE(out1, out2) + local_infoNCE(out1, out2, k=self.k) * self.beta
+        augmented, raw = self.get_features(x, temperature=temperature)
+        return self.global_info_nce(raw, augmented) + self.beta * self.local_info_nce(
+            augmented, segments=self.k
         )
-        return loss
 
     # ------------------------------------------------------------------
     # Meta alternating optimization step
     # ------------------------------------------------------------------
 
     def meta_step(self, x, meta_opt, meta_head_opt, temperature=1.0):
-        """Performs one step of AutoAUG weight tuning to optimize representation variety."""
-        B = x.size(0)
+        """Paper Eq. 5: jointly optimize augmentation variety and fidelity."""
+        batch_size = x.size(0)
+        was_training = self.encoder.training
+        requires_grad = [
+            parameter.requires_grad for parameter in self.encoder.parameters()
+        ]
+        for parameter in self.encoder.parameters():
+            parameter.requires_grad_(False)
         self.encoder.eval()
 
         meta_opt.zero_grad(set_to_none=True)
         meta_head_opt.zero_grad(set_to_none=True)
 
-        outv, outx = self.get_features(x, temperature=temperature)
-
-        # Pick random target class indexes for batch validation
-        y = torch.arange(B, dtype=torch.long, device=x.device)
-
-        zv = F.max_pool1d(
-            outv.transpose(1, 2).contiguous(), kernel_size=outv.size(1)
-        ).squeeze(2)
-        zx = F.max_pool1d(
-            outx.transpose(1, 2).contiguous(), kernel_size=outx.size(1)
-        ).squeeze(2)
-
-        pred_yv = self.meta_unsup_head(zv)
-        pred_yx = self.meta_unsup_head(zx)
-
-        # Meta Variety / Fidelity trade-off objective
-        loss_vy = self.CE(pred_yv, y)
-        loss_xy = self.CE(pred_yx, y)
-
-        meta_loss = self.meta_beta * (loss_vy + loss_xy)
+        augmented, raw = self.get_features(x, temperature=temperature)
+        labels = torch.arange(batch_size, dtype=torch.long, device=x.device)
+        fidelity = F.cross_entropy(self.meta_unsup_head(augmented.amax(dim=1)), labels)
+        meta_loss = self.l1out(raw, augmented) + self.meta_beta * fidelity
         meta_loss.backward()
 
         meta_opt.step()
         meta_head_opt.step()
 
-        self.encoder.train()
+        for parameter, required in zip(self.encoder.parameters(), requires_grad):
+            parameter.requires_grad_(required)
+        self.encoder.train(was_training)
         return meta_loss.item()
 
     # ------------------------------------------------------------------
     # Supervised forward pass
     # ------------------------------------------------------------------
 
+    def representation(self, x):
+        return self.encoder(x, mask="all_true").amax(dim=1)
+
     def forward(self, x, **kwargs):
-        """Standard casual encoding + projection for time-series forecasting.
+        """Encode a sequence and apply the fitted linear forecasting head.
 
         Args:
             x: [B, T, D]
         Returns:
             [B, pred_len, out_ch]
         """
-        # Encode sequence
-        repr_seq = self.encoder(x, mask="all_true")  # [B, T, repr_dim]
-        # Max pool over sequence length to get sequence representation summary
-        repr_sum = F.max_pool1d(
-            repr_seq.transpose(1, 2).contiguous(), kernel_size=repr_seq.size(1)
-        ).squeeze(
-            2
-        )  # [B, repr_dim]
-        out = self.head(repr_sum)  # [B, pred_len * out_ch]
+        out = self.head(self.representation(x))
         return out.view(x.size(0), self._pred_len, self._out_ch)

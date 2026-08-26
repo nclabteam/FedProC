@@ -58,7 +58,7 @@ class ModernTCN(nn.Module):
         parser.add_argument("--decomposition", type=str2bool, default=None)
 
     def __init__(self, configs):
-        super(ModernTCN, self).__init__()
+        super().__init__()
         self.stem_ratio = configs.stem_ratio
         self.downsample_ratio = configs.downsample_ratio
         self.ffn_ratio = configs.ffn_ratio
@@ -189,7 +189,7 @@ class ModernTCN(nn.Module):
 
 class Flatten_Head(nn.Module):
     def __init__(self, individual, n_vars, nf, target_window, head_dropout=0):
-        super(Flatten_Head, self).__init__()
+        super().__init__()
 
         self.individual = individual
         self.n_vars = n_vars
@@ -225,7 +225,7 @@ class Flatten_Head(nn.Module):
 
 class LayerNorm(nn.Module):
     def __init__(self, channels, eps=1e-6, data_format="channels_last"):
-        super(LayerNorm, self).__init__()
+        super().__init__()
         self.norm = nn.Layernorm(channels)
 
     def forward(self, x, **kwargs):
@@ -313,7 +313,7 @@ class ReparamLargeKernelConv(nn.Module):
         small_kernel_merged=False,
         nvars=7,
     ):
-        super(ReparamLargeKernelConv, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.small_kernel = small_kernel
         # We assume the conv does not change the feature map size, so padding = k//2. Otherwise, you may configure padding as you wish, and change the padding of small_conv accordingly.
@@ -427,7 +427,7 @@ class Block(nn.Module):
         drop=0.1,
     ):
 
-        super(Block, self).__init__()
+        super().__init__()
         self.dw = ReparamLargeKernelConv(
             in_channels=nvars * dmodel,
             out_channels=nvars * dmodel,
@@ -531,7 +531,7 @@ class Stage(nn.Module):
         drop=0.1,
     ):
 
-        super(Stage, self).__init__()
+        super().__init__()
         d_ffn = dmodel * ffn_ratio
         blks = []
         for i in range(num_blocks):
@@ -584,7 +584,7 @@ class ModernTCNBackbone(nn.Module):
         target_window=96,
     ):
 
-        super(ModernTCNBackbone, self).__init__()
+        super().__init__()
 
         # RevIN
         self.revin = revin

@@ -9,46 +9,61 @@ from argparse import Namespace
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import polars as pl
 import ray
 import torch
 from torch.utils.data import DataLoader, Subset, TensorDataset
 
+from schedulers import SCHEDULER_MODES
 from utils.seed import SetSeed
 
 os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
 
 
 class SharedMethods:
-    """
-    Collection of small reusable utilities used by Server and Client classes.
-
-    Methods are mostly stateless and operate on models, dataloaders and tensors.
-    They are implemented as @staticmethod so they can be invoked without creating
-    an instance when needed (e.g., utility scripts or tests).
-    """
+    """Collection of small reusable utilities used by Server and Client classes."""
 
     default_value = 9_999_999.0
+    scheduler_mode = "iteration"
     checkpoint_format = "fedproc_state_dict_v1"
     checkpoint_format_version = 1
 
     @staticmethod
-    def load_data_head(
-        file: str,
-        T: int,
-        batch_size: int = 32,
-        shuffle: bool = False,
-        scaler: Any = None,
-    ) -> DataLoader:
-        with np.load(file) as data:
-            x = data["x"][:T]
-            y = data["y"][:T]
-            x_mark = torch.as_tensor(np.asarray(data["x_mark"][:T], dtype=np.float32))
-            y_mark = torch.as_tensor(np.asarray(data["y_mark"][:T], dtype=np.float32))
-        x = torch.as_tensor(np.asarray(scaler.transform(x), dtype=np.float32))
-        y = torch.as_tensor(np.asarray(scaler.transform(y), dtype=np.float32))
-        dataset = TensorDataset(x, y, x_mark, y_mark)
-        return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle)
+    def mean_models(
+        models: List[Dict[str, torch.Tensor]],
+        weights: Optional[Union[List[float], torch.Tensor]] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Return a coordinate-wise model mean."""
+        if not models:
+            raise ValueError("at least one model is required")
+        if weights is None:
+            weights = torch.ones(len(models), dtype=torch.float64)
+        else:
+            weights = torch.as_tensor(list(weights), dtype=torch.float64)
+            if weights.numel() != len(models):
+                raise ValueError("one weight per model is required")
+        total = weights.sum()
+        if not torch.isfinite(total) or total <= 0:
+            raise ValueError("model weights must have a positive finite sum")
+        weights = weights / total
+
+        averaged = type(models[0])()
+        for name in models[0]:
+            values = torch.stack([model[name] for model in models])
+            if not values.is_floating_point() and not values.is_complex():
+                averaged[name] = values[0].clone()
+                continue
+            dtype = (
+                torch.float32
+                if values.dtype in (torch.float16, torch.bfloat16)
+                else values.dtype
+            )
+            values = values.to(dtype=dtype)
+            averaged[name] = torch.tensordot(
+                weights.to(device=values.device, dtype=dtype),
+                values,
+                dims=([0], [0]),
+            ).to(models[0][name].dtype)
+        return averaged
 
     @staticmethod
     def load_data(
@@ -81,7 +96,9 @@ class SharedMethods:
             dataset = Subset(dataset, indices)
         elif sample_ratio < 1.0:
             subset_size = int(len(dataset) * sample_ratio)
-            rand_indices = torch.randperm(len(dataset), generator=generator)[:subset_size]
+            rand_indices = torch.randperm(len(dataset), generator=generator)[
+                :subset_size
+            ]
             dataset = Subset(dataset, rand_indices)
 
         return DataLoader(
@@ -150,13 +167,14 @@ class SharedMethods:
     @staticmethod
     def _to_serializable(value: Any) -> Any:
         if isinstance(value, Namespace):
-            return SharedMethods._to_serializable(vars(value))
+            return SharedMethods._to_serializable(value=vars(value))
         if isinstance(value, dict):
             return {
-                key: SharedMethods._to_serializable(item) for key, item in value.items()
+                key: SharedMethods._to_serializable(value=item)
+                for key, item in value.items()
             }
         if isinstance(value, (list, tuple)):
-            return [SharedMethods._to_serializable(item) for item in value]
+            return [SharedMethods._to_serializable(value=item) for item in value]
         if isinstance(value, (str, int, float, bool)) or value is None:
             return value
         return str(value)
@@ -171,7 +189,7 @@ class SharedMethods:
             "git_commit": SharedMethods._get_git_commit(),
         }
         if extra_metadata:
-            metadata.update(SharedMethods._to_serializable(extra_metadata))
+            metadata.update(SharedMethods._to_serializable(value=extra_metadata))
         return metadata
 
     @staticmethod
@@ -193,7 +211,9 @@ class SharedMethods:
         configs: Optional[Namespace] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        config_dict = SharedMethods._to_serializable(vars(configs)) if configs else {}
+        config_dict = (
+            SharedMethods._to_serializable(value=vars(configs)) if configs else {}
+        )
         model_name = config_dict.get("model", model.__class__.__name__)
         state_dict = {
             key: value.detach().cpu().clone()
@@ -205,7 +225,7 @@ class SharedMethods:
             "model_name": model_name,
             "config": config_dict,
             "state_dict": state_dict,
-            "metadata": SharedMethods._checkpoint_metadata(metadata),
+            "metadata": SharedMethods._checkpoint_metadata(extra_metadata=metadata),
         }
 
     @staticmethod
@@ -247,7 +267,9 @@ class SharedMethods:
         ):
             model_name = payload["model_name"]
             config = Namespace(**payload.get("config", {}))
-            model_cls = SharedMethods._get_objective_function("models", model_name)
+            model_cls = SharedMethods._get_objective_function(
+                func_type="models", func_name=model_name
+            )
             model = model_cls(configs=config)
             model.load_state_dict(payload["state_dict"])
             return model.to(device)
@@ -269,15 +291,8 @@ class SharedMethods:
         )
 
     @staticmethod
-    def reset_model(model: torch.nn.Module) -> torch.nn.Module:
-        result = copy.deepcopy(model)
-        for param in result.parameters():
-            param.data.zero_()
-        return result
-
-    @staticmethod
     def get_size(obj: Any) -> float:
-        return SharedMethods._get_size_bytes(obj) / (1024**2)
+        return SharedMethods._get_size_bytes(obj=obj) / (1024**2)
 
     @staticmethod
     def _get_size_bytes(obj: Any) -> float:
@@ -307,9 +322,11 @@ class SharedMethods:
             )
             return total_size
         if isinstance(obj, dict):
-            return sum(SharedMethods._get_size_bytes(value) for value in obj.values())
+            return sum(
+                SharedMethods._get_size_bytes(obj=value) for value in obj.values()
+            )
         if isinstance(obj, (list, tuple)):
-            return sum(SharedMethods._get_size_bytes(item) for item in obj)
+            return sum(SharedMethods._get_size_bytes(obj=item) for item in obj)
         if isinstance(obj, np.ndarray):
             return obj.nbytes
         if isinstance(obj, np.generic):
@@ -336,7 +353,7 @@ class SharedMethods:
     def _set_worker_seed(seed: Optional[int]) -> None:
         if seed is None:
             return
-        SetSeed.set_all(seed, verbose=False)
+        SetSeed.set_all(seed=seed, verbose=False)
 
     @staticmethod
     def train_one_epoch(
@@ -349,7 +366,7 @@ class SharedMethods:
         offload_after: bool = True,
     ) -> None:
         model.to(device)
-        SharedMethods._move_optimizer_state_to_param_devices(optimizer)
+        SharedMethods._move_optimizer_state_to_param_devices(optimizer=optimizer)
         model.train()
         for batch_x, batch_y, x_mark, y_mark in dataloader:
             optimizer.zero_grad(set_to_none=True)
@@ -361,43 +378,44 @@ class SharedMethods:
             loss = criterion(outputs, batch_y)
             loss.backward()
             optimizer.step()
+            SharedMethods.step_scheduler_batch(
+                scheduler=scheduler,
+                batch_data=batch_x,
+            )
         if offload_after:
             model.to("cpu")
+        SharedMethods.step_scheduler_epoch(scheduler=scheduler)
+
+    @staticmethod
+    def step_scheduler_batch(
+        scheduler: Optional[Any],
+        batch_data: torch.Tensor,
+    ) -> None:
+        """Advance a batch-level scheduler."""
+        if (
+            scheduler is None
+            or getattr(scheduler, "scheduler_mode", "iteration") != "batch"
+        ):
+            return
+        if hasattr(scheduler, "set_batch_data"):
+            scheduler.set_batch_data(data=batch_data)
         scheduler.step()
 
     @staticmethod
-    def update_model_params(old: torch.nn.Module, new: torch.nn.Module) -> None:
-        for old_param, new_param in zip(old.parameters(), new.parameters()):
-            old_param.data.copy_(new_param.data)
-
-    @staticmethod
-    def update_optimizer_params(
-        old: torch.optim.Optimizer,
-        new: torch.optim.Optimizer | Dict[str, Any],
-    ) -> None:
-        state_dict = new.state_dict() if hasattr(new, "state_dict") else new
-        old_groups = old.state_dict()["param_groups"]
-        new_groups = state_dict["param_groups"]
-        if len(old_groups) != len(new_groups):
-            raise ValueError(
-                "Cannot load optimizer state with a different number of "
-                f"parameter groups: {len(old_groups)} != {len(new_groups)}"
-            )
-        for index, (old_group, new_group) in enumerate(zip(old_groups, new_groups)):
-            if len(old_group["params"]) != len(new_group["params"]):
-                raise ValueError(
-                    "Cannot load optimizer state with a different number of "
-                    f"parameters in group {index}: "
-                    f"{len(old_group['params'])} != {len(new_group['params'])}"
-                )
-        old.load_state_dict(state_dict)
-        SharedMethods._move_optimizer_state_to_param_devices(old)
+    def step_scheduler_epoch(scheduler: Optional[Any]) -> None:
+        """Advance an epoch- or iteration-level scheduler."""
+        if (
+            scheduler is None
+            or getattr(scheduler, "scheduler_mode", "iteration") == "batch"
+        ):
+            return
+        scheduler.step()
 
     @staticmethod
     def _move_optimizer_state_to_param_devices(
         optimizer: torch.optim.Optimizer,
     ) -> None:
-        def move(value, device):
+        def move(value: Any, device: torch.device) -> Any:
             if isinstance(value, torch.Tensor):
                 return value.to(device=device)
             if isinstance(value, dict):
@@ -420,7 +438,7 @@ class SharedMethods:
     def _optimizer_state_to_cpu(optimizer: torch.optim.Optimizer) -> Dict[str, Any]:
         state_dict = copy.deepcopy(optimizer.state_dict())
 
-        def to_cpu(value):
+        def to_cpu(value: Any) -> Any:
             if isinstance(value, torch.Tensor):
                 return value.detach().cpu().clone()
             if isinstance(value, dict):
@@ -442,20 +460,100 @@ class SharedMethods:
         return func
 
     def initialize_loss(self) -> None:
-        obj = self._get_objective_function("losses", self.loss)
+        obj = self._get_objective_function(func_type="losses", func_name=self.loss)
         self.loss = obj()
 
     def initialize_model(self) -> None:
-        obj = self._get_objective_function("models", self.model)
+        obj = self._get_objective_function(func_type="models", func_name=self.model)
         self.model = obj(configs=self.configs)
 
     def initialize_optimizer(self) -> None:
-        obj = self._get_objective_function("optimizers", self.optimizer)
+        obj = self._get_objective_function(
+            func_type="optimizers", func_name=self.optimizer
+        )
         self.optimizer = obj(params=self.model.parameters(), configs=self.configs)
+        self._scheduler_base_lrs = [
+            float(group["lr"]) for group in self.optimizer.param_groups
+        ]
 
-    def initialize_scheduler(self) -> None:
-        obj = self._get_objective_function("schedulers", self.scheduler)
-        self.scheduler = obj(optimizer=self.optimizer, configs=self.configs)
+    @staticmethod
+    def _scheduler_configs(
+        configs: Namespace,
+        steps_per_epoch: int,
+        epochs: Optional[int] = None,
+    ) -> Namespace:
+        """Return scheduler-local configs with the correct step horizon."""
+        mode = getattr(configs, "scheduler_mode", "iteration")
+        if mode not in SCHEDULER_MODES:
+            raise ValueError(f"unknown scheduler mode: {mode}")
+        if steps_per_epoch <= 0:
+            raise ValueError("steps_per_epoch must be positive")
+        epochs = int(configs.epochs if epochs is None else epochs)
+        if epochs <= 0:
+            raise ValueError("epochs must be positive")
+        total_steps = {
+            "batch": epochs * steps_per_epoch,
+            "epoch": epochs,
+            "iteration": int(configs.max_epochs),
+        }[mode]
+        scheduler_configs = copy.copy(configs)
+        scheduler_configs.max_epochs = total_steps
+        scheduler_configs.steps_per_epoch = steps_per_epoch
+        scheduler_configs.total_steps = total_steps
+        return scheduler_configs
+
+    def initialize_scheduler(
+        self,
+        steps_per_epoch: int = 1,
+        epochs: Optional[int] = None,
+    ) -> None:
+        if (
+            self.scheduler_mode == "iteration"
+            and getattr(getattr(self, "scheduler", None), "optimizer", None)
+            is self.optimizer
+        ):
+            return
+        obj = self._get_objective_function(
+            func_type="schedulers", func_name=self.configs.scheduler
+        )
+        if not hasattr(self, "_scheduler_base_lrs"):
+            self._scheduler_base_lrs = [
+                float(group["lr"]) for group in self.optimizer.param_groups
+            ]
+        if len(self._scheduler_base_lrs) != len(self.optimizer.param_groups):
+            raise ValueError("scheduler needs one base LR per optimizer group")
+        for group, learning_rate in zip(
+            self.optimizer.param_groups,
+            self._scheduler_base_lrs,
+        ):
+            group["lr"] = learning_rate
+            group["initial_lr"] = learning_rate
+        self.scheduler = obj(
+            optimizer=self.optimizer,
+            configs=self._scheduler_configs(
+                configs=self.configs,
+                steps_per_epoch=steps_per_epoch,
+                epochs=epochs,
+            ),
+        )
+        self.scheduler.scheduler_mode = self.scheduler_mode
+        self.init_scheduler_state = copy.deepcopy(self.scheduler.state_dict())
+
+    @staticmethod
+    def restore_scheduler(
+        scheduler: Any,
+        optimizer: torch.optim.Optimizer,
+        state: Dict[str, Any],
+        mode: str,
+    ) -> None:
+        """Restore scheduler progress and its optimizer learning rates."""
+        scheduler.load_state_dict(state)
+        scheduler.scheduler_mode = mode
+        rates = scheduler.get_last_lr()
+        if len(rates) != len(optimizer.param_groups):
+            raise ValueError("scheduler state has the wrong number of learning rates")
+        for group, learning_rate in zip(optimizer.param_groups, rates):
+            group["lr"] = learning_rate
 
     def summarize_model(self, dataloader: DataLoader) -> None:
         import torchinfo
@@ -482,20 +580,6 @@ class SharedMethods:
         path = os.path.join(self.models_info_path, f"{name}.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write(str(result))
-
-    def save_results(self) -> None:
-        pl_df = pl.DataFrame(self.metrics)
-        path = os.path.join(self.result_path, self.name.lower().strip() + ".csv")
-        pl_df.write_csv(path)
-        self.logger.info(f"Results saved to {path}")
-
-    def fix_results(self, default: float = -1.0) -> None:
-        max_length = max(len(lst) for lst in self.metrics.values())
-        for key in self.metrics.keys():
-            if len(self.metrics[key]) < max_length:
-                self.metrics[key].extend(
-                    [default] * (max_length - len(self.metrics[key]))
-                )
 
     def make_logger(self, name: str, path: str) -> None:
         log_path = os.path.join(path, f"{name.lower().strip()}.log")

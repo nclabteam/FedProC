@@ -7,7 +7,9 @@ from .base import BaseDataset
 
 
 class METRLA(BaseDataset):
-    def __init__(self, *args, **kwargs):
+    """Five-minute traffic-speed series from Los Angeles sensors."""
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.path_raw = os.path.join("datasets", "METRLA", "raw")
         self.path_temp = os.path.join("datasets", "METRLA", "temp")
@@ -19,7 +21,8 @@ class METRLA(BaseDataset):
         self.granularity_unit = "minute"
         self.url = "1pAGRfzMx6K9WWsfDcD1NMbIif0T0saFC"
 
-    def download(self):
+    def download(self) -> None:
+        """Download METR-LA and split it into per-sensor CSV files."""
         # Create directories
         os.makedirs(self.path_raw, exist_ok=True)
         os.makedirs(self.path_temp, exist_ok=True)

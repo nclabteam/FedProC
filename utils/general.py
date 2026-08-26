@@ -1,12 +1,12 @@
 import os
 
 
-def increment_path(path, exist_ok=False, sep=""):
-    """
-    Generates an incremented file or directory path if it exists, always making the directory; args: path, exist_ok=False, sep="".
-
-    Example: runs/exp --> runs/exp{sep}2, runs/exp{sep}3, ... etc
-    """
+def increment_path(
+    path: str | os.PathLike[str],
+    exist_ok: bool = False,
+    sep: str = "",
+) -> str | os.PathLike[str]:
+    """Create a directory path, appending an increment when it already exists."""
     if os.path.exists(path) and not exist_ok:
         base, suffix = os.path.splitext(path) if os.path.isfile(path) else (path, "")
 

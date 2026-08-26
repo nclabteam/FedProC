@@ -1,3 +1,6 @@
+from collections.abc import Iterator
+
+
 class Decimal:
     # TODO: # OPTIMISE: code to maximize performance
     """
@@ -64,8 +67,8 @@ class Decimal:
         SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     """
 
-    def __init__(self, number):
-        super(Decimal, self).__init__()
+    def __init__(self, number: float | int | str) -> None:
+        super().__init__()
         if number is iter:
             processed = float(number[0])
         else:
@@ -75,7 +78,7 @@ class Decimal:
             x *= 10
         self.number = [processed, x]
 
-    def __add__(self, other):
+    def __add__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))
@@ -84,22 +87,22 @@ class Decimal:
             raise "Entered {}, which has the type {},\
              is not a valid type".format(other, type(other))
 
-    def __float__(self):
+    def __float__(self) -> float:
         return float(self.number[0])
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.number[0])
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.number)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[float]:
         return (x for x in self.number)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self.number[0])
 
-    def __sub__(self, other):
+    def __sub__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))
@@ -108,7 +111,7 @@ class Decimal:
             raise "Entered {}, which has the type {},\
          is not a valid type".format(other, type(other))
 
-    def __div__(self, other):
+    def __div__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))
@@ -119,7 +122,7 @@ class Decimal:
             raise "Entered {}, which has the type {},\
          is not a valid type".format(other, type(other))
 
-    def __floordiv__(self, other):
+    def __floordiv__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))
@@ -130,7 +133,7 @@ class Decimal:
             raise "Entered {}, which has the type {},\
          is not a valid type".format(other, type(other))
 
-    def __mul__(self, other):
+    def __mul__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))
@@ -141,7 +144,7 @@ class Decimal:
             raise "Entered {}, which has the type {},\
          is not a valid type".format(other, type(other))
 
-    def __mod__(self, other):
+    def __mod__(self, other: "Decimal") -> "Decimal":
         the_other_number, num = list(other), list(self.number)
         try:
             maximum = max(float(num[1]), float(the_other_number[1]))

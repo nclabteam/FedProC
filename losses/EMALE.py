@@ -1,14 +1,11 @@
 import torch
+from torch import Tensor
 
 from .MALE import MALE
 
 
 class EMALE(MALE):
-    """
-    Exponential Mean Absolute Log Error
-    EMALE = exp(MALE)
-    """
+    """Compute exponentiated mean absolute log error."""
 
-    def forward(self, input, target):
-        male = super().forward(input=input, target=target)
-        return torch.exp(male)
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return torch.exp(super().forward(input=input, target=target))

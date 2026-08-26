@@ -7,12 +7,12 @@ class SeriesDecompMA(nn.Module):
     Series decomposition block
     """
 
-    def __init__(self, kernel_size, stride=1):
+    def __init__(self, kernel_size: int, stride: int = 1) -> None:
         super().__init__()
-        self.ma = MovingAverage(kernel_size, stride=stride)
+        self.ma = MovingAverage(kernel_size=kernel_size, stride=stride)
 
-    def forward(self, x):
-        moving_average = self.ma(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        moving_average = self.ma(x=x)
         res = x - moving_average
         return res, moving_average
 
@@ -22,12 +22,12 @@ class MovingAverage(nn.Module):
     Moving average block to highlight the trend of time series
     """
 
-    def __init__(self, kernel_size, stride):
-        super(MovingAverage, self).__init__()
+    def __init__(self, kernel_size: int, stride: int) -> None:
+        super().__init__()
         self.kernel_size = kernel_size
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # padding on the both ends of time series
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
@@ -42,15 +42,17 @@ class SeriesDecompMultiMA(nn.Module):
     Series decomposition block with multiple kernel sizes (for FEDformer).
     """
 
-    def __init__(self, kernel_size):
+    def __init__(self, kernel_size: list[int]) -> None:
         super().__init__()
-        self.moving_avg = [MovingAverage(kernel, stride=1) for kernel in kernel_size]
+        self.moving_avg = [
+            MovingAverage(kernel_size=kernel, stride=1) for kernel in kernel_size
+        ]
         self.layer = nn.Linear(1, len(kernel_size))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         moving_mean = []
         for func in self.moving_avg:
-            ma = func(x)
+            ma = func(x=x)
             moving_mean.append(ma.unsqueeze(-1))
         moving_mean = torch.cat(moving_mean, dim=-1)
         moving_mean = torch.sum(

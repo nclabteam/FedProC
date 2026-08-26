@@ -2,8 +2,10 @@ import torch
 
 
 class jitter:
-    def __init__(self, sigma=0.3):
+    """Add zero-mean Gaussian noise."""
+
+    def __init__(self, sigma: float = 0.3) -> None:
         self.sigma = sigma
 
-    def __call__(self, x):
-        return x + torch.normal(mean=0.0, std=self.sigma, size=x.shape, device=x.device)
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.sigma * torch.randn_like(input=x)

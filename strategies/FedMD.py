@@ -1,185 +1,221 @@
-import copy
+from argparse import ArgumentParser, Namespace
+from collections.abc import Callable, Sequence
+from typing import Any
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
 from .hFL import hFL, hFL_Client
 
 
-class FedMD(hFL):
-    """
-    FedMD: Heterogenous Federated Learning via Model Distillation.
+class FedMDShared:
+    """Logit aggregation shared by the FedMD phases."""
 
-    Each round:
-    1. Server scores each client's model on public data (from clients_personal_model_params)
-    2. Server computes consensus = mean of client predictions
-    3. Clients receive consensus + public batches via package()
-    4. Clients: digest (match consensus on public data) then revisit (local training)
+    @staticmethod
+    def mean_logits(
+        client_logits: Sequence[Sequence[torch.Tensor]],
+    ) -> list[torch.Tensor]:
+        if not client_logits:
+            raise ValueError("FedMD requires at least one client")
+        batch_count = len(client_logits[0])
+        if any(len(logits) != batch_count for logits in client_logits):
+            raise ValueError("FedMD clients must score the same public batches")
+        # Paper Algorithm 1: f_tilde(x) = (1 / m) sum_k f_k(x).
+        return [
+            torch.stack(batch_logits, dim=0).mean(dim=0)
+            for batch_logits in zip(*client_logits)
+        ]
 
-    This avoids self.clients entirely — scores are computed server-side from stored params.
-    """
+
+class FedMD(FedMDShared, hFL):
+    """FedMD: exchange public-data predictions across heterogeneous models."""
 
     optional = {
-        **hFL.optional,
         "public_dataset": "ETDatasetHour",
         "digest_epochs": 5,
         "revisit_epochs": 1,
         "public_batch_size": 32,
         "public_batch_num": 5,
     }
-
     compulsory = {"exclude_server_model_processes": True}
 
     @classmethod
-    def args_update(cls, parser):
-        hFL.args_update(parser)
+    def args_update(cls, parser: ArgumentParser) -> None:
+        super().args_update(parser=parser)
         parser.add_argument("--public_dataset", type=str, default=None)
         parser.add_argument("--digest_epochs", type=int, default=None)
         parser.add_argument("--revisit_epochs", type=int, default=None)
         parser.add_argument("--public_batch_size", type=int, default=None)
         parser.add_argument("--public_batch_num", type=int, default=None)
 
-    def __init__(self, configs, times):
-        self.consensus = []
-        self.public_data = []
-        super().__init__(configs, times)
-        self.public_loader = self._load_public_dataset(configs)
-        self._iter_public = iter(self.public_loader)
-
-    def _load_public_dataset(self, configs):
-        import data_factory
-
-        public_args = copy.deepcopy(configs)
-        public_args.dataset = self.public_dataset
-        dataset_cls = getattr(data_factory, self.public_dataset)
-        t = dataset_cls(public_args)
-        t.execute()
-
-        all_x, all_y = [], []
-        for entry in t.info:
-            with np.load(entry["paths"]["train"]) as f:
-                all_x.append(f["x"])
-                all_y.append(f["y"])
-        x = torch.as_tensor(np.concatenate(all_x), dtype=torch.float32)
-        y = torch.as_tensor(np.concatenate(all_y), dtype=torch.float32)
-        return DataLoader(
-            TensorDataset(x, y),
+    def __init__(self, configs: Namespace, times: int) -> None:
+        self.consensus: list[torch.Tensor] = []
+        self.public_data: list[tuple[torch.Tensor, ...]] = []
+        self._pretrained = False
+        super().__init__(configs=configs, times=times)
+        if (
+            min(
+                self.digest_epochs,
+                self.revisit_epochs,
+                self.public_batch_size,
+                self.public_batch_num,
+            )
+            <= 0
+        ):
+            raise ValueError("FedMD epoch and public-batch settings must be positive")
+        self.public_loader = self.load_public_data(
+            configs=configs,
+            dataset_name=self.public_dataset,
             batch_size=self.public_batch_size,
-            shuffle=True,
         )
+        if len(self.public_loader.dataset) < 2:
+            raise ValueError("FedMD public data requires at least two samples")
+        self._public_iterator = iter(self.public_loader)
 
-    def initialize_model(self):
-        pass
+    def select_clients(self) -> None:
+        self._select_all_clients()
 
-    def initialize_optimizer(self):
-        pass
-
-    def initialize_scheduler(self):
-        pass
-
-    def initialize_loss(self):
-        pass
-
-    def _load_public_batches(self):
+    def _load_public_batches(self) -> None:
         self.public_data = []
-        for _ in range(self.public_batch_num):
+        while len(self.public_data) < self.public_batch_num:
             try:
-                x, _ = next(self._iter_public)
+                batch = next(self._public_iterator)
             except StopIteration:
-                self._iter_public = iter(self.public_loader)
-                x, _ = next(self._iter_public)
-            if len(x) <= 1:
-                try:
-                    x, _ = next(self._iter_public)
-                except StopIteration:
-                    self._iter_public = iter(self.public_loader)
-                    x, _ = next(self._iter_public)
-            self.public_data.append(x.cpu())
+                self._public_iterator = iter(self.public_loader)
+                batch = next(self._public_iterator)
+            if len(batch[0]) > 1:
+                self.public_data.append(tuple(value.cpu() for value in batch))
 
-    @torch.no_grad()
-    def _score_client(self, client_id: int) -> list:
-        """Run client's personal model on public batches, return list of prediction tensors."""
-        personal = self.clients_personal_model_params[client_id]
-        if not personal:
-            return [torch.zeros_like(x) for x in self.public_data]
-        self.model.load_state_dict(self.public_model_params, strict=False)
-        self.model.load_state_dict(personal, strict=False)
-        self.model.eval()
-        self.model.to(self.device)
-        scores = [self.model(x.to(self.device)).clone().cpu() for x in self.public_data]
-        self.model.to("cpu")
-        return scores
+    def package(self, client_id: int) -> dict[str, Any]:
+        package = super().package(client_id=client_id)
+        package["consensus"] = self.consensus
+        package["public_data"] = self.public_data
+        package["__wire__"] = ("consensus",)
+        return package
 
-    def _compute_consensus(self):
-        all_scores = [self._score_client(cid) for cid in self.selected_clients]
-        self.consensus = []
-        for batch_scores in zip(*all_scores):
-            self.consensus.append(torch.stack(batch_scores, dim=-1).mean(dim=-1).cpu())
+    def _score_clients(self, pretrain: bool) -> dict[int, list[torch.Tensor]]:
+        client_logits = {}
+        for client_id in self.selected_clients:
+            package = self.package(client_id=client_id)
+            package["pretrain"] = pretrain
+            package["__wire__"] = ()
+            output = self.trainer.worker_for(client_id=client_id).score_public(
+                package=package
+            )
+            self.trainer._write_back(cid=client_id, out=output)
+            self.clients_personal_model_params[client_id].update(
+                output["regular_model_params"]
+            )
+            client_logits[client_id] = output["public_logits"]
+        return client_logits
 
-    def package(self, client_id: int) -> dict:
-        result = super().package(client_id)
-        result["consensus"] = self.consensus
-        result["public_data"] = self.public_data
-        return result
-
-    def train_one_round(self) -> dict:
+    def train_one_round(self) -> dict[int, dict[str, Any]]:
         self._load_public_batches()
-        self._compute_consensus()
-        packages = self.trainer.train(self.selected_clients)
-        self.aggregate_client_updates(packages)
+        client_logits = self._score_clients(pretrain=not self._pretrained)
+        self._pretrained = True
+        self.consensus = self.mean_logits(client_logits=list(client_logits.values()))
+        packages = self.trainer.train(selected=self.selected_clients)
+        self.aggregate_client_updates(packages=packages)
+        for client_id, logits in client_logits.items():
+            self._uplink_sizes[client_id] = self.get_size(obj=logits)
         return packages
 
-    def aggregate_client_updates(self, packages) -> None:
-        # Store each client's trained params (nFL-style — no global aggregation)
-        for cid, pkg in packages.items():
-            self.clients_personal_model_params[cid].update(pkg["regular_model_params"])
 
+class FedMD_Client(FedMDShared, hFL_Client):
+    """Stateless FedMD worker with communicate, digest, and revisit phases."""
 
-class FedMD_Client(hFL_Client):
+    def set_parameters(self, package: dict[str, Any]) -> None:
+        local_package = dict(package)
+        self.consensus = local_package.pop("consensus", [])
+        self.public_data = local_package.pop("public_data", [])
+        super().set_parameters(package=local_package)
 
-    consensus: list = []
-    public_data: list = []
-
-    def set_parameters(self, package: dict) -> None:
-        self.consensus = package.pop("consensus", [])
-        self.public_data = package.pop("public_data", [])
-        super().set_parameters(package)
-
-    def fit(self) -> None:
-        self._digest()
-        self._revisit()
-
-    def _digest(self):
-        """Train on public data to match the server consensus predictions."""
-        if not self.consensus or not self.public_data:
-            return
-        self.model.to(self.device)
+    def _train_public(
+        self,
+        targets: Sequence[torch.Tensor],
+        criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        epochs: int,
+    ) -> None:
+        self.model.to(device=self.device)
         self.model.train()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        for _ in range(self.digest_epochs):
-            for i, x in enumerate(self.public_data):
-                target = self.consensus[i].to(self.device)
-                pred = self.model(x.to(self.device))
-                loss = F.mse_loss(pred, target)
-                optimizer.zero_grad()
+        optimizer = torch.optim.Adam(
+            params=self.model.parameters(), lr=self.learning_rate
+        )
+        for _ in range(epochs):
+            for (batch_x, _, x_mark, y_mark), target in zip(self.public_data, targets):
+                prediction = self.model(
+                    batch_x.to(device=self.device),
+                    x_mark=x_mark.to(device=self.device),
+                    y_mark=y_mark.to(device=self.device),
+                )
+                loss = criterion(prediction, target.to(device=self.device))
+                optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 optimizer.step()
 
-    def _revisit(self):
-        """Standard local training on private data."""
-        loader = self.load_train_data()
-        offload_after_epoch = self.efficiency == "low"
+    def _public_predictions(self) -> list[torch.Tensor]:
+        self.model.to(device=self.device)
+        self.model.eval()
+        with torch.no_grad():
+            predictions = [
+                self.model(
+                    batch_x.to(device=self.device),
+                    x_mark=x_mark.to(device=self.device),
+                    y_mark=y_mark.to(device=self.device),
+                )
+                .detach()
+                .cpu()
+                for batch_x, _, x_mark, y_mark in self.public_data
+            ]
+        self.model.to(device="cpu")
+        return predictions
+
+    def score_public(self, package: dict[str, Any]) -> dict[str, Any]:
+        pretrain = bool(package.get("pretrain"))
+        self.set_parameters(package=package)
+        if pretrain:
+            self._train_public(
+                targets=[batch_y for _, batch_y, _, _ in self.public_data],
+                criterion=self.loss,
+                epochs=self.digest_epochs,
+            )
+            self._revisit()
+        output = self.package()
+        output["public_logits"] = self._public_predictions()
+        output["__wire__"] = ("public_logits",)
+        return output
+
+    def fit(self) -> None:
+        self._set_worker_seed(seed=self._loader_seed(dataset_type="train"))
+        self._digest()
+        self._revisit()
+
+    def _digest(self) -> None:
+        if not self.consensus or not self.public_data:
+            return
+        # Paper Algorithm 1 digest: fit f_k(x) to f_tilde(x).
+        self._train_public(
+            targets=self.consensus,
+            criterion=F.mse_loss,
+            epochs=self.digest_epochs,
+        )
+
+    def _revisit(self) -> None:
+        dataloader = self.load_train_data()
+        self.initialize_scheduler(
+            steps_per_epoch=len(dataloader),
+            epochs=self.revisit_epochs,
+        )
+        offload_after = self.efficiency == "low"
         for _ in range(self.revisit_epochs):
             self.train_one_epoch(
                 model=self.model,
-                dataloader=loader,
+                dataloader=dataloader,
                 optimizer=self.optimizer,
                 criterion=self.loss,
                 scheduler=self.scheduler,
                 device=self.device,
-                offload_after=offload_after_epoch,
+                offload_after=offload_after,
             )
         if self.efficiency == "med":
-            self.model.to("cpu")
+            self.model.to(device="cpu")

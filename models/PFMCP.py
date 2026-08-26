@@ -10,7 +10,7 @@ it is a post-training procedure rather than a model layer.
 import copy
 import math
 from argparse import ArgumentParser, Namespace
-from typing import List
+from typing import Any, List
 
 import torch
 from torch import nn
@@ -69,9 +69,7 @@ class PFMCP(nn.Module):
 
         n_heads = int(configs.pfmcp_n_heads)
         if self.d_model % n_heads != 0:
-            raise ValueError(
-                "pfmcp_d_model must be divisible by pfmcp_n_heads"
-            )
+            raise ValueError("pfmcp_d_model must be divisible by pfmcp_n_heads")
 
         dropout = float(configs.pfmcp_dropout)
         self.input_projection = nn.Linear(self.input_channels, self.d_model)
@@ -181,7 +179,7 @@ class PFMCP(nn.Module):
         x: torch.Tensor,
         x_mark: torch.Tensor | None = None,
         y_mark: torch.Tensor | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> torch.Tensor:
         del x_mark, y_mark, kwargs
         hidden = self.encode(x)
@@ -190,13 +188,8 @@ class PFMCP(nn.Module):
         if self.inference_mode == "personalized":
             local_output = self.local_decoder(hidden)
             local_weight = torch.sigmoid(self.gate(hidden))
-            output = (
-                local_weight * local_output
-                + (1.0 - local_weight) * global_output
-            )
+            output = local_weight * local_output + (1.0 - local_weight) * global_output
         else:
             output = global_output
 
-        return output.view(
-            x.shape[0], self.output_len, self.output_channels
-        )
+        return output.view(x.shape[0], self.output_len, self.output_channels)

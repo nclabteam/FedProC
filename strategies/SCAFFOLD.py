@@ -12,8 +12,8 @@ from .tFL import tFL, tFL_Client
 class SCAFFOLDOptimizer(Optimizer):
     """SGD with SCAFFOLD control-variate correction: p -= lr * (grad + c_server - c_client)."""
 
-    def __init__(self, params, lr: float) -> None:
-        super().__init__(params, dict(lr=lr))
+    def __init__(self, params: Any, lr: float) -> None:
+        super().__init__(params=params, defaults=dict(lr=lr))
 
     def step(
         self, server_cs: List[torch.Tensor], client_cs: List[torch.Tensor]
@@ -27,22 +27,14 @@ class SCAFFOLDOptimizer(Optimizer):
 
 
 class SCAFFOLD(tFL):
-    """
-    SCAFFOLD: Stochastic Controlled Averaging for Federated Learning.
-
-    Maintains server-side and per-client control variates to correct for
-    client drift caused by heterogeneous local data distributions.
-
-    Reference: Karimireddy et al., "SCAFFOLD: Stochastic Controlled Averaging
-    for Federated Learning", ICML 2020. arXiv 1910.06378.
-    """
+    """SCAFFOLD: Stochastic Controlled Averaging for Federated Learning."""
 
     optional = {
         "server_lr": 1.0,
     }
 
     @classmethod
-    def args_update(cls, parser):
+    def args_update(cls, parser: Any) -> None:
         parser.add_argument("--server_lr", type=float, default=None)
 
     def __init__(self, configs: Namespace, times: int) -> None:
@@ -58,41 +50,53 @@ class SCAFFOLD(tFL):
             ]
 
     def package(self, client_id: int) -> Dict[str, Any]:
-        pkg = super().package(client_id)
+        pkg = super().package(client_id=client_id)
         pkg["global_c"] = copy.deepcopy(self.global_c)
+        pkg["__wire__"] += ("global_c",)
         return pkg
 
     def aggregate_client_updates(self, packages: "OrderedDict[int, dict]") -> None:
-        K = len(packages)
+        num_packages = len(packages)
+        if not num_packages:
+            raise ValueError("SCAFFOLD requires at least one client update")
         # Snapshot of global params at the moment clients received them
         snapshot = copy.deepcopy(self.public_model_params)
 
         # Global model update: theta += server_lr / K * sum(theta_local - theta_global)
-        new_params = OrderedDict()
-        for name, snap_val in snapshot.items():
-            delta_sum = sum(
-                pkg["regular_model_params"][name].to(snap_val.device) - snap_val
-                for pkg in packages.values()
+        model_delta_sums = OrderedDict(
+            (name, torch.zeros_like(value)) for name, value in snapshot.items()
+        )
+        control_delta_sums = [torch.zeros_like(value) for value in self.global_c]
+        for package in packages.values():
+            for name, snapshot_value in snapshot.items():
+                model_delta_sums[name].add_(
+                    package["regular_model_params"][name].to(snapshot_value.device)
+                    - snapshot_value
+                )
+            for index, global_control in enumerate(self.global_c):
+                control_delta_sums[index].add_(
+                    package["delta_c"][index].to(global_control.device)
+                )
+        new_params = OrderedDict(
+            (
+                name,
+                value + self.server_lr * model_delta_sums[name] / num_packages,
             )
-            new_params[name] = snap_val + self.server_lr * delta_sum / K
+            for name, value in snapshot.items()
+        )
 
         # Control variate update: c += (1/N) * sum(delta_c)
-        N = self.num_clients
-        for i, gc in enumerate(self.global_c):
-            delta_sum = sum(pkg["delta_c"][i].to(gc.device) for pkg in packages.values())
-            gc.data.add_(delta_sum / N)
+        for global_control, delta_sum in zip(self.global_c, control_delta_sums):
+            global_control.data.add_(delta_sum / self.num_clients)
 
-        self._commit_global(new_params)
+        self._commit_global(new_params=new_params)
 
 
 class SCAFFOLD_Client(tFL_Client):
-    """
-    Client for SCAFFOLD. Uses SCAFFOLDOptimizer and maintains local control
-    variates c_i. Returns updated model + delta_c after each round.
-    """
+    """Client for SCAFFOLD."""
 
     def set_parameters(self, package: Dict[str, Any]) -> None:
-        super().set_parameters(package)
+        super().set_parameters(package=package)
         self.client_c = package["personal_model_params"]["client_c"]
         self.global_c = package["global_c"]
         self._global_snapshot = [
@@ -145,4 +149,5 @@ class SCAFFOLD_Client(tFL_Client):
         result = super().package()
         result["personal_model_params"]["client_c"] = self.client_c
         result["delta_c"] = self._delta_c
+        result["__wire__"] += ("delta_c",)
         return result
