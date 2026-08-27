@@ -39,6 +39,7 @@ dependencies = [
     "torch-dct",
     "PyWavelets",
     "pytorch-wavelets",
+    "setuptools>=77.0.3,<81",
     "timm",
     "higher",
     "reformer-pytorch",
