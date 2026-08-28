@@ -582,7 +582,23 @@ class tFL(SharedMethods):
         )
 
     def _pre_eval_hook(self, dataset_type: str) -> None:
-        """No-op for tFL; pFL overrides to run per-client personalized eval."""
+        """No-op for tFL; pFL overrides to run per-client personalized eval.
+
+        Runs *before* this round's training, which is what pFL wants: the
+        personalized model a client holds at this point is the one it carried
+        out of the previous round.
+        """
+
+    def _post_eval_hook(self, dataset_type: str) -> None:
+        """No-op for tFL; ptFL overrides to score each client's subnet.
+
+        Runs *after* aggregation, alongside the generalization metric, so a
+        subnet metric and the global metric in the same row describe the same
+        server model. Partial training has no pre-training counterpart worth
+        reporting: a client's width is a property of the client, and the subnet
+        it was last sent is only meaningful against the global model it came
+        from.
+        """
 
     def evaluate_generalization(self, dataset_type: str) -> None:
         incumbent = [i for i in range(self.num_clients) if not self.is_new[i]]
@@ -706,6 +722,7 @@ class tFL(SharedMethods):
                 for dataset_type in ["train", "test"]:
                     if dataset_type == "train" and self.skip_eval_train:
                         continue
+                    self._post_eval_hook(dataset_type=dataset_type)
                     if not self.exclude_server_model_processes:
                         self.evaluate_generalization(dataset_type=dataset_type)
                 self._save_best_hook()

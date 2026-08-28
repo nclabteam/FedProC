@@ -44,13 +44,13 @@ Get started with FedProC in just a few steps:
 
 1. [Installation](docs/installation.md) - Set up your environment
 2. [Usage](docs/usage.md) - Run your first experiment
-3. [Strategies](docs/strategies.md) - Choose your federated learning strategy (67 strategies)
+3. [Strategies](docs/strategies.md) - Choose your federated learning strategy (77 strategies)
 
 ## Documentation Structure
 
 - **[Installation](docs/installation.md)** - Installation guide and requirements
 - **[Usage](docs/usage.md)** - Basic usage and examples
-- **[Strategies](docs/strategies.md)** - Available federated learning strategies (67 strategies)
+- **[Strategies](docs/strategies.md)** - Available federated learning strategies (77 strategies)
 - **[Attacks](docs/attacks.md)** - Attack registry for adversarial evaluation (6 attacks)
 - **[Datasets](docs/datasets.md)** - Supported datasets and data preparation (31 datasets)
 - **[Models](docs/models.md)** - Available models and architectures (79 models)

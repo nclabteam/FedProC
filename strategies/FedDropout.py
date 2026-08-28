@@ -11,6 +11,7 @@ class FedDropout(ptFL):
     """Fresh independently random, fixed-width submodels each round."""
 
     optional = {"capacity": "0.75"}
+    _pt_send_score = True
 
     def _pt_select_indices(
         self,
@@ -35,3 +36,5 @@ class FedDropout(ptFL):
 
 class FedDropout_Client(ptFL_Client):
     """Federated Dropout client using the shared physical PT protocol."""
+
+    _pt_send_score = True

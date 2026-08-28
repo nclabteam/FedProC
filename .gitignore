@@ -21,3 +21,6 @@ _tmp/
 
 graphify-out/
 .gitnexus/
+
+# Local integrity audits, not part of the published tree
+audits/
