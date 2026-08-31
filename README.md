@@ -4,7 +4,7 @@
 
 📖 **Documentation**: [https://fedproc.readthedocs.io/](https://fedproc.readthedocs.io/)
 
-📦 **Version**: `2.1.13`
+📦 **Version**: [![latest tag](https://img.shields.io/github/v/tag/nclabteam/FedProC?label=&color=blue)](https://github.com/nclabteam/FedProC/tags)
 
 ---
 
