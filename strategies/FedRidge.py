@@ -26,6 +26,23 @@ class _LinearWeightsMixin:
                     target.bias.data.zero_()
 
 
+# Paper sec:high_dim: for d > 1000 the dense O(d^2) Gram is prohibitive, so each
+# client projects onto a shared R with i.i.d. N(0, 1/m) entries and sends the
+# m x m Gram instead. R is regenerated from a fixed seed on every side, so it is
+# identical everywhere and never goes on the wire.
+_PROJ_MIN_DIM = 1000
+_PROJ_SEED = 20260922
+
+
+def _projection(L: int) -> Optional[torch.Tensor]:
+    """Shared R (L x m), or None when the dense path applies."""
+    if L <= _PROJ_MIN_DIM:
+        return None
+    m = int(0.4 * L)  # paper Exp. 7: the knee, ~5% MSE cost
+    g = torch.Generator().manual_seed(_PROJ_SEED)
+    return torch.randn(L, m, generator=g) / (m ** 0.5)
+
+
 class FedRidge(_LinearWeightsMixin, tFL):
     """FedRidge: One-Shot Federated Ridge Regression (arXiv:2601.08216) applied to LTSF."""
 
@@ -80,15 +97,19 @@ class FedRidge(_LinearWeightsMixin, tFL):
     def aggregate_client_updates(self, packages: Any) -> None:
         L = self.input_len
         H = self.output_len
+        R = _projection(L)
+        d = L if R is None else R.shape[1]
 
         # Paper Alg. 1: G = Σ G_k, h = Σ h_k (plain sums)
-        sigma_xx_g = torch.zeros(L, L)
-        sigma_xy_g = torch.zeros(L, H)
+        sigma_xx_g = torch.zeros(d, d)
+        sigma_xy_g = torch.zeros(d, H)
         for cid in packages:
             sigma_xx_g.add_(packages[cid]["sigma_xx"])
             sigma_xy_g.add_(packages[cid]["sigma_xy"])
 
-        W = torch.linalg.solve(sigma_xx_g + self.gamma * torch.eye(L), sigma_xy_g)
+        W = torch.linalg.solve(sigma_xx_g + self.gamma * torch.eye(d), sigma_xy_g)
+        if R is not None:
+            W = R @ W  # back to the L x H weight the linear head expects
         self.sigma_xx_g = sigma_xx_g
         self.sigma_xy_g = sigma_xy_g
         self._load_linear_weights(model=self.model, W=W)
@@ -111,12 +132,17 @@ class FedRidge_Client(_LinearWeightsMixin, tFL_Client):
         L = self.input_len
         H = self.output_len
 
-        sigma_xx = torch.zeros(L, L)
-        sigma_xy = torch.zeros(L, H)
+        R = _projection(L)
+        d = L if R is None else R.shape[1]
+
+        sigma_xx = torch.zeros(d, d)
+        sigma_xy = torch.zeros(d, H)
         for batch_x, batch_y, *_ in loader:
             B, _, C = batch_x.shape
             x = batch_x.permute(0, 2, 1).reshape(B * C, L)
             y = batch_y.permute(0, 2, 1).reshape(B * C, H)
+            if R is not None:
+                x = x @ R
             sigma_xx.add_(x.T @ x)
             sigma_xy.add_(x.T @ y)
 
