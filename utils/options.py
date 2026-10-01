@@ -37,6 +37,8 @@ class Options:
     def __init__(self, root):
         self.root = root
         self.dup = {}
+        # Defaults a strategy sets win over the same key in a later component.
+        self.strategy_defaults = set()
 
     def parse_options(self):
         parser = argparse.ArgumentParser(
@@ -364,6 +366,8 @@ class Options:
         )  # e.g., self.args.strategy for "strategies"
 
         self.update_if_none(params=optional.get(param_key, {}))
+        if category == "strategies":
+            self.strategy_defaults.update(optional.get(param_key, {}))
 
         # Access and update compulsory parameters
         compulsory = getattr(module, "compulsory")
@@ -379,7 +383,7 @@ class Options:
                 self.update_arg(key, value)
                 if key in self.dup.keys():
                     self.dup[key] += 1
-            else:
+            elif key not in self.strategy_defaults:
                 if key in self.dup.keys():
                     if self.dup[key] == 1:
                         raise ValueError(f"Duplicate argument {key} found")
