@@ -197,6 +197,7 @@ Clients communicate directly with neighbors and aggregate only their local neigh
 
 | Name | Venue | Year | Description | Paper | URL |
 |------|-------|------|-------------|-------|-----|
+| **FedA2L** | Future Generation Computer Systems | 2027 | Adaptive layer-wise learning rates in decentralized FL; paper-used backup requires the legacy DFL API | FedA2L: Adaptive layer-wise learning rate adjustment in decentralized federated learning | [PUB](https://doi.org/10.1016/j.future.2026.108743) - [Arxiv](https://arxiv.org/abs/2608.09208) - [GITHUB](https://github.com/nclabteam/FedA2L) |
 | **DFedProx§** | MLSys | 2020 | DFedAvg neighbor mixing with the FedProx local proximal objective | Federated Optimization in Heterogeneous Networks | [PUB](https://proceedings.mlsys.org/paper_files/paper/2020/hash/1f5fe83998a09396ebe6477d9475ba0c-Abstract.html) - [Arxiv](https://arxiv.org/abs/1812.06127) - [GITHUB](https://github.com/litian96/FedProx) |
 | **DFedAvg** | IEEE TPAMI | 2023 | Multiple local SGD steps followed by simultaneous weighted neighbor mixing | Decentralized Federated Averaging | [PUB](https://doi.org/10.1109/TPAMI.2022.3196503) - [Arxiv](https://arxiv.org/abs/2104.11375) |
 | **DFedSAM** | ICML | 2023 | Local SAM perturbation followed by one gossip step, or the paper's configurable Q-step MGS variant | Improving the Model Consistency of Decentralized Federated Learning | [PUB](https://proceedings.mlr.press/v202/shi23d.html) - [Arxiv](https://arxiv.org/abs/2302.04083) |

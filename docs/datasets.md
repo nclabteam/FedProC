@@ -156,12 +156,12 @@ Models that accept time marks (e.g., `Transformer`) use them automatically. Mode
 
 The number of mark columns depends on the dataset granularity:
 
-| Granularity | Columns | Count |               |
-|-------------|---------|------- |               |
-| `s` (second) | month, day, weekday, hour, minute, second | 6 |               |
-| `t` (minute) | month, day, weekday, hour, minute | 5 |               |
-| `h` (hour) | month, day, weekday, hour | 4 |               |
-| `d` (day) | month, day, weekday | 3 |               |
-| `w` (week) | month, day, week_of_year | 3 |               |
-| `mo` (month) | month | 1 |               |
-| `q` (quarter) | month | 1 |               |
+| Granularity | Columns | Count |
+|-------------|---------|-------|
+| `s` (second) | month, day, weekday, hour, minute, second | 6 |
+| `t` (minute) | month, day, weekday, hour, minute | 5 |
+| `h` (hour) | month, day, weekday, hour | 4 |
+| `d` (day) | month, day, weekday | 3 |
+| `w` (week) | month, day, week_of_year | 3 |
+| `mo` (month) | month | 1 |
+| `q` (quarter) | month | 1 |
